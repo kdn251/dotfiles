@@ -1,0 +1,9 @@
+1password
+brave-bin
+hyprshot
+paru
+paru-debug
+timeshift-autosnap
+tzupdate
+vesktop
+zoom

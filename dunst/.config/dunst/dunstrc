@@ -1,0 +1,205 @@
+[global]
+    ### Display ###
+    # Display on the primary monitor
+    monitor = 0
+    
+    # Follow mouse/keyboard focus
+    follow = mouse
+    
+    ### Geometry ###
+    # The width of the notification window
+    width = (0, 300)
+    
+    # The maximum height of a single notification
+    height = (0, 100)
+    
+    # Position (top-right corner with offset)
+    origin = top-right
+    offset = (10, 10)
+    
+    # Scale factor
+    scale = 0
+    
+    # Maximum number of notification (0 means no limit)
+    notification_limit = 3
+    
+    ### Progress bar ###
+    progress_bar = true
+    progress_bar_height = 10
+    progress_bar_frame_width = 1
+    progress_bar_min_width = 150
+    progress_bar_max_width = 300
+    
+    # Show how many messages are currently hidden
+    indicate_hidden = yes
+    
+    # Shrink window if smaller than the width
+    shrink = no
+    
+    # Draw a line between notifications
+    separator_height = 2
+    
+    # Padding between text and separator
+    padding = 8
+    
+    # Horizontal padding
+    horizontal_padding = 10
+    
+    # Text padding
+    text_icon_padding = 0
+    
+    # Frame settings
+    frame_width = 2
+    frame_color = "#3b4252"
+    
+    # Size of gap to display between notifications
+    gap_size = 5
+    
+    # Define a color for the separator
+    separator_color = frame
+    
+    # Sort by urgency
+    sort = yes
+    
+    # Don't remove messages if the user is idle
+    idle_threshold = 120
+
+    ### Text ###
+    # Font
+    font = JetBrains Mono 10
+    
+    # Extra spacing between lines
+    line_height = 0
+    
+    # Possible values are:
+    # full: Allow a small subset of html markup
+    # strip: Remove all markup
+    # no: Plaintext
+    markup = full
+    
+    # The format of the message
+    format = "<b>%s</b>\n%b"
+    
+    # Alignment of message text
+    alignment = left
+    
+    # Vertical alignment of message text and icon
+    vertical_alignment = center
+    
+    # Show age of message if message is older than show_age_threshold
+    show_age_threshold = 60
+    
+    # Specify where to make an ellipsis in long lines
+    ellipsize = middle
+    
+    # Ignore newlines '\n' in notifications
+    ignore_newline = no
+    
+    # Stack together notifications with the same content
+    stack_duplicates = true
+    
+    # Hide the count of stacked notifications with the same content
+    hide_duplicate_count = false
+    
+    # Display indicators for URLs (U) and actions (A)
+    show_indicators = yes
+    
+    ### Icons ###
+    # Recursive icon lookup
+    enable_recursive_icon_lookup = true
+    
+    # Icon theme
+    icon_theme = Adwaita
+    
+    # Paths to default icons
+    icon_path = /usr/share/icons/Papirus-Dark/16x16/status/:/usr/share/icons/Papirus-Dark/16x16/devices/
+    
+    # Align icons left/right/off
+    icon_position = left
+    
+    # Scale small icons up to this size, 0 to disable
+    min_icon_size = 32
+    
+    # Scale larger icons down to this size, 0 to disable
+    max_icon_size = 32
+    
+    ### History ###
+    # File for "New" notifications
+    sticky_history = yes
+    
+    # Max number of notifications to keep in history
+    history_length = 20
+    
+    ### Misc/Advanced ###
+    # dmenu path
+    dmenu = /usr/bin/dmenu -p dunst:
+    
+    # Browser for opening urls in context menu
+    browser = /usr/bin/xdg-open
+    
+    # Always run rule-defined scripts, even if the notification is suppressed
+    always_run_script = true
+    
+    # Define title of windows spawned by dunst
+    title = Dunst
+    
+    # Define class of windows spawned by dunst
+    class = Dunst
+    
+    # Corner radius
+    corner_radius = 10
+    
+    # Ignore the dbus closeNotification message.
+    ignore_dbusclose = false
+    
+    ### Mouse ###
+    mouse_left_click = close_current
+    mouse_middle_click = do_action, close_current
+    mouse_right_click = close_all
+
+    ### Transparency/Dimming ###
+    # Transparency (0-100%)
+    transparency = 25
+    
+    # Dim non-focused notifications
+    # dim_nonfocused = true
+    
+    ### Display time ###
+    # Time before notification disappears (in seconds)
+    timeout = 3  # Default time (3 seconds)
+
+[urgency_low]
+    # Low urgency notifications
+    background = "#2e344088"  # Dark background with transparency
+    foreground = "#eceff4"
+    timeout = 2  # Quick timeout for low urgency (2 seconds)
+
+[urgency_normal]
+    # Normal urgency notifications
+    background = "#3b425288"  # Dark background with transparency
+    foreground = "#eceff4"
+    timeout = 4  # Medium timeout for normal urgency (4 seconds)
+
+[urgency_critical]
+    # Critical urgency notifications
+    background = "#bf616a88"  # Dark red background with transparency
+    foreground = "#eceff4"
+    frame_color = "#bf616a"
+    timeout = 8  # Longer timeout for critical messages (8 seconds)
+
+# Specific application rules
+[firefox]
+    appname = firefox
+    timeout = 3
+
+[spotify]
+    appname = spotify
+    timeout = 2
+    background = "#1ed76088"
+    foreground = "#ffffff"
+
+# Suppress some notifications
+[skip-telegram-updates]
+    appname = telegram-desktop
+    summary = "*Telegram Desktop*"
+    format = ""
