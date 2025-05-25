@@ -29,4 +29,4 @@
 
 #### general notes
 1. remember to always deploy personal website when `setup.sh` script changes so that newest changes can be reflected if setting up a new machine
-
+2. might need to run `sudo stow -t /etc keyd` since `/etc` requires sudo and keyd needs to live in `/etc` not `~/` 
