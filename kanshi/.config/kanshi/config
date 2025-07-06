@@ -4,7 +4,12 @@
 # Profile for when external monitor is connected (docked)
 # Replace "External-Monitor-Name" with your actual external monitor name
 # Replace "eDP-1" with your actual laptop screen name if different
-profile docked {
+profile docked1 {
+    output "DP-6" enable
+    output "eDP-1" disable
+}
+
+profile docked1 {
     output "DP-5" enable
     output "eDP-1" disable
 }
