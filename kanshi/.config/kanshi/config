@@ -10,11 +10,16 @@
 # }
 
 profile docked1 {
-    output "DP-5" enable
+    # output "DP-5" enable
+    output "DP-5" enable mode 1920x1080@120.00Hz posistion 0,0 scale 1.0
+    # output "DP-5" enable mode 2560x1440@143.97Hz position 0,0 scale 1.0
     output "eDP-1" disable
+    exec ~/.config/kanshi/docked-setup.sh
 }
 
 # Profile for when only laptop screen is available (undocked)
 profile undocked {
-    output "eDP-1" enable
+    # output "eDP-1" enable
+    output "eDP-1" enable mode 2880x1920@120.00000Hz position 0,0 scale 2.0
+    exec ~/.config/kanshi/undocked-setup.sh
 }
