@@ -1,7 +1,7 @@
 urls-source "miniflux"
-miniflux-url "echo $MINIFLUX_URL"
-miniflux-login "echo $MINIFLUX_LOGIN"
-miniflux-passwordeval "echo $MINIFLUX_PASSWORD"
+miniflux-url "SERVER_IP:PORT_NUMBER"
+miniflux-login "USERNAME"
+miniflux-passwordeval "PASSWORD"
 miniflux-show-special-feeds yes
 
 articlelist-format "%4i %f %D %?T?| %-17T| ?%t"
