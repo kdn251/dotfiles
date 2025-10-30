@@ -1,0 +1,78 @@
+#!/bin/bash
+VIDEO_DIR="$HOME/Videos/twitch-vods"
+ARCHIVE_FILE="$VIDEO_DIR/.downloaded-vods"
+TWITCH_TOKEN=$(cat ~/.twitch_oauth 2>/dev/null)
+
+# Create directory structure
+mkdir -p "$VIDEO_DIR"
+touch "$ARCHIVE_FILE"
+
+# List of streamers to download from (add your favorites)
+STREAMERS=(
+  "xqc"
+)
+
+# Function to send notifications with progress
+download_with_progress() {
+  local streamer=$1
+  local url=$2
+
+  notify-send "Twitch VOD Downloader" "Checking $streamer for new VODs..." -t 3000 -u low
+
+  # Get list of VOD URLs first
+  VOD_URLS=$(yt-dlp --flat-playlist --print url --playlist-end 5 "$url" 2>/dev/null)
+
+  while IFS= read -r vod_url; do
+    [ -z "$vod_url" ] && continue
+
+    # Extract VOD ID
+    VOD_ID=$(echo "$vod_url" | grep -oP 'videos/\K[0-9]+')
+
+    # Check if already downloaded
+    if grep -q "$VOD_ID" "$ARCHIVE_FILE"; then
+      echo "Already downloaded: $VOD_ID"
+      continue
+    fi
+
+    # Get video title and duration
+    TITLE=$(yt-dlp --get-title "$vod_url" 2>/dev/null || echo "Unknown")
+    DURATION=$(yt-dlp --get-duration "$vod_url" 2>/dev/null || echo "Unknown")
+
+    # Show starting notification
+    notify-send "📥 Downloading" "$TITLE [$DURATION]" -t 2000
+
+    # Convert VOD ID to numeric notification ID
+    NOTIFY_ID=$(($(echo "$VOD_ID" | cksum | cut -f1 -d' ') % 2147483647))
+
+    # Download with progress - ADD DEBUG
+    yt-dlp -f 'best[height<=?1080]' \
+      -o "$VIDEO_DIR/$streamer/%(upload_date)s-%(title)s-%(id)s.%(ext)s" \
+      --concurrent-fragments 8 \
+      --newline \
+      "$vod_url" 2>&1 | while read line; do
+      echo "DEBUG: $line" # Print every line
+      if [[ "$line" =~ ([0-9]+\.[0-9]+)% ]]; then
+        PERCENT="${BASH_REMATCH[1]}"
+        echo "MATCHED: $PERCENT%" # Confirm match
+        notify-send -r $NOTIFY_ID -t 0 -u low "📥 ${PERCENT}% [$DURATION]" "$TITLE"
+      fi
+    done
+
+    # Check if download succeeded
+    if [ ${PIPESTATUS[0]} -eq 0 ]; then
+      echo "$VOD_ID" >>"$ARCHIVE_FILE"
+      notify-send "✓ Download Complete" "$TITLE" -t 5000
+    else
+      notify-send "✗ Download Failed" "$TITLE" -t 5000
+    fi
+
+  done <<<"$VOD_URLS"
+}
+
+for STREAMER in "${STREAMERS[@]}"; do
+  echo "Checking for new VODs from $STREAMER..."
+  download_with_progress "$STREAMER" "https://www.twitch.tv/$STREAMER/videos"
+done
+
+notify-send "Twitch VOD Downloader" "All downloads complete!" -t 3000 -u low
+echo "VOD download check complete!"

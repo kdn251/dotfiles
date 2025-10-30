@@ -1,0 +1,126 @@
+#!/bin/bash
+VIDEO_DIR="$HOME/Videos/newsboat"
+ARCHIVE_FILE="$VIDEO_DIR/.downloaded-twitch-vods"
+TWITCH_TOKEN=$(cat ~/.newsboat/.twitch_oauth 2>/dev/null)
+
+# Create directory structure
+mkdir -p "$VIDEO_DIR"
+touch "$ARCHIVE_FILE"
+
+# List of streamers to download from (add your favorites)
+STREAMERS=(
+  "xqc"
+  "zackrawrr"
+  "shroud"
+  "samwitch"
+)
+
+# Function to get VOD list and download
+download_vods() {
+  local streamer=$1
+
+  notify-send "Twitch VOD Downloader" "Checking $streamer for new VODs..." -t 3000 -u low
+
+  # Get list of recent VODs
+  VOD_URLS=$(yt-dlp --flat-playlist --print url --playlist-end 1 "https://www.twitch.tv/$streamer/videos" 2>/dev/null)
+
+  while IFS= read -r vod_url; do
+    [ -z "$vod_url" ] && continue
+
+    # Extract VOD ID
+    VOD_ID=$(echo "$vod_url" | grep -oP 'videos/\K[0-9]+')
+
+    # Check if already downloaded
+    if grep -q "$VOD_ID" "$ARCHIVE_FILE"; then
+      echo "Already downloaded: $VOD_ID"
+      continue
+    fi
+
+    # Check if file already exists in VIDEO_DIR
+    if [ -n "$VOD_ID" ]; then
+      DOWNLOADED=$(find "$VIDEO_DIR" -type f -name "*${VOD_ID}*" 2>/dev/null | head -n 1)
+      if [ -n "$DOWNLOADED" ]; then
+        echo "Already exists: $DOWNLOADED"
+        echo "$VOD_ID" >>"$ARCHIVE_FILE"
+        continue
+      fi
+    fi
+
+    # Get VOD title and duration for notifications only
+    VOD_TITLE=$(yt-dlp --get-title "$vod_url" 2>/dev/null || echo "Unknown")
+    DURATION=$(yt-dlp --get-duration "$vod_url" 2>/dev/null || echo "Unknown")
+
+    # Use yt-dlp format for filename (will be determined by streamlink from metadata)
+    # We'll need to track the file after it's created
+    TEMP_PATTERN="$VIDEO_DIR/*${VOD_ID}*"
+
+    # Convert VOD ID to numeric notification ID
+    NOTIFY_ID=$(($(echo "$VOD_ID" | cksum | cut -f1 -d' ') % 2147483647))
+
+    notify-send -r $NOTIFY_ID "📥 Downloading" "$VOD_TITLE [$DURATION]" -t 2000 -u normal
+
+    # Start download in background - use yt-dlp naming format
+    if [ -n "$TWITCH_TOKEN" ]; then
+      streamlink \
+        --twitch-disable-ads \
+        --twitch-api-header "Authorization=OAuth $TWITCH_TOKEN" \
+        --force \
+        --stream-segment-threads 10 \
+        --output "$VIDEO_DIR/{title}-${VOD_ID}.mp4" \
+        "$vod_url" best >/dev/null 2>&1 &
+    else
+      streamlink \
+        --twitch-disable-ads \
+        --force \
+        --stream-segment-threads 10 \
+        --output "$VIDEO_DIR/{title}-${VOD_ID}.mp4" \
+        "$vod_url" best >/dev/null 2>&1 &
+    fi
+
+    DOWNLOAD_PID=$!
+
+    # Monitor file size and show progress in MB/GB
+    # Wait a moment for file to be created
+    sleep 3
+    FILENAME=$(find "$VIDEO_DIR" -type f -name "*${VOD_ID}*" 2>/dev/null | head -n 1)
+
+    while kill -0 $DOWNLOAD_PID 2>/dev/null; do
+      sleep 2
+      if [ -n "$FILENAME" ] && [ -f "$FILENAME" ]; then
+        CURRENT_SIZE=$(stat -c%s "$FILENAME" 2>/dev/null || stat -f%z "$FILENAME" 2>/dev/null)
+
+        # Show size in MB or GB
+        SIZE_MB=$(awk "BEGIN {printf \"%.0f\", $CURRENT_SIZE / 1024 / 1024}")
+        if [ "$SIZE_MB" -gt 1000 ]; then
+          SIZE_GB=$(awk "BEGIN {printf \"%.1f\", $CURRENT_SIZE / 1024 / 1024 / 1024}")
+          notify-send -r $NOTIFY_ID -t 0 -u low "📥 ${SIZE_GB}GB [$DURATION]" "$VOD_TITLE"
+        else
+          notify-send -r $NOTIFY_ID -t 0 -u low "📥 ${SIZE_MB}MB [$DURATION]" "$VOD_TITLE"
+        fi
+      else
+        # Try to find the file again
+        FILENAME=$(find "$VIDEO_DIR" -type f -name "*${VOD_ID}*" 2>/dev/null | head -n 1)
+      fi
+    done
+
+    # Wait for download to complete
+    wait $DOWNLOAD_PID
+
+    # Mark as downloaded if successful
+    if [ $? -eq 0 ]; then
+      echo "$VOD_ID" >>"$ARCHIVE_FILE"
+      notify-send -r $NOTIFY_ID "✓ Download Complete" "$VOD_TITLE" -t 5000 -u normal
+    else
+      notify-send -r $NOTIFY_ID "✗ Download Failed" "$VOD_TITLE" -t 5000 -u critical
+    fi
+
+  done <<<"$VOD_URLS"
+}
+
+for STREAMER in "${STREAMERS[@]}"; do
+  echo "Checking for new VODs from $STREAMER..."
+  download_vods "$STREAMER"
+done
+
+notify-send "Twitch VOD Downloader" "All downloads complete!" -t 3000 -u low
+echo "VOD download check complete!"
