@@ -1,0 +1,84 @@
+urls-source "miniflux"
+miniflux-url "http://72.60.165.172:8080"
+miniflux-login "knaught"
+miniflux-passwordeval "echo 'Binary'"
+miniflux-show-special-feeds yes
+
+articlelist-format "%4i %f %D %?T?| %-17T| ?%t"
+# feedlist-format "%?T?║%4i %n %8u (%T) %t &╠═════════════════════════════════════════════════════%t?"
+
+browser "google-chrome-stable %u"
+# refresh-on-startup yes
+
+# Download video (,d)
+# macro d set browser "~/scripts/download-video.sh %u &" ; open-in-browser ; set browser "~/scripts/mpv-yt %u"
+macro d set browser "~/scripts/download-video.sh %u %T &" ; open-in-browser ; set browser "~/scripts/mpv-yt %u"
+macro c set browser "~/scripts/cancel-download.sh %u" ; open-in-browser ; set browser "~/scripts/mpv-yt %u"
+
+# Delete downloaded video (,D)
+macro D set browser "~/scripts/delete-downloaded.sh %u" ; open-in-browser ; set browser "~/scripts/mpv-yt %u"
+
+# Cancel in progress download
+macro S set browser "~/scripts/cancel-download.sh %u" ; open-in-browser ; set browser "~/scripts/mpv-yt %u"
+
+# Refresh downloaded videos feed (,R)
+macro R set browser "~/scripts/update-downloaded-query.sh" ; open-in-browser ; set browser "~/scripts/mpv-yt %u"
+
+# Stream YouTube video
+# macro v set browser "setsid -f mpv-yt %u" ; open-in-browser ; set browser "google-chrome-stable %u"
+macro v set browser "setsid -f ~/scripts/mpv-yt %u" ; open-in-browser ; set browser "google-chrome-stable %u"
+
+# macro r set browser "w3m %u" ; open-in-browser ; set browser "google-chrome-stable %u"
+macro r set browser "w3m -o display_image=1 %u" ; open-in-browser ; toggle-article-read ; set browser "google-chrome-stable %u"
+
+# Bookmark article (,b)
+macro b set browser "~/scripts/bookmark-article.sh %u '%T'" ; open-in-browser ; set browser "~/scripts/mpv-yt %u"
+
+# Unbookmark article (,B) - removes from list
+macro B set browser "~/scripts/unbookmark-article.sh %u '%T'" ; open-in-browser ; set browser "~/scripts/mpv-yt %u"
+
+reload-threads 100
+
+show-read-articles no
+show-read-feeds yes
+
+# Keybinds
+bind-key j down
+bind-key k up
+bind-key g home 
+bind-key G end
+
+# Colors - clean and minimal
+color listfocus          black   cyan    bold
+color listfocus_unread   black   cyan    bold
+color listnormal         default default
+color listnormal_unread  default default bold
+color info               black   cyan    bold
+color article            default default
+
+# Show query feeds
+prepopulate-query-feeds yes
+
+# Filter queries for high-quality content
+# Filter out ads/paid content
+ignore-article "*" "title =~ \"Sponsored\""
+ignore-article "*" "title =~ \"#Sponsored\""
+ignore-article "*" "title =~ \"sponsored\""
+ignore-article "*" "title =~ \"#sponsored\""
+ignore-article "*" "title =~ \"^Ad:\""
+ignore-article "*" "title =~ \"^#Ad:\""
+ignore-article "*" "title =~ \"^ad:\""
+ignore-article "*" "title =~ \"^#ad:\""
+
+# Try multiple patterns to catch different LIVE formats
+# for some reason articles with LIVE for Twitch don't seem
+# "streamable" i.e. when I hit my hotkey ",v" to watch the
+# livestream or VOD it errors/never loads
+ignore-article "*" "title =~ \"LIVE\\s*$\""
+ignore-article "*" "title =~ \"\\sLIVE$\""
+ignore-article "*" "title =~ \"\\|\\s*LIVE$\""
+ignore-article "*" "title =~ \"-\\s*LIVE$\""
+ignore-article "*" "tags =~ \"LIVE\""
+
+# highlight feedlist "---.*---" cyan default bold
+# highlight feedlist ".*0/0.." default default invis
