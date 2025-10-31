@@ -31,3 +31,4 @@
 2. might need to run `sudo stow -t /etc keyd` since `/etc` requires sudo and keyd needs to live in `/etc` not `~/` 
 3. Run `pacman -Qqe | grep -v "$(pacman -Qqm)" > pacman-packages.txt` to update list of pacman installed packages
 4. Run `pacman -Qqm > aur-packages.txt` to update list of AUR installed packages
+5. Run `crontab -l > ~/dotfiles/crontab_knaught` to get up to date crontab file to push to repo and pull down on other machines. On other machines run `crontab ~/dotfiles/crontab_knaught` (or wherever the file lives) to recreate the cron jobs on the new machine
