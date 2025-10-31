@@ -53,6 +53,8 @@ bind-key j down
 bind-key k up
 bind-key g home 
 bind-key G end
+# bind-key L pagedown 
+# bind-key h pagedown 
 
 # Colors - clean and minimal
 color listfocus          black   cyan    bold
@@ -88,3 +90,4 @@ ignore-article "*" "tags =~ \"LIVE\""
 
 # highlight feedlist "---.*---" cyan default bold
 # highlight feedlist ".*0/0.." default default invis
+
