@@ -1,56 +1,70 @@
 #!/bin/bash
 
-# --- Configuration ---
-# Your master list of all streamers (e.g., all 50 people you follow)
-MASTER_LIST="$HOME/scripts/twitch_master_list.txt"
-# The temporary file that will ONLY contain currently live streamers
-LIVE_LIST="$HOME/scripts/twitch_usernames.txt"
+# =================================================================
+# SCRIPT: update_live_list.sh
+# FUNCTION: Checks a master list of streamers for live status in
+#           parallel and updates a clean list for the dmenu binding.
+# SCHEDULE: Must be run by cron every X minutes.
+# =================================================================
 
-# --- Master Logic ---
+# --- Configuration ---
+# Your master list of all 100 streamers
+MASTER_LIST="$HOME/scripts/twitch_master_list.txt"
+# The file that will ONLY contain currently LIVE, SORTED streamers
+LIVE_LIST="$HOME/scripts/twitch_usernames.txt"
+# Log file for cron job debugging
+LOG_FILE="/tmp/live_list_cron.log"
+
+# --- Main Logic ---
 
 # 1. Check if the master list exists
 if [ ! -f "$MASTER_LIST" ]; then
-  echo "$(date): ERROR: Master list not found: $MASTER_LIST" >>/tmp/live_list_cron.log
+  echo "$(date): ERROR: Master list not found: $MASTER_LIST" >>"$LOG_FILE"
   exit 1
 fi
 
-# 2. Check Stream Status in Parallel (using xargs for speed)
-# - P 8: Use 8 parallel processes (adjust based on your CPU/network)
-# - I {}: Replace {} with the current line (username)
-# - Run a subshell to check the status using streamlink and capture output
-# - The 'grep -q' check ensures we only print the username if no "error" is found.
-# - The entire command is run in the background with nohup to prevent issues on exit.
+# 2. Define the status checking function
+# This function is executed in parallel by xargs below.
+check_streamer_status() {
+  local USERNAME="$1"
 
-nohup bash -c "
-    cat \"$MASTER_LIST\" | while read USERNAME; do
-        # Skip empty lines or comments
-        [[ -z \"\$USERNAME\" || \"\$USERNAME\" =~ ^# ]] && continue
+  # Skip empty lines or comments
+  [[ -z "$USERNAME" || "$USERNAME" =~ ^# ]] && return
 
-        # Check stream status via streamlink
-        STREAM_OUTPUT=\$(streamlink \"https://twitch.tv/\$USERNAME\" best --json 2>/dev/null)
-        
-        # Check if the output contains the specific JSON key 'error'. 
-        # If grep finds 'error' (exit code 0), the streamer is OFFLINE.
-        # If grep does NOT find 'error' (exit code 1), the streamer is LIVE.
-        echo \"\$STREAM_OUTPUT\" | grep -q '\"error\":'
+  # Check stream status via streamlink with --json and suppress errors (2>/dev/null)
+  # This only outputs the JSON if it can find a stream source.
+  STREAM_OUTPUT=$(streamlink "https://twitch.tv/$USERNAME" best --json 2>/dev/null)
 
-        if [ \$? -ne 0 ]; then
-            # Not an error, streamer is LIVE. Print the username.
-            echo \"\$USERNAME\"
-        fi
-    done
-" >"$LIVE_LIST.tmp" 2>/dev/null
+  # Check if the output contains the specific JSON key "error".
+  # If grep does NOT find "error" (exit code 1), the streamer is LIVE.
+  echo "$STREAM_OUTPUT" | grep -q '"error":'
 
-# 3. Atomically update the file to prevent race conditions during read
-# Sort the final list of live streamers and move it into the live list file.
+  if [ $? -ne 0 ]; then
+    # The error string was NOT found, meaning we got stream data. Print the username.
+    echo "$USERNAME"
+  fi
+}
+
+# Export the function so xargs can use it in parallel subshells
+export -f check_streamer_status
+
+# 3. Parallel Execution using xargs
+# - xargs reads the master list line by line.
+# - -I {} passes each line (username) as the argument {} to the function.
+# - -P 8 runs 8 processes simultaneously (adjust '8' based on your CPU cores).
+# - Output is written to a temporary file.
+
+cat "$MASTER_LIST" | xargs -I {} -P 8 bash -c 'check_streamer_status "$@"' _ {} >"$LIVE_LIST.tmp" 2>/dev/null
+
+# 4. Atomically update the file: SORT the temporary list and move it.
 if [ -s "$LIVE_LIST.tmp" ]; then
+  # Sort the final list of live streamers alphabetically and write to the final file
   sort "$LIVE_LIST.tmp" >"$LIVE_LIST"
   rm "$LIVE_LIST.tmp"
 else
-  # If no one is live, create an empty file (or leave the old list).
-  # Creating an empty list is safer for your dmenu script.
+  # If no one is live, create an empty file.
   echo "" >"$LIVE_LIST"
   rm "$LIVE_LIST.tmp"
 fi
 
-echo "$(date): Live list updated successfully." >>/tmp/live_list_cron.log
+echo "$(date): Live list updated successfully and sorted." >>"$LOG_FILE"

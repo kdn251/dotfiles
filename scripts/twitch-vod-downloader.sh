@@ -9,15 +9,37 @@ touch "$ARCHIVE_FILE"
 
 # List of streamers to download from (add your favorites)
 STREAMERS=(
-  "samwitch"
-  "xqc"
+  "kevinnaughtonjr"
   "zackrawrr"
+  "xqc"
   "shroud"
+  "samwitch"
 )
+
+# Function to check if streamer is currently live
+is_streamer_live() {
+  local streamer=$1
+  # Use streamlink --json to check if stream exists
+  streamlink "https://www.twitch.tv/$streamer" best --json 2>&1 | grep -q '"error"'
+  # If grep finds "error", stream is NOT live (return 1)
+  # If grep doesn't find "error", stream IS live (return 0)
+  if [ $? -eq 0 ]; then
+    return 1 # Not live (error found)
+  else
+    return 0 # Live (no error)
+  fi
+}
 
 # Function to get VOD list and download
 download_vods() {
   local streamer=$1
+
+  # Check if streamer is currently live
+  if is_streamer_live "$streamer"; then
+    echo "Skipping $streamer - currently live (will download VOD later)"
+    notify-send "Twitch VOD Downloader" "Skipping $streamer - currently live" -t 3000 -u low
+    return
+  fi
 
   notify-send "Twitch VOD Downloader" "Checking $streamer for new VODs..." -t 3000 -u low
 

@@ -27,7 +27,6 @@ macro S set browser "~/scripts/cancel-download.sh %u" ; open-in-browser ; set br
 # for that user hasn't been added
 macro w set browser "~/scripts/twitch-launcher.sh" ; open-in-browser ;
 
-
 # Refresh downloaded videos feed (,R)
 macro R set browser "~/scripts/update-downloaded-query.sh" ; open-in-browser ; set browser "~/scripts/mpv-yt %u"
 
