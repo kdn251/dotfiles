@@ -12,4 +12,7 @@ simple-update-notifier/
 vesktop/
 1Password/
 
+newsboat/.newsboat/cache.db
+miniflux_creds.conf
+
 .stfolder/

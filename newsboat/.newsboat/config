@@ -1,7 +1,7 @@
 urls-source "miniflux"
-miniflux-url "http://72.60.165.172:8080"
-miniflux-login "knaught"
-miniflux-passwordeval "echo 'Binary'"
+# Pulling in this file to get credentials for connecting to miniflux
+include "~/.newsboat/miniflux_creds.conf"
+
 miniflux-show-special-feeds yes
 
 articlelist-format "%4i %f %D %?T?| %-17T| ?%t"
@@ -20,6 +20,13 @@ macro D set browser "~/scripts/delete-downloaded.sh %u" ; open-in-browser ; set 
 
 # Cancel in progress download
 macro S set browser "~/scripts/cancel-download.sh %u" ; open-in-browser ; set browser "~/scripts/mpv-yt %u"
+
+# Open Twitch stream by username in MPV
+# to watch streamer that's currently live 
+# when RSS feed hasn't updated or RSS feed 
+# for that user hasn't been added
+macro w set browser "~/scripts/twitch-launcher.sh" ; open-in-browser ;
+
 
 # Refresh downloaded videos feed (,R)
 macro R set browser "~/scripts/update-downloaded-query.sh" ; open-in-browser ; set browser "~/scripts/mpv-yt %u"
