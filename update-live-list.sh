@@ -1,0 +1,1 @@
+scripts/scripts/update-live-list.sh

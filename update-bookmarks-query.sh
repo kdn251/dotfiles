@@ -1,0 +1,1 @@
+scripts/scripts/update-bookmarks-query.sh

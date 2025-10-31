@@ -1,0 +1,1 @@
+scripts/scripts/delete-if-read.sh
