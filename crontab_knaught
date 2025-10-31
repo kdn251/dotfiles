@@ -1,0 +1,9 @@
+# Run every 15 minutes
+*/15 * * * * /home/knaught/scripts/newsboat-refresh.sh
+
+# Run Twitch VOD downloader every 6 hours
+# 0 */4 * * * DISPLAY=:0 DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/1000/bus /home/knaught/scripts/twitch-vod-downloader.sh >> /tmp/twitch-vod-download.log 2>&1
+0 */1 * * * DISPLAY=:0 DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/1000/bus /home/knaught/scripts/twitch-vod-downloader.sh >> /tmp/twitch-vod-download.log 2>&1
+
+# Update the list of live Twitch streamers every 5 minutes
+*/5 * * * * /home/knaught/scripts/update-live-list.sh
