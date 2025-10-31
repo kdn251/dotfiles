@@ -47,7 +47,7 @@ macro B set browser "~/scripts/unbookmark-article.sh %u '%T'" ; open-in-browser 
 reload-threads 100
 
 show-read-articles no
-show-read-feeds yes
+show-read-feeds no
 
 # Keybinds
 bind-key j down
