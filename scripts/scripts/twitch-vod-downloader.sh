@@ -60,6 +60,14 @@ download_vods() {
 
   # Get VOD title and duration for notifications
   VOD_TITLE=$(yt-dlp --get-title "$VOD_URL" 2>/dev/null || echo "Unknown")
+
+  # Skip sponsored/ad content
+  if [[ "$VOD_TITLE" =~ \#[Aa]d ]]; then
+	  echo "Skipping $streamer VOD - contains #ad/#Ad in title"
+  notify-send "Twitch VOD Downloader" "Skipping $streamer - sponsored content" -t 3000 -u low
+  return
+  fi
+
   DURATION=$(yt-dlp --get-duration "$VOD_URL" 2>/dev/null || echo "Unknown")
 
   # Convert VOD ID to numeric notification ID
