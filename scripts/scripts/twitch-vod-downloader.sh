@@ -9,10 +9,10 @@ touch "$ARCHIVE_FILE"
 
 # List of streamers to download from (add your favorites)
 STREAMERS=(
-  "kevinnaughtonjr"
   "zackrawrr"
   "xqc"
   "shroud"
+  "nadeshot"
   "samwitch"
 )
 
