@@ -24,3 +24,4 @@ newsboat/.newsboat/history.search
 systemd/.config/systemd/user/graphical-session.target.wants/
 newsboat/.newsboat/cache.db
 scripts/scripts/twitch_usernames.txt
+scripts/scripts/twitch_usernames.txt.tmp
