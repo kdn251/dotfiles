@@ -9,6 +9,7 @@ touch "$ARCHIVE_FILE"
 
 # List of streamers to download from (add your favorites)
 STREAMERS=(
+  "RiotGames"
   "zackrawrr"
   "xqc"
   "shroud"
@@ -63,9 +64,9 @@ download_vods() {
 
   # Skip sponsored/ad content
   if [[ "$VOD_TITLE" =~ \#[Aa]d ]]; then
-	  echo "Skipping $streamer VOD - contains #ad/#Ad in title"
-  notify-send "Twitch VOD Downloader" "Skipping $streamer - sponsored content" -t 3000 -u low
-  return
+    echo "Skipping $streamer VOD - contains #ad/#Ad in title"
+    notify-send "Twitch VOD Downloader" "Skipping $streamer - sponsored content" -t 3000 -u low
+    return
   fi
 
   DURATION=$(yt-dlp --get-duration "$VOD_URL" 2>/dev/null || echo "Unknown")
