@@ -1,5 +1,4 @@
 #!/bin/bash
-
 # =================================================================
 # SCRIPT: update_live_list.sh
 # FUNCTION: Checks a master list of streamers for live status in
@@ -27,21 +26,21 @@ fi
 # This function is executed in parallel by xargs below.
 check_streamer_status() {
   local USERNAME="$1"
-
   # Skip empty lines or comments
   [[ -z "$USERNAME" || "$USERNAME" =~ ^# ]] && return
 
   # Check stream status via streamlink with --json and suppress errors (2>/dev/null)
-  # This only outputs the JSON if it can find a stream source.
   STREAM_OUTPUT=$(streamlink "https://twitch.tv/$USERNAME" best --json 2>/dev/null)
 
   # Check if the output contains the specific JSON key "error".
   # If grep does NOT find "error" (exit code 1), the streamer is LIVE.
   echo "$STREAM_OUTPUT" | grep -q '"error":'
-
   if [ $? -ne 0 ]; then
-    # The error string was NOT found, meaning we got stream data. Print the username.
-    echo "$USERNAME"
+    # The error string was NOT found, meaning we got stream data.
+    # Extract the game/category from the JSON
+    GAME=$(echo "$STREAM_OUTPUT" | grep -oP '"category":\s*"\K[^"]+' || echo "Unknown")
+    # Print the username with the game in parentheses
+    echo "$USERNAME ($GAME)"
   fi
 }
 
@@ -53,7 +52,6 @@ export -f check_streamer_status
 # - -I {} passes each line (username) as the argument {} to the function.
 # - -P 8 runs 8 processes simultaneously (adjust '8' based on your CPU cores).
 # - Output is written to a temporary file.
-
 cat "$MASTER_LIST" | xargs -I {} -P 8 bash -c 'check_streamer_status "$@"' _ {} >"$LIVE_LIST.tmp" 2>/dev/null
 
 # 4. Atomically update the file: SORT the temporary list and move it.
@@ -64,7 +62,7 @@ if [ -s "$LIVE_LIST.tmp" ]; then
 else
   # If no one is live, create an empty file.
   echo "" >"$LIVE_LIST"
-  rm "$LIVE_LIST.tmp"
+  rm "$LIVE_LIST.tmp" 2>/dev/null
 fi
 
 echo "$(date): Live list updated successfully and sorted." >>"$LOG_FILE"

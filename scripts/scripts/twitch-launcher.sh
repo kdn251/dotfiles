@@ -23,8 +23,6 @@ DMENU_COLORS="-nb #282828 -nf #ebdbb2 -sb #00FFFF -sf #282828" # Dark background
 DMENU_FONT="-fn Monospace-12"
 
 # Read the usernames and pipe them to dmenu
-# CHOICE=$(cat "$USERNAME_LIST" | dmenu -i -l 10 -p "Select Twitch Streamer:")
-# CHOICE=$(cat "$USERNAME_LIST" | sort | dmenu -i -l 10 -p "Select Twitch Streamer:")
 CHOICE=$(cat "$USERNAME_LIST" | sort | dmenu $DMENU_ARGS $DMENU_COLORS $DMENU_FONT -p "Select Twitch Streamer:")
 
 # Check if a choice was made
@@ -33,8 +31,8 @@ if [ -z "$CHOICE" ]; then
   exit 0
 fi
 
-# Trim any leading/trailing whitespace from the choice
-STREAMER_USERNAME=$(echo "$CHOICE" | tr -d '[:space:]')
+# Strip the game part - only keep the username before the space and parenthesis
+STREAMER_USERNAME=$(echo "$CHOICE" | sed 's/ (.*//' | tr -d '[:space:]')
 STREAMER="$STREAMER_USERNAME" # Use STREAMER for compatibility with your existing logic
 
 # Construct the full Twitch channel URL
