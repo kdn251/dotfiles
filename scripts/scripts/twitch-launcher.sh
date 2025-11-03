@@ -48,6 +48,10 @@ URL="https://www.twitch.tv/$STREAMER_USERNAME" # Use URL for logging/mpv logic
   echo "Streamer selected: $STREAMER"
   date
 
+  # Kill existing chatterino instance
+  # before starting next instance
+  pkill chatterino
+
   # --- NEW: Launch Chatterino Chat Window ---
   # The '--channels' argument opens a new tab/split for the chosen streamer.
   # The '&' sends the GUI application to the background so the script can proceed to Streamlink.
