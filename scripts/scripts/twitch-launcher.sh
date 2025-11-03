@@ -69,13 +69,13 @@ URL="https://www.twitch.tv/$STREAMER_USERNAME" # Use URL for logging/mpv logic
       --stream-segment-timeout 10 \
       --retry-streams 2 \
       --retry-open 2 \
-      "$URL" best
+      "$URL" best,720p,480p
   else
     streamlink \
       --twitch-low-latency \
       --twitch-disable-ads \
       --player mpv \
       --player-args "--cache=yes --force-window=immediate" \
-      "$URL" best
+      "$URL" best,720p,480p
   fi
 ) &

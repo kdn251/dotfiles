@@ -31,3 +31,5 @@ newsboat/.newsboat/cache.db
 scripts/scripts/twitch_usernames.txt
 scripts/scripts/twitch_usernames.txt.tmp
 
+# Ignore auth token
+newsboat/.newsboat/.twitch_oauth
