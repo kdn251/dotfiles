@@ -18,7 +18,18 @@ if [ ! -f "$USERNAME_LIST" ]; then
 fi
 
 # Define your dmenu arguments here for easy customization
-DMENU_ARGS="-i -l 100"                                         # Keep interactive mode and 10 lines
+# Use percentage of screen height (e.g., 50% of 1080 / 36 ≈ 15 lines)
+# Get screen height
+SCREEN_HEIGHT=$(hyprctl monitors -j | jq -r '.[0].height')
+
+# Calculate reasonable number of lines (e.g., 40% of screen, assuming ~20px per line)
+# Adjust the divisor based on your font size and preferences
+DMENU_LINES=$((SCREEN_HEIGHT / 36)) # 36px per line is a reasonable default
+
+# Set a reasonable min/max
+DMENU_LINES=$((DMENU_LINES < 10 ? 10 : DMENU_LINES)) # Minimum 10 lines
+DMENU_LINES=$((DMENU_LINES > 40 ? 40 : DMENU_LINES)) # Maximum 40 lines
+DMENU_ARGS="-i -l $DMENU_LINES"
 DMENU_COLORS="-nb #282828 -nf #ebdbb2 -sb #00FFFF -sf #282828" # Dark background, light text, orange selection
 DMENU_FONT="-fn Monospace-12"
 
