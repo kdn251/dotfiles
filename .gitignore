@@ -30,6 +30,7 @@ systemd/.config/systemd/user/graphical-session.target.wants/
 newsboat/.newsboat/cache.db
 scripts/scripts/twitch_usernames.txt
 scripts/scripts/twitch_usernames.txt.tmp
+newsboat/.newsboat/cache.db.lock
 
 # Ignore auth token
 newsboat/.newsboat/.twitch_oauth
