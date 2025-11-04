@@ -18,7 +18,7 @@ if [ ! -f "$USERNAME_LIST" ]; then
 fi
 
 # Define your dmenu arguments here for easy customization
-DMENU_ARGS="-i -l 10"                                          # Keep interactive mode and 10 lines
+DMENU_ARGS="-i -l 100"                                         # Keep interactive mode and 10 lines
 DMENU_COLORS="-nb #282828 -nf #ebdbb2 -sb #00FFFF -sf #282828" # Dark background, light text, orange selection
 DMENU_FONT="-fn Monospace-12"
 
