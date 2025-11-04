@@ -1,5 +1,7 @@
 #!/bin/bash
 
+source "$HOME/.zshrc" 2>/dev/null
+
 WALLPAPER_DIR="$HOME/pictures/wallpapers"
 HYPRLOCK_CONF="$HOME/.config/hypr/hyprlock.conf"
 
@@ -10,7 +12,8 @@ if [ ! -d "$WALLPAPER_DIR" ] || [ -z "$(ls -A "$WALLPAPER_DIR")" ]; then
 fi
 
 # Select random wallpaper
-WALLPAPER=$(find "$WALLPAPER_DIR" -type f \( -iname "*.jpg" -o -iname "*.png" -o -iname "*.jpeg" \) | shuf -n 1)
+# Use -L to dereference symbolic links and search the actual file locations
+WALLPAPER=$(find -L "$WALLPAPER_DIR" -type f \( -iname "*.jpg" -o -iname "*.png" -o -iname "*.jpeg" \) | shuf -n 1)
 
 # Update hyprpaper via hyprctl
 hyprctl hyprpaper preload "$WALLPAPER"
