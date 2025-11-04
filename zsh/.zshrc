@@ -27,6 +27,7 @@ alias wifi="nmtui"
 alias pip-toggle="HYPRLAND_INSTANCE_SIGNATURE=dummy ./pip-toggle.sh"
 alias php='php-legacy'
 alias fixplanewifi='sudo resolvectl dns wlan0 8.8.8.8 1.1.1.1'
+alias newsboat='newsboat && ~/scripts/update-live-list.sh &'
 
 # Git branch function (simplified)
 parse_git_branch() {
