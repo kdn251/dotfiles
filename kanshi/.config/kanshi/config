@@ -11,7 +11,7 @@
 
 profile framework_docked {
     # output "DP-5" enable
-    output "DP-5" enable mode 1920x1080@120.00Hz posistion 0,0 scale 1.0
+    output "DP-5" enable mode 1920x1080@120.00Hz position 0,0 scale 1.0
     # output "DP-5" enable mode 2560x1440@143.97Hz position 0,0 scale 1.0
     output "eDP-1" disable
     exec ~/.config/kanshi/docked-setup.sh
@@ -20,18 +20,41 @@ profile framework_docked {
 # Profile for when only laptop screen is available (undocked)
 profile framework_undocked {
     # output "eDP-1" enable
-    output "eDP-1" enable mode 2880x1920@120.00000Hz position 0,0 scale 2.0
+    # output "eDP-1" enable mode 2880x1920@120.00000Hz position 0,0 scale 2.0
+    # output "eDP-1" {
+    #     enable
+    #     position 0,0
+    #     scale 1.5
+    # }
+    # CRITERIA: Matches the unique description of the Framework's panel.
+    output "BOE NE135A1M-NY1 Unknown" {
+        enable
+        # Use the specific mode found in the hyprctl output
+        mode 2880x1920@120.00Hz
+        position 0,0
+        scale 1.0
+    }
     exec ~/.config/kanshi/undocked-setup.sh
 }
 
 
+# Profile for ThinkPad when external monitor is connected (Docked)
 profile thinkpad_docked {
-    output "DP-2" enable mode 1920x1080@120.00Hz posistion 0,0 scale 1.0
+    # Requires both DP-2 and eDP-1 to be connected for this profile to be considered
+    output "DP-2" enable mode 1920x1080@120.00Hz position 0,0 scale 1.0
     output "eDP-1" disable
     exec ~/.config/kanshi/docked-setup.sh
 }
 
+# Profile for ThinkPad when only laptop screen is available (Undocked)
 profile thinkpad_undocked {
-    output "eDP-1" enable mode 2880x1920@120.00000Hz position 0,0 scale 2.0
+    # Only requires eDP-1 to be connected for this profile to be considered
+    output "AU Optronics 0x103D Unknown" {
+        enable
+        # Use the specific mode we found to ensure maximum reliability
+        mode 1920x1080@60.01Hz
+        position 0,0
+        scale 1.5
+    }
     exec ~/.config/kanshi/undocked-setup.sh
 }
