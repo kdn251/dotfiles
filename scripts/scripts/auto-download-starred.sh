@@ -1,0 +1,91 @@
+#!/bin/bash
+
+# Source credentials
+source "$HOME/.newsboat/miniflux_creds"
+
+VIDEO_DIR="$HOME/Videos/newsboat/starred-downloads"
+LOG_FILE="$HOME/.newsboat/auto-download.log"
+
+# Create video directory if it doesn't exist
+mkdir -p "$VIDEO_DIR"
+
+# Get all starred YouTube entries with titles and URLs
+STARRED_DATA=$(curl -s -u "$MINIFLUX_USER:$MINIFLUX_PASS" \
+  "${MINIFLUX_URL}/v1/entries?starred=true&limit=1000" |
+  jq -r '.entries[] | select(.url | test("youtube\\.com/watch|youtu\\.be/")) | "\(.url)||\(.title)"')
+
+# Count total videos
+TOTAL=$(echo "$STARRED_DATA" | wc -l)
+CURRENT=0
+DOWNLOADED=0
+
+echo "$(date): Starting auto-download of $TOTAL starred YouTube videos" >>"$LOG_FILE"
+
+# Create initial persistent notification
+NOTIF_ID=$(notify-send -p "📥 Auto-Download Starting" "Preparing to download $TOTAL videos..." -t 0)
+
+# Download each video
+echo "$STARRED_DATA" | while IFS='||' read -r URL TITLE; do
+  if [ -z "$URL" ]; then
+    continue
+  fi
+
+  CURRENT=$((CURRENT + 1))
+
+  # Extract video ID
+  VIDEO_ID=$(echo "$URL" | grep -oP '(?<=watch\?v=|youtu\.be/)[a-zA-Z0-9_-]{11}')
+
+  if [ -z "$VIDEO_ID" ]; then
+    echo "$(date): [$CURRENT/$TOTAL] Failed to extract video ID from: $URL" >>"$LOG_FILE"
+    continue
+  fi
+
+  # Check if already downloaded - look for files containing the video ID
+  if find "$VIDEO_DIR" -type f -name "*${VIDEO_ID}*" 2>/dev/null | grep -q .; then
+    echo "$(date): [$CURRENT/$TOTAL] Already downloaded: $VIDEO_ID - $TITLE" >>"$LOG_FILE"
+    # Update persistent notification for skip
+    notify-send -r "$NOTIF_ID" "⏭️ Skipping [$CURRENT/$TOTAL]" "$TITLE" -t 0
+    sleep 1
+    continue
+  fi
+
+  echo "$(date): [$CURRENT/$TOTAL] Downloading: $TITLE" >>"$LOG_FILE"
+
+  # Update persistent notification for current download
+  notify-send -r "$NOTIF_ID" "⬇️ Starting [$CURRENT/$TOTAL]" "$TITLE" -t 0
+
+  # Download with yt-dlp with progress tracking
+  yt-dlp -f 'best[height<=?1080]' \
+    -o "$VIDEO_DIR/%(title)s-%(id)s.%(ext)s" \
+    --concurrent-fragments 8 \
+    --newline \
+    "$URL" 2>&1 | while read line; do
+    if [[ "$line" =~ ([0-9]+\.[0-9]+)% ]]; then
+      PERCENT="${BASH_REMATCH[1]}"
+      notify-send -r "$NOTIF_ID" -t 0 -u low "📥 ${PERCENT}% [$CURRENT/$TOTAL]" "$TITLE"
+    fi
+  done
+
+  # Check if download succeeded
+  if find "$VIDEO_DIR" -type f -name "*${VIDEO_ID}*" 2>/dev/null | grep -q .; then
+    DOWNLOADED=$((DOWNLOADED + 1))
+    echo "$(date): [$CURRENT/$TOTAL] ✓ Success: $TITLE" >>"$LOG_FILE"
+    # Update persistent notification with success
+    notify-send -r "$NOTIF_ID" "✅ Downloaded [$CURRENT/$TOTAL]" "$TITLE" -t 0
+  else
+    echo "$(date): [$CURRENT/$TOTAL] ✗ Failed: $TITLE" >>"$LOG_FILE"
+    # Update persistent notification with failure
+    notify-send -r "$NOTIF_ID" "❌ Failed [$CURRENT/$TOTAL]" "$TITLE" -t 0
+  fi
+
+  # Small delay to be nice to YouTube
+  sleep 2
+done
+
+# Update the downloaded query
+~/scripts/update-downloaded-query.sh
+
+echo "$(date): Auto-download complete - Downloaded: $DOWNLOADED/$TOTAL" >>"$LOG_FILE"
+
+# Final notification with download count
+notify-send -r "$NOTIF_ID" "📥 Auto-Download Complete" "Downloaded $DOWNLOADED out of $TOTAL videos\n\nCheck log for details." -t 5000
