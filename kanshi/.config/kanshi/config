@@ -32,7 +32,7 @@ profile framework_undocked {
         # Use the specific mode found in the hyprctl output
         mode 2880x1920@120.00Hz
         position 0,0
-        scale 1.0
+        scale 2.0
     }
     exec ~/.config/kanshi/undocked-setup.sh
 }
