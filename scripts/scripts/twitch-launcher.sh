@@ -59,6 +59,16 @@ URL="https://www.twitch.tv/$STREAMER_USERNAME" # Use URL for logging/mpv logic
   echo "Streamer selected: $STREAMER"
   date
 
+  # --- NEW: Save Stream Context ---
+  CONTEXT_FILE="/tmp/twitch-stream-context.conf"
+
+  # Save the necessary variables to a file for the hotkey script to use
+  # to change the quality of the stream if needed
+  echo "URL=\"$URL\"" >"$CONTEXT_FILE"
+  echo "STREAMER_USERNAME=\"$STREAMER_USERNAME\"" >>"$CONTEXT_FILE"
+  echo "TWITCH_TOKEN_FILE=\"$TWITCH_TOKEN_FILE\"" >>"$CONTEXT_FILE"
+  # ---------------------------------
+
   # Kill existing chatterino instance
   # before starting next instance
   pkill chatterino
