@@ -72,12 +72,9 @@
   },
   "custom/miniflux_download": {
     "format": "{}",
-    "return-type": "json",
     "exec": "cat /tmp/miniflux_download_status.txt",
     "interval": 1,
-    "hide-empty-text": true, // Hide the module when the script is not running
-    // Use the {tooltip} replacement from the JSON output
-    "tooltip-format": "{tooltip}"
+    "hide-empty-text": true // Essential for hiding the module when content is just a blank space
   },
   "pulseaudio": {
     "format": "{icon}  {volume}%",
