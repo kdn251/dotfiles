@@ -14,21 +14,31 @@ WAYBAR_STATUS_FILE="/tmp/miniflux_download_status.txt"
 # FUNCTIONS
 # ==============================================================================
 
-# Function to write the 'hidden' state (single space)
-hide_module() {
-  # Writing a single space is the standard way to hide the module when
-  # 'hide-empty-text: true' is set in Waybar config.
-  echo " " >"$WAYBAR_STATUS_FILE"
+# Function to write status to the file in i3blocks format (Text\nTooltip)
+# Arguments: $1 = main_text (visible on bar), $2 = tooltip_text (on hover)
+write_status() {
+  local main_text="$1"
+  local tooltip_text="$2"
+
+  if [ -z "$main_text" ]; then
+    # If no main text, write a single space (i3blocks format with blank text)
+    # This triggers 'hide-empty-text: true'
+    echo " " >"$WAYBAR_STATUS_FILE"
+  else
+    # Write Main Text followed by a Newline and the Tooltip Text
+    # Waybar will display the first line and use the second line for the tooltip.
+    printf "%s\n%s" "$main_text" "$tooltip_text" >"$WAYBAR_STATUS_FILE"
+  fi
 }
 
 # Function to clean up on exit (critical for clearing Waybar status)
 cleanup() {
-  hide_module
+  # Hide the module by writing blank text
+  write_status "" "Script finished or terminated."
   echo "$(date): Script terminated. Waybar status cleared." >>"$LOG_FILE"
 }
 
 # Trap signals (EXIT, Ctrl+C, kill) for robust cleanup
-# The EXIT trap will call cleanup at the end of the script regardless of how it exits.
 trap cleanup EXIT SIGINT SIGTERM
 
 # ==============================================================================
@@ -36,11 +46,11 @@ trap cleanup EXIT SIGINT SIGTERM
 # ==============================================================================
 
 # Ensure the status file is hidden initially
-hide_module
+write_status "" "Starting Miniflux Downloader..."
 
 # 1. Setup
 mkdir -p "$VIDEO_DIR"
-echo "🔎" >"$WAYBAR_STATUS_FILE" # Briefly show 'searching' icon
+write_status " " "Fetching starred videos..."
 
 # 2. Get Starred Data
 STARRED_DATA=$(curl -s -u "$MINIFLUX_USER:$MINIFLUX_PASS" \
@@ -49,7 +59,7 @@ STARRED_DATA=$(curl -s -u "$MINIFLUX_USER:$MINIFLUX_PASS" \
 
 # Check if curl failed to fetch data
 if [ $? -ne 0 ]; then
-  echo "❌ ERROR" >"$WAYBAR_STATUS_FILE"
+  write_status "❌ ERROR" "Error fetching starred videos from Miniflux API. Check credentials/URL."
   sleep 5
   exit 1 # EXIT trap will run cleanup
 fi
@@ -61,7 +71,7 @@ DOWNLOADED=0
 echo "$(date): Starting auto-download of $TOTAL starred YouTube videos" >>"$LOG_FILE"
 
 # Set initial Waybar status
-echo "📥 $TOTAL" >"$WAYBAR_STATUS_FILE"
+write_status "📥 $TOTAL" "Starting download of $TOTAL videos"
 
 # 3. Download Loop
 while IFS='||' read -r URL TITLE; do
@@ -71,15 +81,18 @@ while IFS='||' read -r URL TITLE; do
 
   CURRENT=$((CURRENT + 1))
 
+  # Tooltip: Remove leading/trailing whitespace from TITLE
+  CLEAN_TITLE=$(echo "$TITLE" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
+
   # Set Waybar status to current video number (0% until download starts)
-  echo "⬇️ $CURRENT(0.0%)/$TOTAL" >"$WAYBAR_STATUS_FILE"
+  write_status "⬇️ $CURRENT(0.0%)/$TOTAL" "Initializing: $CLEAN_TITLE"
 
   # Extraction (VIDEO_ID, Check already downloaded, etc. remain the same)
   VIDEO_ID=$(echo "$URL" | grep -oP '(?<=watch\?v=|youtu\.be/)[a-zA-Z0-9_-]{11}')
 
   if [ -z "$VIDEO_ID" ]; then
     echo "$(date): [$CURRENT/$TOTAL] Failed to extract video ID from: $URL" >>"$LOG_FILE"
-    echo "❌ $CURRENT/$TOTAL (ID Error)" >"$WAYBAR_STATUS_FILE"
+    write_status "❌ $CURRENT/$TOTAL" "Error: Failed to extract ID from URL."
     sleep 1
     continue
   fi
@@ -87,7 +100,7 @@ while IFS='||' read -r URL TITLE; do
   # Check if already downloaded
   if find "$VIDEO_DIR" -type f -name "*${VIDEO_ID}*" 2>/dev/null | grep -q .; then
     echo "$(date): [$CURRENT/$TOTAL] Already downloaded: $VIDEO_ID - $TITLE" >>"$LOG_FILE"
-    echo "⏭️ $CURRENT/$TOTAL" >"$WAYBAR_STATUS_FILE"
+    write_status "⏭️ $CURRENT/$TOTAL" "Skipping (Already Downloaded): $CLEAN_TITLE"
     sleep 1
     continue
   fi
@@ -103,7 +116,7 @@ while IFS='||' read -r URL TITLE; do
     if [[ "$line" =~ ([0-9]+\.[0-9]+)% ]]; then
       PERCENT="${BASH_REMATCH[1]}"
       # Update Waybar with video number and current percentage
-      echo "⬇️ $CURRENT($PERCENT%)/$TOTAL" >"$WAYBAR_STATUS_FILE"
+      write_status "⬇️ $CURRENT($PERCENT%)/$TOTAL" "$CLEAN_TITLE"
     fi
   done
 
@@ -111,11 +124,11 @@ while IFS='||' read -r URL TITLE; do
   if find "$VIDEO_DIR" -type f -name "*${VIDEO_ID}*" 2>/dev/null | grep -q .; then
     DOWNLOADED=$((DOWNLOADED + 1))
     echo "$(date): [$CURRENT/$TOTAL] ✓ Success: $TITLE" >>"$LOG_FILE"
-    # Ensure Waybar briefly shows 100% completion
-    echo "✅ $CURRENT(100%)/$TOTAL" >"$WAYBAR_STATUS_FILE"
+    # Ensure Waybar briefly shows 100% completion before moving to next item
+    write_status "✅ $CURRENT(100%)/$TOTAL" "Downloaded: $CLEAN_TITLE"
   else
     echo "$(date): [$CURRENT/$TOTAL] ✗ Failed: $TITLE" >>"$LOG_FILE"
-    echo "❌ $CURRENT/$TOTAL (Download Failed)" >"$WAYBAR_STATUS_FILE"
+    write_status "❌ $CURRENT/$TOTAL" "Failed to download: $CLEAN_TITLE"
   fi
 
   # Small delay to be nice to YouTube
@@ -129,7 +142,7 @@ done < <(echo "$STARRED_DATA")
 echo "$(date): Auto-download complete - Downloaded: $DOWNLOADED/$TOTAL" >>"$LOG_FILE"
 
 # Final Waybar Status (Show result briefly)
-echo "✅ $DOWNLOADED/$TOTAL DONE" >"$WAYBAR_STATUS_FILE"
+write_status "✅ $DOWNLOADED/$TOTAL DONE" "All downloads complete."
 sleep 5 # Keep final status visible for 5 seconds
 
 # Final notification (not persistent)

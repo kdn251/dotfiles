@@ -11,6 +11,7 @@
   ],
   "modules-right": [
     "custom/miniflux_download",
+    "custom/twitch_vod_download",
     "pulseaudio",
     // "temperature",
     "battery",
@@ -74,7 +75,16 @@
     "format": "{}",
     "exec": "cat /tmp/miniflux_download_status.txt",
     "interval": 1,
-    "hide-empty-text": true // Essential for hiding the module when content is just a blank space
+    "hide-empty-text": true,
+    "tooltip": true, // Explicitly enables tooltips
+    "max-length": 30 // Optional: Keeps the bar tidy
+  },
+  "custom/twitch_vod_download": {
+    "format": "{}",
+    "exec": "cat /tmp/twitch_vod_status.txt",
+    "interval": 2, // Check less frequently than the Miniflux script
+    "hide-empty-text": true,
+    "tooltip": true
   },
   "pulseaudio": {
     "format": "{icon}  {volume}%",
