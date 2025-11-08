@@ -10,6 +10,7 @@
     "hyprland/workspaces"
   ],
   "modules-right": [
+    "custom/miniflux_download",
     "pulseaudio",
     // "temperature",
     "battery",
@@ -68,6 +69,15 @@
     "format-disconnected": "OFFLINE",
     "on-click": "kitty --class networkmanager-float nmtui",
     "tooltip-format": "{ifname}: {ipaddr}"
+  },
+  "custom/miniflux_download": {
+    "format": "{}",
+    "return-type": "json",
+    "exec": "cat /tmp/miniflux_download_status.txt",
+    "interval": 1,
+    "hide-empty-text": true, // Hide the module when the script is not running
+    // Use the {tooltip} replacement from the JSON output
+    "tooltip-format": "{tooltip}"
   },
   "pulseaudio": {
     "format": "{icon}  {volume}%",
