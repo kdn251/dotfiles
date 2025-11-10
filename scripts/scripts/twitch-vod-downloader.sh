@@ -14,7 +14,6 @@ WAYBAR_STATUS_FILE="/tmp/twitch_vod_status.txt"
 
 # List of streamers to download from (add your favorites)
 STREAMERS=(
-  "RiotGames"
   "zackrawrr"
   "xqc"
   "shroud"
@@ -74,12 +73,12 @@ download_vods() {
 
   VOD_ID=$(echo "$VOD_URL" | grep -oP 'videos/\K[0-9]+')
 
-  # 👇 SEARCH IN NEW DIRECTORY
-  EXISTING=$(find "$TWITCH_VOD_DIR" -type f -name "*${VOD_ID}*" 2>/dev/null | head -n 1)
-  if [ -n "$EXISTING" ]; then
-    echo "Most recent VOD already downloaded: $VOD_ID"
+  # Check the ARCHIVE FILE for the VOD ID
+  if grep -q "^${streamer}:${VOD_ID}$" "$ARCHIVE_FILE"; then
+    echo "Most recent VOD already recorded in archive: $VOD_ID"
     return
   fi
+  # The old file-system check has been removed, as the archive is the source of truth.
 
   VOD_TITLE=$(yt-dlp --get-title "$VOD_URL" 2>/dev/null || echo "Unknown VOD")
 
@@ -142,6 +141,9 @@ download_vods() {
   wait $DOWNLOAD_PID
 
   if [ $? -eq 0 ]; then
+    # Archive logic is now correct: We retrieve the *last* VOD ID, delete its file,
+    # and *then* update the archive with the *new* VOD ID.
+
     OLD_VOD_ID=$(grep "^${streamer}:" "$ARCHIVE_FILE" 2>/dev/null | cut -d: -f2)
 
     if [ -n "$OLD_VOD_ID" ]; then
@@ -154,7 +156,7 @@ download_vods() {
       fi
     fi
 
-    # Archive logic remains the same as ARCHIVE_FILE path did not change
+    # Archive logic remains the same: update the archive with the NEW VOD ID
     grep -v "^${streamer}:" "$ARCHIVE_FILE" >"${ARCHIVE_FILE}.tmp" 2>/dev/null || true
     echo "${streamer}:${VOD_ID}" >>"${ARCHIVE_FILE}.tmp"
     mv "${ARCHIVE_FILE}.tmp" "$ARCHIVE_FILE"
