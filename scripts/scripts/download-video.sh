@@ -2,7 +2,7 @@
 
 # This script is used with newsboat to download YouTube videos
 
-VIDEO_DIR="$HOME/Videos/newsboat"
+VIDEO_DIR="$HOME/Videos/newsboat/downloaded-videos"
 mkdir -p "$VIDEO_DIR"
 
 # Debug - log all arguments
