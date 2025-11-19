@@ -4,6 +4,8 @@
 
 BOOKMARKS_FILE="$HOME/.newsboat/bookmarked-urls.txt"
 
+source "$HOME/.newsboat/miniflux_creds"
+
 URL="$1"
 shift
 TITLE="$*"
