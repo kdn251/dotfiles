@@ -5,6 +5,7 @@
 # =========================================================
 RECORDING_DIR="$HOME/Videos/Recordings"
 STATE_FILE="/tmp/waybar_record_state"
+RECORDING_STATUS_FILE="/tmp/recording.txt"
 OUTPUT_FILE="$RECORDING_DIR/recording_$(date +%Y%m%d_%H%M%S)"
 
 # Device specific settings
@@ -28,13 +29,17 @@ if [ -f "$STATE_FILE" ]; then
   # --- STOPPING RECORDING (PID-based kill) ---
   echo "Stopping current recording..."
 
+  # Remove recording status from tmp file so waybar updates
+  echo "" >"$RECORDING_STATUS_FILE"
+
   # Read the PIDs
   read -r SCREEN_PID WEBCAM_PID <"$STATE_FILE"
 
   sleep 3
   # 1. Stop Webcam Recording (FFmpeg)
   # Use SIGINT for grace, but MKV handles abrupt stops well if needed.
-  kill -INT "$WEBCAM_PID" 2>/dev/null
+  # kill -INT "$WEBCAM_PID" 2>/dev/null
+  kill -9 "$WEBCAM_PID"
   sleep 1
 
   # 2. Stop Screen Recording (wf-recorder)
@@ -49,6 +54,9 @@ if [ -f "$STATE_FILE" ]; then
 else
   # --- STARTING RECORDING (MKV specific flags) ---
   echo "Starting new recording..."
+
+  # Add recording status from tmp file so waybar updates
+  echo "recording *" >"$RECORDING_STATUS_FILE"
 
   # 🛑 AGGRESSIVE PRE-CHECK: Kill any process using the webcam
   LOCKING_PIDS=$(fuser "$WEBCAM_DEVICE" 2>/dev/null)

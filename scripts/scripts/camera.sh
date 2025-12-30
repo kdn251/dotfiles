@@ -30,5 +30,5 @@ else
     --title="$WINDOW_TITLE" \
     --input-vo-keyboard=no \
     --autofit=30% \
-    /dev/video0 &
+    /dev/video2 &
 fi

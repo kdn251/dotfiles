@@ -16,6 +16,7 @@ WAYBAR_STATUS_FILE="/tmp/twitch_vod_status.txt"
 STREAMERS=(
   "zackrawrr"
   "xqc"
+  "ImNio"
   "shroud"
   "nadeshot"
   "samwitch"

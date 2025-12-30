@@ -11,6 +11,7 @@
 
 profile framework_docked {
     # output "DP-5" enable
+    # output "DP-5" enable mode 1920x1080@120.00Hz position 0,0 scale 1.0
     output "DP-5" enable mode 1920x1080@120.00Hz position 0,0 scale 1.0
     # output "DP-5" enable mode 2560x1440@143.97Hz position 0,0 scale 1.0
     output "eDP-1" disable

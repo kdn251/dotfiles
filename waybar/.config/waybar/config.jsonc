@@ -10,6 +10,7 @@
     "hyprland/workspaces"
   ],
   "modules-right": [
+    "custom/recording",
     "custom/miniflux_download",
     "custom/twitch_vod_download",
     "pulseaudio",
@@ -70,6 +71,14 @@
     "format-disconnected": "OFFLINE",
     "on-click": "kitty --class networkmanager-float nmtui",
     "tooltip-format": "{ifname}: {ipaddr}"
+  },
+  "custom/recording": {
+    "format": "{}",
+    "exec": "cat /tmp/recording.txt",
+    "interval": 1,
+    "hide-empty-text": false,
+    "tooltip": true, // Explicitly enables tooltips
+    "max-length": 30 // Optional: Keeps the bar tidy
   },
   "custom/miniflux_download": {
     "format": "{}",
