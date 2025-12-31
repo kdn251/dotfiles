@@ -34,6 +34,10 @@ parse_git_branch() {
   git branch 2> /dev/null | sed -e '/^[^*]/d' -e 's/* \(.*\)/(\1)/'
 }
 
+dlyt() {
+    yt-dlp -f "bestvideo[height<=1080][vcodec^=avc1]+bestaudio[acodec^=mp4a]/best[ext=mp4]/best" --merge-output-format mp4 "$1"
+}
+
 # Cleaner prompt using consistent zsh color codes
 PS1='%F{green}%n%f%F{yellow}@%m%f %F{213}%1~%f %F{yellow}$(parse_git_branch)%f '
 
