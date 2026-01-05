@@ -95,7 +95,7 @@ URL="https://www.twitch.tv/$STREAMER_USERNAME" # Use URL for logging/mpv logic
       --twitch-disable-ads \
       --twitch-api-header "Authorization=OAuth $TWITCH_TOKEN" \
       --player mpv \
-      --player-args "--cache=yes --force-window=immediate" \
+      --player-args "--cache=yes --force-window=immediate --vo=gpu" \
       --stream-segment-threads 3 \
       --stream-segment-attempts 3 \
       --stream-segment-timeout 10 \
@@ -107,7 +107,7 @@ URL="https://www.twitch.tv/$STREAMER_USERNAME" # Use URL for logging/mpv logic
       --twitch-low-latency \
       --twitch-disable-ads \
       --player mpv \
-      --player-args "--cache=yes --force-window=immediate" \
+      --player-args "--cache=yes --force-window=immediate --vo=gpu" \
       "$URL" best,720p,480p
   fi
 ) &
