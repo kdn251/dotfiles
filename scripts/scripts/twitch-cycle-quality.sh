@@ -65,7 +65,7 @@ if [ -n "$TWITCH_TOKEN" ]; then
     --twitch-disable-ads \
     --twitch-api-header "Authorization=OAuth $TWITCH_TOKEN" \
     --player mpv \
-    --player-args "--cache=yes --force-window=immediate" \
+    --player-args "--cache=yes --force-window=immediate --vo=gpu" \
     --stream-segment-threads 3 \
     --stream-segment-attempts 3 \
     --stream-segment-timeout 10 \
@@ -77,7 +77,7 @@ else
     --twitch-low-latency \
     --twitch-disable-ads \
     --player mpv \
-    --player-args "--cache=yes --force-window=immediate" \
+    --player-args "--cache=yes --force-window=immediate --vo=gpu" \
     "$URL" "$NEXT_QUALITY" >/dev/null 2>&1 & # Use NEXT_QUALITY and fork!
 fi
 
