@@ -1,0 +1,17 @@
+[Unit]
+Description=RClone Google Drive Mount for Cryptomator
+After=network-online.target
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/rclone mount gdrive: %h/GDrive \
+    --vfs-cache-mode full \
+    --rc \
+    --rc-no-auth \
+    --rc-addr localhost:5572 \
+    -vv
+ExecStop=/usr/bin/fusermount -u %h/GDrive
+Restart=on-failure
+
+[Install]
+WantedBy=default.target

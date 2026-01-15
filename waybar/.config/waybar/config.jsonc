@@ -13,6 +13,7 @@
     "custom/recording",
     "custom/miniflux_download",
     "custom/twitch_vod_download",
+    "custom/rclone",
     "pulseaudio",
     // "temperature",
     "battery",
@@ -94,6 +95,13 @@
     "interval": 2, // Check less frequently than the Miniflux script
     "hide-empty-text": true,
     "tooltip": true
+  },
+  "custom/rclone": {
+    "format": "{}",
+    "return-type": "json",
+    "interval": 3,
+    "exec": "~/.config/waybar/scripts/rclone_status.sh",
+    "on-click": "notify-send 'Rclone Stats' \"$(rclone rc core/stats --rc-no-auth | jq -r '.transferring[] | .name' | head -n 5)\""
   },
   "pulseaudio": {
     "format": "{icon}  {volume}%",

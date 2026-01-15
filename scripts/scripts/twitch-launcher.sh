@@ -43,7 +43,8 @@ if [ -z "$CHOICE" ]; then
 fi
 
 # Strip the game part - only keep the username before the space and parenthesis
-STREAMER_USERNAME=$(echo "$CHOICE" | sed 's/ (.*//' | tr -d '[:space:]')
+# STREAMER_USERNAME=$(echo "$CHOICE" | sed 's/ (.*//' | tr -d '[:space:]')
+STREAMER_USERNAME=$(echo "$CHOICE" | awk '{print $1}')
 STREAMER="$STREAMER_USERNAME" # Use STREAMER for compatibility with your existing logic
 
 # Construct the full Twitch channel URL

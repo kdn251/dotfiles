@@ -26,6 +26,24 @@
     padding: 0 10px;
 }
 
+#custom-rclone.syncing {
+    color: #f9e2af; /* Yellow for active sync */
+    animation-name: blink;
+    animation-duration: 2s;
+    animation-timing-function: linear;
+    animation-iteration-count: infinite;
+}
+
+#custom-rclone.synced {
+    color: #a6e3a1; /* Green for finished */
+}
+
+@keyframes blink {
+    to {
+        color: #fab387; /* Fade to orange while syncing */
+    }
+}
+
 window#waybar {
     background-color: rgba(0, 0, 0, 0.7);
     border: 1px solid rgba(51, 51, 51, 0.5);

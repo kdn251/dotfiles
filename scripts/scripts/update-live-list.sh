@@ -26,20 +26,17 @@ fi
 # This function is executed in parallel by xargs below.
 check_streamer_status() {
   local USERNAME="$1"
-  # Skip empty lines or comments
   [[ -z "$USERNAME" || "$USERNAME" =~ ^# ]] && return
 
-  # Check stream status via streamlink with --json and suppress errors (2>/dev/null)
-  STREAM_OUTPUT=$(streamlink "https://twitch.tv/$USERNAME" best --json 2>/dev/null)
+  # Use --json and check if "streams" exists and isn't null
+  STREAM_OUTPUT=$(streamlink "https://twitch.tv/$USERNAME" --json 2>/dev/null)
 
-  # Check if the output contains the specific JSON key "error".
-  # If grep does NOT find "error" (exit code 1), the streamer is LIVE.
-  echo "$STREAM_OUTPUT" | grep -q '"error":'
-  if [ $? -ne 0 ]; then
-    # The error string was NOT found, meaning we got stream data.
-    # Extract the game/category from the JSON
-    GAME=$(echo "$STREAM_OUTPUT" | grep -oP '"category":\s*"\K[^"]+' || echo "Unknown")
-    # Print the username with the game in parentheses
+  # Check if metadata exists (this confirms they are live)
+  IS_LIVE=$(echo "$STREAM_OUTPUT" | jq -r '.metadata.title // empty')
+
+  if [ -n "$IS_LIVE" ]; then
+    # Extract the game/category safely using jq
+    GAME=$(echo "$STREAM_OUTPUT" | jq -r '.metadata.category // "Unknown"')
     echo "$USERNAME ($GAME)"
   fi
 }
