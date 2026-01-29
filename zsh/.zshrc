@@ -29,6 +29,10 @@ alias php='php-legacy'
 alias fixplanewifi='sudo resolvectl dns wlan0 8.8.8.8 1.1.1.1 && sudo nmcli general reload && sudo systemctl restart NetworkManager'
 alias newsboat='newsboat && ~/scripts/update-live-list.sh &'
 
+alias gstart='systemctl --user start rclone-gdrive.service'
+alias gstop='systemctl --user stop rclone-gdrive.service'
+alias grestart='systemctl --user restart rclone-gdrive.service'
+
 # Git branch function (simplified)
 parse_git_branch() {
   git branch 2> /dev/null | sed -e '/^[^*]/d' -e 's/* \(.*\)/(\1)/'
