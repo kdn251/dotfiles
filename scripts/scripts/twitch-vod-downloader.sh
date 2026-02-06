@@ -16,9 +16,9 @@ WAYBAR_STATUS_FILE="/tmp/twitch_vod_status.txt"
 STREAMERS=(
   "zackrawrr"
   "xqc"
+  "aydan"
   "shroud"
   "jynxzi"
-  "theo"
 )
 
 # ==============================================================================
