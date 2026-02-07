@@ -9,21 +9,24 @@ ACTIVE_CLASS=$(hyprctl activewindow -j | jq -r '.class')
 echo "Active class: $ACTIVE_CLASS"
 
 if [[ "$ACTIVE_CLASS" == "google-chrome" ]]; then
+  # Pause the YouTube video first
+  # wtype -k space
+  sleep 0.2
   # Try to grab the URL
   wl-copy --clear
   hyprctl dispatch focuswindow 'class:^(google-chrome)$'
-  sleep 0.4
+  sleep 0.25
   wtype -M ctrl l -m ctrl
   sleep 0.2
   wtype -M ctrl c -m ctrl
-  sleep 0.3
+  # sleep 0.1
   URL=$(wl-paste)
   echo "Captured URL: $URL"
 
   # Deselect the address bar
-  sleep 0.2
+  # sleep 0.2
   wtype -k Escape
-  sleep 0.1
+  # sleep 0.1
   wtype -k Escape
 fi
 
@@ -34,7 +37,7 @@ if [[ -n "$URL" ]] && [[ "$URL" != *"music.youtube.com"* ]] && { [[ "$URL" == *"
   echo "YT_URL=\"$CLEAN_URL\"" >/tmp/youtube-stream-context.conf
   VIDEO_ID=$(echo "$CLEAN_URL" | grep -oP '(?<=v=)[^&]+')
   notify-send "MPV" "Opening in MPV..."
-  sleep 0.5
+  # sleep 0.5
   mpv --ytdl-raw-options=cookies-from-browser=firefox "$CLEAN_URL" &
   disown
   # Log title and channel in the background
