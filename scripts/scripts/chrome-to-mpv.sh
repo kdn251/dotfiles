@@ -27,9 +27,17 @@ if [[ -n "$URL" ]] && [[ "$URL" != *"music.youtube.com"* ]] && { [[ "$URL" == *"
 
   echo "YT_URL=\"$CLEAN_URL\"" >/tmp/youtube-stream-context.conf
 
-  # Launch mpv IMMEDIATELY — this is the priority
-  mpv --ytdl-raw-options=cookies-from-browser=firefox "$CLEAN_URL" &
+  # Kill previous mpv instance by saved PID
+  if [ -f /tmp/mpv-yt-pid ]; then
+    kill $(cat /tmp/mpv-yt-pid) 2>/dev/null
+    sleep 0.3
+  fi
+  mpv --ytdl-raw-options=cookies-from-browser=firefox "$URL" &>/dev/null &
+  echo $! >/tmp/mpv-yt-pid
   disown
+  # Launch mpv IMMEDIATELY — this is the priority
+  # mpv --ytdl-raw-options=cookies-from-browser=firefox "$CLEAN_URL" &
+  # disown
 
   # Notify and log in background — don't block
   notify-send "MPV" "Opening in MPV..." &

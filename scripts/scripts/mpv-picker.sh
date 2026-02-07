@@ -77,6 +77,8 @@ while IFS=$'\t' read -r ts title url channel; do
   fi
   SHORT_TITLE="${title:0:55}"
   [[ ${#title} -gt 55 ]] && SHORT_TITLE="${SHORT_TITLE}..."
+  SHORT_TITLE="${SHORT_TITLE//&/&amp;}"
+  [[ ${#title} -gt 55 ]] && SHORT_TITLE="${SHORT_TITLE}..."
 
   VIDEO_ID=$(echo "$url" | grep -oP '(?<=v=)[^&]+')
   THUMB_PATH="$THUMB_CACHE/${VIDEO_ID}.jpg"
@@ -118,7 +120,11 @@ fi
 # --- Find the URL for the chosen entry ---
 # Strip the image prefix for matching
 CLEAN_CHOICE=$(echo "$CHOICE" | sed 's/.*:text://')
+echo "CHOICE: $CHOICE"
+echo "CLEAN_CHOICE: $CLEAN_CHOICE"
 URL=$(echo -e "$MENU_ENTRIES" | grep -F "$CLEAN_CHOICE" | head -1 | awk -F'\t' '{print $2}')
+echo "URL: $URL"
+echo "About to launch mpv..."
 
 if [[ -n "$URL" ]]; then
   VIDEO_ID=$(echo "$URL" | grep -oP '(?<=v=)[^&]+')
@@ -126,7 +132,7 @@ if [[ -n "$URL" ]]; then
   CHANNEL=$(echo "$CLEAN_CHOICE" | sed -n 's/.*— \(.*\)  ([0-9]*[dhm] ago)/\1/p')
   TIMESTAMP=$(date +%s)
   if [[ -f "$WATCH_LOG" ]]; then
-    grep -v "$VIDEO_ID" "$WATCH_LOG" >"${WATCH_LOG}.tmp" && mv "${WATCH_LOG}.tmp" "$WATCH_LOG"
+    grep -v -- "$VIDEO_ID" "$WATCH_LOG" >"${WATCH_LOG}.tmp" && mv "${WATCH_LOG}.tmp" "$WATCH_LOG"
   fi
   echo -e "${TIMESTAMP}\t${TITLE}\t${URL}\t${CHANNEL}" >>"$WATCH_LOG"
   echo "YT_URL=\"$URL\"" >/tmp/youtube-stream-context.conf
@@ -135,7 +141,16 @@ if [[ -n "$URL" ]]; then
   else
     notify-send "MPV" "Resuming: ${TITLE}"
   fi
-  pkill streamlink && mpv --ytdl-raw-options=cookies-from-browser=firefox "$URL" &
+  # Kill previous mpv instance by saved PID
+  if [ -f /tmp/mpv-yt-pid ]; then
+    kill $(cat /tmp/mpv-yt-pid) 2>/dev/null
+    sleep 0.3
+  fi
+  # Kill previous instance of streamlink if there
+  pkill streamlink
+  mpv --ytdl-raw-options=cookies-from-browser=firefox "$URL" &>/dev/null &
+  echo $! >/tmp/mpv-yt-pid
+  disown
 else
   notify-send "Error" "Could not find URL"
 fi
