@@ -3,29 +3,59 @@
 # Configuration
 USERNAME_LIST="$HOME/scripts/twitch_usernames.txt"
 TWITCH_TOKEN_FILE="$HOME/.newsboat/.twitch_oauth"
+IMAGE_CACHE="$HOME/.cache/twitch-profiles"
+CLIENT_ID="kimne78kx3ncx6brgo4mv6wki5h1ko"
 
 exec >>/tmp/twitch-stream-debug.log 2>&1
 
-# --- 1. Wofi Selection Logic ---
+# --- 1. Setup ---
 
 if [ ! -f "$USERNAME_LIST" ]; then
-  echo "ERROR: Username list not found: $USERNAME_LIST"
   notify-send "Twitch Error" "Username list not found: $USERNAME_LIST" -t 5000 -u critical
   exit 1
 fi
 
-CHOICE=$(cat "$USERNAME_LIST" | sort | wofi --dmenu --prompt "Select Twitch Streamer" --width 800 --lines 15)
+mkdir -p "$IMAGE_CACHE"
+
+# --- 2. Fetch profile images ---
+
+USERNAMES=$(cat "$USERNAME_LIST" | awk '{print $1}' | sort)
+
+for user in $USERNAMES; do
+  IMG_PATH="$IMAGE_CACHE/${user}.png"
+  if [ ! -f "$IMG_PATH" ]; then
+    IMG_URL=$(curl -s -H "Client-Id: $CLIENT_ID" \
+      -X POST -d "{\"query\":\"query{user(login:\\\"${user}\\\"){profileImageURL(width:70)}}\"}" \
+      "https://gql.twitch.tv/gql" | jq -r '.data.user.profileImageURL')
+    if [ -n "$IMG_URL" ] && [ "$IMG_URL" != "null" ]; then
+      curl -s -o "$IMG_PATH" "$IMG_URL"
+    fi
+  fi
+done
+
+# --- 3. Build wofi list with images ---
+
+WOFI_LIST=""
+for user in $USERNAMES; do
+  IMG_PATH="$IMAGE_CACHE/${user}.png"
+  if [ -f "$IMG_PATH" ]; then
+    WOFI_LIST+="img:${IMG_PATH}:text:${user}\n"
+  else
+    WOFI_LIST+="${user}\n"
+  fi
+done
+
+CHOICE=$(echo -e "$WOFI_LIST" | wofi --dmenu --prompt "Select Twitch Streamer" --width 800 --lines 15 --allow-images)
 
 if [ -z "$CHOICE" ]; then
-  echo "INFO: Selection cancelled."
   exit 0
 fi
 
-STREAMER_USERNAME=$(echo "$CHOICE" | awk '{print $1}')
+STREAMER_USERNAME=$(echo "$CHOICE" | sed 's/.*:text://' | awk '{print $1}')
 STREAMER="$STREAMER_USERNAME"
 URL="https://www.twitch.tv/$STREAMER_USERNAME"
 
-# --- 2. Stream Execution Logic ---
+# --- 4. Stream Execution Logic ---
 
 (
   echo "========== DEBUG =========="
