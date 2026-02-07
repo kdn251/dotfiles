@@ -127,6 +127,7 @@ if [[ -n "$URL" ]]; then
   fi
   echo -e "${TIMESTAMP}\t${TITLE}\t${URL}\t${CHANNEL}" >>"$WATCH_LOG"
 
+  echo "YT_URL=\"$URL\"" >/tmp/youtube-stream-context.conf
   notify-send "MPV" "Resuming: ${TITLE}"
   mpv --ytdl-raw-options=cookies-from-browser=firefox "$URL" &
 else

@@ -1,84 +1,89 @@
 #!/bin/bash
-# ~/scripts/twitch-cycle-quality.sh
+TWITCH_CONTEXT="/tmp/twitch-stream-context.conf"
+YT_CONTEXT="/tmp/youtube-stream-context.conf"
+QUALITY_FILE="/tmp/current-quality.txt"
 
-CONTEXT_FILE="/tmp/twitch-stream-context.conf"
-QUALITY_FILE="/tmp/twitch-current-quality.txt"
-
-# --- A. Load Context and Current Quality ---
-# Load stream URL, username, and token path from the context file
-if [ -f "$CONTEXT_FILE" ]; then
-  source "$CONTEXT_FILE"
+# Detect what's playing — check if streamlink is running (Twitch) or just mpv (YouTube)
+if pgrep -f "streamlink.*--player" >/dev/null 2>&1 && [ -f "$TWITCH_CONTEXT" ]; then
+  MODE="twitch"
+  source "$TWITCH_CONTEXT"
+elif [ -f "$YT_CONTEXT" ]; then
+  MODE="youtube"
+  source "$YT_CONTEXT"
 else
-  notify-send "Twitch Error" "No active stream context found to cycle quality." -t 5000 -u critical
+  notify-send "Quality" "No active stream found"
   exit 1
 fi
 
-# Define the cycle of qualities
-QUALITIES=("best" "720p60" "480p" "360p")
-DEFAULT_QUALITY="best"
+# --- Quality cycling ---
+if [[ "$MODE" == "twitch" ]]; then
+  QUALITIES=("best" "720p60" "480p" "360p")
+  CURRENT=$(cat "$QUALITY_FILE" 2>/dev/null || echo "best")
 
-# Get current quality or default
-CURRENT_QUALITY=$(cat "$QUALITY_FILE" 2>/dev/null || echo "$DEFAULT_QUALITY")
-
-# --- B. Cycle Quality Logic ---
-NEXT_QUALITY=""
-FOUND=0
-
-for i in "${!QUALITIES[@]}"; do
-  if [ "${QUALITIES[$i]}" == "$CURRENT_QUALITY" ]; then
-    NEXT_INDEX=$((i + 1))
-    # Loop back to the start
-    if [ "$NEXT_INDEX" -ge "${#QUALITIES[@]}" ]; then
-      NEXT_INDEX=0
+  NEXT=""
+  for i in "${!QUALITIES[@]}"; do
+    if [ "${QUALITIES[$i]}" == "$CURRENT" ]; then
+      NEXT_INDEX=$(((i + 1) % ${#QUALITIES[@]}))
+      NEXT="${QUALITIES[$NEXT_INDEX]}"
+      break
     fi
-    NEXT_QUALITY="${QUALITIES[$NEXT_INDEX]}"
-    FOUND=1
-    break
+  done
+  NEXT=${NEXT:-"best"}
+  echo "$NEXT" >"$QUALITY_FILE"
+
+  notify-send "Twitch Quality" "Switching to $NEXT..." -t 3000
+  pkill -f "streamlink.*--player" 2>/dev/null
+
+  TWITCH_TOKEN=$(cat "$TWITCH_TOKEN_FILE" 2>/dev/null)
+  if [ -n "$TWITCH_TOKEN" ]; then
+    streamlink \
+      --twitch-low-latency \
+      --twitch-disable-ads \
+      --twitch-api-header "Authorization=OAuth $TWITCH_TOKEN" \
+      --player mpv \
+      --player-args "--cache=yes --force-window=immediate --vo=gpu" \
+      --stream-segment-threads 3 \
+      --stream-segment-attempts 3 \
+      --stream-segment-timeout 10 \
+      --retry-streams 2 \
+      --retry-open 2 \
+      "$URL" "$NEXT" >/dev/null 2>&1 &
+  else
+    streamlink \
+      --twitch-low-latency \
+      --twitch-disable-ads \
+      --player mpv \
+      --player-args "--cache=yes --force-window=immediate --vo=gpu" \
+      "$URL" "$NEXT" >/dev/null 2>&1 &
   fi
-done
 
-# Fallback
-if [ "$FOUND" -eq 0 ]; then
-  NEXT_QUALITY="${QUALITIES[0]}"
+elif [[ "$MODE" == "youtube" ]]; then
+  YT_QUALITIES=("1080" "720" "480")
+  YT_LABELS=("1080p" "720p" "480p")
+  # Default to 4k
+  # CURRENT=$(cat "$QUALITY_FILE" 2>/dev/null || echo "2160")
+  # Default to 1080p
+  CURRENT=$(cat "$QUALITY_FILE" 2>/dev/null || echo "1080")
+
+  NEXT=""
+  LABEL=""
+  for i in "${!YT_QUALITIES[@]}"; do
+    if [ "${YT_QUALITIES[$i]}" == "$CURRENT" ]; then
+      NEXT_INDEX=$(((i + 1) % ${#YT_QUALITIES[@]}))
+      NEXT="${YT_QUALITIES[$NEXT_INDEX]}"
+      LABEL="${YT_LABELS[$NEXT_INDEX]}"
+      break
+    fi
+  done
+  NEXT=${NEXT:-"1080"}
+  LABEL=${LABEL:-"1080p"}
+  echo "$NEXT" >"$QUALITY_FILE"
+
+  notify-send "YouTube Quality" "Switching to $LABEL..." -t 3000
+  pkill mpv 2>/dev/null
+  sleep 0.5
+  mpv --ytdl-format="bestvideo[height<=$NEXT]+bestaudio/best" \
+    --ytdl-raw-options=cookies-from-browser=firefox \
+    "$YT_URL" &
+  disown
 fi
-
-# Write the new quality for the next cycle
-echo "$NEXT_QUALITY" >"$QUALITY_FILE"
-
-# --- C. Kill and Relaunch ---
-
-notify-send "Twitch Quality" "Switching to **$NEXT_QUALITY**..." -t 3000
-
-# 1. Kill the existing streamlink/mpv process
-# Note: Killing by '--player' argument is safest as it only kills the stream process.
-pkill -f "streamlink.*--player" 2>/dev/null
-echo "INFO: Killed existing streamlink process for relaunch." >>/tmp/twitch-stream-debug.log
-
-# 2. Relaunch the stream with the new quality
-
-# Read OAuth token (in case the file changed)
-TWITCH_TOKEN=$(cat "$TWITCH_TOKEN_FILE" 2>/dev/null)
-
-if [ -n "$TWITCH_TOKEN" ]; then
-  streamlink \
-    --twitch-low-latency \
-    --twitch-disable-ads \
-    --twitch-api-header "Authorization=OAuth $TWITCH_TOKEN" \
-    --player mpv \
-    --player-args "--cache=yes --force-window=immediate --vo=gpu" \
-    --stream-segment-threads 3 \
-    --stream-segment-attempts 3 \
-    --stream-segment-timeout 10 \
-    --retry-streams 2 \
-    --retry-open 2 \
-    "$URL" "$NEXT_QUALITY" >/dev/null 2>&1 & # Use NEXT_QUALITY and fork!
-else
-  streamlink \
-    --twitch-low-latency \
-    --twitch-disable-ads \
-    --player mpv \
-    --player-args "--cache=yes --force-window=immediate --vo=gpu" \
-    "$URL" "$NEXT_QUALITY" >/dev/null 2>&1 & # Use NEXT_QUALITY and fork!
-fi
-
-echo "INFO: Relaunched $STREAMER_USERNAME at quality $NEXT_QUALITY." >>/tmp/twitch-stream-debug.log

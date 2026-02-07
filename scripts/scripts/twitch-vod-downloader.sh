@@ -97,12 +97,14 @@ download_vods() {
   # 👇 OUTPUT TO NEW DIRECTORY
   OUTPUT_PATH="$TWITCH_VOD_DIR/{title}-${VOD_ID}.mp4"
 
+  # Keep this at 2 instead of 8 to prevent throttling bandwidth
+  # if I'm watching a stream at the same time
   if [ -n "$TWITCH_TOKEN" ]; then
     streamlink \
       --twitch-disable-ads \
       --twitch-api-header "Authorization=OAuth $TWITCH_TOKEN" \
-      --force \
-      --stream-segment-threads 8 \
+      --force \ 
+    --stream-segment-threads 2 \
       --output "$OUTPUT_PATH" \
       "$VOD_URL" best >/dev/null 2>&1 &
   else

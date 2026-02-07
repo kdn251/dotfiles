@@ -6,6 +6,7 @@ mkdir -p "$(dirname "$WATCH_LOG")"
 
 # Check if Chrome is the focused window
 ACTIVE_CLASS=$(hyprctl activewindow -j | jq -r '.class')
+echo "Active class: $ACTIVE_CLASS"
 
 if [[ "$ACTIVE_CLASS" == "google-chrome" ]]; then
   # Try to grab the URL
@@ -29,6 +30,8 @@ fi
 # If we got a YouTube URL, open it in mpv
 if [[ -n "$URL" ]] && [[ "$URL" != *"music.youtube.com"* ]] && { [[ "$URL" == *"youtube.com"* ]] || [[ "$URL" == *"youtu.be"* ]]; }; then
   CLEAN_URL=$(echo "$URL" | sed 's/&list=[^&]*//g; s/&index=[^&]*//g; s/&si=[^&]*//g')
+  # Save YouTube context for quality cycling
+  echo "YT_URL=\"$CLEAN_URL\"" >/tmp/youtube-stream-context.conf
   VIDEO_ID=$(echo "$CLEAN_URL" | grep -oP '(?<=v=)[^&]+')
   notify-send "MPV" "Opening in MPV..."
   sleep 0.5
