@@ -17,21 +17,28 @@ fi
 
 mkdir -p "$IMAGE_CACHE"
 
-# --- 2. Fetch profile images ---
+# --- 2. Fetch profile images (only if any are missing) ---
 
 USERNAMES=$(cat "$USERNAME_LIST" | awk '{print $1}' | sort)
 
+MISSING=0
 for user in $USERNAMES; do
-  IMG_PATH="$IMAGE_CACHE/${user}.png"
-  if [ ! -f "$IMG_PATH" ]; then
-    IMG_URL=$(curl -s -H "Client-Id: $CLIENT_ID" \
-      -X POST -d "{\"query\":\"query{user(login:\\\"${user}\\\"){profileImageURL(width:70)}}\"}" \
-      "https://gql.twitch.tv/gql" | jq -r '.data.user.profileImageURL')
-    if [ -n "$IMG_URL" ] && [ "$IMG_URL" != "null" ]; then
-      curl -s -o "$IMG_PATH" "$IMG_URL"
-    fi
-  fi
+  [ ! -f "$IMAGE_CACHE/${user}.png" ] && MISSING=1 && break
 done
+
+if [ "$MISSING" -eq 1 ]; then
+  for user in $USERNAMES; do
+    IMG_PATH="$IMAGE_CACHE/${user}.png"
+    if [ ! -f "$IMG_PATH" ]; then
+      IMG_URL=$(curl -s --max-time 2 -H "Client-Id: $CLIENT_ID" \
+        -X POST -d "{\"query\":\"query{user(login:\\\"${user}\\\"){profileImageURL(width:70)}}\"}" \
+        "https://gql.twitch.tv/gql" | jq -r '.data.user.profileImageURL')
+      if [ -n "$IMG_URL" ] && [ "$IMG_URL" != "null" ]; then
+        curl -s --max-time 2 -o "$IMG_PATH" "$IMG_URL"
+      fi
+    fi
+  done
+fi
 
 # --- 3. Build wofi list with images ---
 

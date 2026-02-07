@@ -61,7 +61,6 @@ while IFS=$'\t' read -r ts title url channel; do
     curl -s -o "$THUMB_PATH" "https://img.youtube.com/vi/${VIDEO_ID}/mqdefault.jpg" &
   fi
 done <"$MERGED"
-wait
 
 # --- Build display list ---
 MENU_ENTRIES=""
@@ -132,7 +131,6 @@ if [[ -n "$URL" ]]; then
   echo -e "${TIMESTAMP}\t${TITLE}\t${URL}\t${CHANNEL}" >>"$WATCH_LOG"
   echo "YT_URL=\"$URL\"" >/tmp/youtube-stream-context.conf
   notify-send "MPV" "Resuming: ${TITLE}"
-  pkill mpv
   mpv --ytdl-raw-options=cookies-from-browser=firefox "$URL" &
 else
   notify-send "Error" "Could not find URL"
