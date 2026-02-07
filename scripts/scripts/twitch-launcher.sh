@@ -83,6 +83,7 @@ URL="https://www.twitch.tv/$STREAMER_USERNAME"
   TWITCH_TOKEN=$(cat "$TWITCH_TOKEN_FILE" 2>/dev/null)
   [ -n "$TWITCH_TOKEN" ] && SL_ARGS+=(--twitch-api-header "Authorization=OAuth $TWITCH_TOKEN")
 
+  pkill mpv
   streamlink "${SL_ARGS[@]}" \
     --player mpv \
     --player-args "--cache=yes --force-window=immediate --vo=gpu --hwdec=auto --profile=low-latency --demuxer-max-bytes=500KiB --demuxer-readahead-secs=2 --demuxer-lavf-o=fflags=+nobuffer" \

@@ -130,8 +130,12 @@ if [[ -n "$URL" ]]; then
   fi
   echo -e "${TIMESTAMP}\t${TITLE}\t${URL}\t${CHANNEL}" >>"$WATCH_LOG"
   echo "YT_URL=\"$URL\"" >/tmp/youtube-stream-context.conf
-  notify-send "MPV" "Resuming: ${TITLE}"
-  mpv --ytdl-raw-options=cookies-from-browser=firefox "$URL" &
+  if [ -f "$THUMB_CACHE/${VIDEO_ID}.jpg" ]; then
+    notify-send -i "$THUMB_CACHE/${VIDEO_ID}.jpg" "MPV" "Resuming: ${TITLE}"
+  else
+    notify-send "MPV" "Resuming: ${TITLE}"
+  fi
+  pkill streamlink && mpv --ytdl-raw-options=cookies-from-browser=firefox "$URL" &
 else
   notify-send "Error" "Could not find URL"
 fi
