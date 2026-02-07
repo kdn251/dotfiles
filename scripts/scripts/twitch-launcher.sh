@@ -43,14 +43,15 @@ fi
 # --- 3. Build wofi list with images ---
 
 WOFI_LIST=""
-for user in $USERNAMES; do
+while IFS= read -r line; do
+  user=$(echo "$line" | awk '{print $1}')
   IMG_PATH="$IMAGE_CACHE/${user}.png"
   if [ -f "$IMG_PATH" ]; then
-    WOFI_LIST+="img:${IMG_PATH}:text:${user}\n"
+    WOFI_LIST+="img:${IMG_PATH}:text:${line}\n"
   else
-    WOFI_LIST+="${user}\n"
+    WOFI_LIST+="${line}\n"
   fi
-done
+done < <(cat "$USERNAME_LIST" | sort)
 
 CHOICE=$(echo -e "$WOFI_LIST" | wofi --dmenu --prompt "Select Twitch Streamer" --width 800 --lines 15 --allow-images)
 
@@ -83,7 +84,12 @@ URL="https://www.twitch.tv/$STREAMER_USERNAME"
 
   TWITCH_TOKEN=$(cat "$TWITCH_TOKEN_FILE" 2>/dev/null)
 
-  notify-send "MPV" "Loading $STREAMER stream..." -t 2000 -u low
+  IMG_PATH="$HOME/.cache/twitch-profiles/${STREAMER_USERNAME}.png"
+  if [ -f "$IMG_PATH" ]; then
+    notify-send -i "$IMG_PATH" "MPV" "Loading $STREAMER stream..." -t 2000 -u low
+  else
+    notify-send "MPV" "Loading $STREAMER stream..." -t 2000 -u low
+  fi
 
   if [ -n "$TWITCH_TOKEN" ]; then
     streamlink \
