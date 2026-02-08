@@ -4,6 +4,7 @@ USERNAME_LIST="$HOME/scripts/twitch_usernames.txt"
 TWITCH_TOKEN_FILE="$HOME/.newsboat/.twitch_oauth"
 IMAGE_CACHE="$HOME/.cache/twitch-profiles"
 CLIENT_ID="kimne78kx3ncx6brgo4mv6wki5h1ko"
+MPV_SOCKET="/tmp/mpv-twitch-ipc"
 exec >>/tmp/twitch-stream-debug.log 2>&1
 
 # --- 1. Setup ---
@@ -62,7 +63,6 @@ URL="https://www.twitch.tv/$STREAMER_USERNAME"
 (
   echo "========== DEBUG =========="
   echo "URL: $URL | Streamer: $STREAMER | $(date)"
-
   echo "URL=\"$URL\"" >/tmp/twitch-stream-context.conf
   echo "STREAMER_USERNAME=\"$STREAMER_USERNAME\"" >>/tmp/twitch-stream-context.conf
   echo "TWITCH_TOKEN_FILE=\"$TWITCH_TOKEN_FILE\"" >>/tmp/twitch-stream-context.conf
@@ -79,19 +79,89 @@ URL="https://www.twitch.tv/$STREAMER_USERNAME"
     notify-send "MPV" "Loading $STREAMER stream..." -t 2000 -u low &
   fi
 
+  # Build streamlink auth args
   SL_ARGS=(--twitch-low-latency --twitch-disable-ads)
   TWITCH_TOKEN=$(cat "$TWITCH_TOKEN_FILE" 2>/dev/null)
   [ -n "$TWITCH_TOKEN" ] && SL_ARGS+=(--twitch-api-header "Authorization=OAuth $TWITCH_TOKEN")
 
+  SL_COMMON=(
+    "${SL_ARGS[@]}"
+    --stream-segment-threads 3
+    --stream-segment-attempts 3
+    --stream-segment-timeout 10
+    --hls-live-edge 1
+    --retry-streams 2
+    --retry-open 2
+  )
+
   pkill mpv
-  streamlink "${SL_ARGS[@]}" \
-    --player mpv \
-    --player-args "--cache=yes --force-window=immediate --vo=gpu --hwdec=auto --profile=low-latency --demuxer-max-bytes=500KiB --demuxer-readahead-secs=2 --demuxer-lavf-o=fflags=+nobuffer" \
-    --stream-segment-threads 3 \
-    --stream-segment-attempts 3 \
-    --stream-segment-timeout 10 \
-    --hls-live-edge 1 \
-    --retry-streams 2 \
-    --retry-open 2 \
-    "$URL" best,720p,480p
+  rm -f "$MPV_SOCKET"
+
+  # --- Fast start: get low quality URL first ---
+  LOW_URL=$(streamlink "${SL_COMMON[@]}" --stream-url "$URL" 480p,360p,worst 2>/dev/null)
+
+  if [ -z "$LOW_URL" ]; then
+    echo "DEBUG: Fast-start failed, falling back to standard streamlink"
+    streamlink "${SL_COMMON[@]}" \
+      --player mpv \
+      --player-args "--cache=yes --force-window=immediate --vo=gpu --hwdec=auto --profile=low-latency --demuxer-max-bytes=500KiB --demuxer-readahead-secs=2 --demuxer-lavf-o=fflags=+nobuffer" \
+      "$URL" best,720p,480p
+    exit $?
+  fi
+
+  echo "DEBUG: Got low-quality URL, launching mpv"
+
+  # Start mpv with low quality stream + IPC socket
+  mpv \
+    --cache=yes \
+    --force-window=immediate \
+    --vo=gpu \
+    --hwdec=auto \
+    --profile=low-latency \
+    --demuxer-max-bytes=500KiB \
+    --demuxer-readahead-secs=2 \
+    --demuxer-lavf-o=fflags=+nobuffer \
+    --input-ipc-server="$MPV_SOCKET" \
+    "$LOW_URL" &
+  MPV_PID=$!
+
+  # --- Background: resolve best quality and upgrade ---
+  (
+    # Wait for mpv socket to be ready first
+    for i in $(seq 1 20); do
+      [ -S "$MPV_SOCKET" ] && break
+      sleep 0.1
+    done
+
+    if [ ! -S "$MPV_SOCKET" ]; then
+      echo "DEBUG: MPV socket never appeared, aborting upgrade"
+      exit 1
+    fi
+
+    echo "DEBUG: Resolving best quality stream..."
+    BEST_URL=$(streamlink "${SL_COMMON[@]}" --stream-url "$URL" best,1080p60,1080p,720p60,720p 2>/dev/null)
+
+    echo "DEBUG: BEST_URL result: ${BEST_URL:0:120}..."
+
+    if [ -z "$BEST_URL" ]; then
+      echo "DEBUG: Failed to resolve best quality URL"
+      exit 1
+    fi
+
+    # Use jq to safely construct the JSON command (handles URL special chars)
+    IPC_CMD=$(jq -cn --arg url "$BEST_URL" '{"command": ["loadfile", $url, "replace"]}')
+    echo "DEBUG: Sending IPC command: ${IPC_CMD:0:120}..."
+
+    RESULT=$(echo "$IPC_CMD" | socat - "$MPV_SOCKET" 2>&1)
+    echo "DEBUG: socat result: $RESULT"
+
+    if echo "$RESULT" | grep -q '"error":"success"'; then
+      echo "DEBUG: Quality upgrade successful"
+      notify-send "MPV" "Quality upgraded ✓" -t 1500 -u low
+    else
+      echo "DEBUG: IPC command may have failed: $RESULT"
+    fi
+  ) &
+
+  wait $MPV_PID
 ) &
