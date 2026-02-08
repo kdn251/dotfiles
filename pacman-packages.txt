@@ -28,9 +28,11 @@ efibootmgr
 evince
 evtest
 fastfetch
+ffmpegthumbnailer
 firefox
 firewalld
 flameshot
+flatpak
 fprintd
 fwupd
 gimp
@@ -40,6 +42,9 @@ gobject-introspection
 gparted
 grub
 grub-btrfs
+gst-libav
+gst-plugins-bad
+gst-plugins-ugly
 gvfs-gphoto2
 gvfs-mtp
 htop
@@ -111,13 +116,16 @@ re2c
 reflector
 rsync
 satty
+sddm
 sfml
 signal-desktop
+socat
 sof-firmware
 steam
 stow
 streamlink
 sudo
+sushi
 swappy
 swayosd
 syncthing
@@ -153,7 +161,6 @@ xdotool
 xf86-input-synaptics
 xournalpp
 ydotool
-yt-dlp
 zathura
 zsh
 zsh-autosuggestions
