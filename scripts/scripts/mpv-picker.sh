@@ -2,6 +2,10 @@
 exec >/tmp/mpv-picker.log 2>&1
 echo "Picker triggered at $(date)"
 WATCH_LOG="$HOME/.local/share/mpv-youtube-history.tsv"
+# Keep only the most recent 100 entries
+if [[ -f "$WATCH_LOG" ]] && [[ $(wc -l <"$WATCH_LOG") -gt 100 ]]; then
+  tail -100 "$WATCH_LOG" >"${WATCH_LOG}.tmp" && mv "${WATCH_LOG}.tmp" "$WATCH_LOG"
+fi
 CHROME_HISTORY="$HOME/.config/google-chrome/Default/History"
 THUMB_CACHE="$HOME/.cache/yt-thumbnails"
 TMPDIR=$(mktemp -d)
