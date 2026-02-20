@@ -26,6 +26,16 @@
     padding: 0 10px;
 }
 
+#custom-yt-download.downloading {
+    color: #f9e2af;
+}
+#custom-yt-download.done {
+    color: #a6e3a1;
+}
+#custom-yt-download.failed {
+    color: #f38ba8;
+}
+
 #custom-rclone.syncing {
     color: #f9e2af; /* Yellow for active sync */
     animation-name: blink;

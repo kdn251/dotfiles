@@ -13,6 +13,7 @@
     "custom/recording",
     "custom/miniflux_download",
     "custom/twitch_vod_download",
+    "custom/yt-download",
     "custom/rclone",
     "pulseaudio",
     // "temperature",
@@ -95,6 +96,12 @@
     "interval": 2, // Check less frequently than the Miniflux script
     "hide-empty-text": true,
     "tooltip": true
+  },
+  "custom/yt-download": {
+    "exec": "~/scripts/waybar-yt-download.sh",
+    "return-type": "json",
+    "interval": 1,
+    "tooltip": false
   },
   "custom/rclone": {
     "format": "{}",
