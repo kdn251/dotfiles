@@ -1,34 +1,40 @@
 #!/bin/bash
 
-# Define a unique title for the camera window
 WINDOW_TITLE="Webcam_Floating_Window"
 
-# ----------------------------------------------------------------------
-# New Logic: Find the PID of the specific camera instance
-# We use pgrep -f to match the full command line used to launch the app.
-# ----------------------------------------------------------------------
+# Find the PID to toggle off if already running
 PID=$(pgrep -f "mpv --no-audio --title=$WINDOW_TITLE")
 
-# Check if a PID was found (i.e., if the camera is currently running)
 if [ -n "$PID" ]; then
-  # If running (PID is not empty), kill the specific process by its PID
   echo "Webcam running (PID: $PID). Killing process..."
   kill "$PID"
-else
-  # If not running, launch the camera feed with mpv
-  echo "Webcam not running. Launching mpv..."
-
-  # mpv launch command details:
-  # --no-audio: Prevent audio input/output setup, focusing purely on video
-  # --title: Crucial for Hyprland rules and the kill/check logic above
-  # --input-vo-keyboard=no: Disables keyboard input for the mpv window (prevents accidental closing/pausing)
-  # --autofit=30%: Set initial size to 30% of the screen width/height (Hyprland size rule might override this)
-  # /dev/video0: The standard video input device
-
-  mpv \
-    --no-audio \
-    --title="$WINDOW_TITLE" \
-    --input-vo-keyboard=no \
-    --autofit=30% \
-    /dev/video2 &
+  exit 0
 fi
+
+# 1. Try to find the MX Brio (Logitech) first
+# We grab the first /dev/videoX path listed under 'MX Brio'
+DEVICE=$(v4l2-ctl --list-devices | grep -A 1 "MX Brio" | grep -o '/dev/video[0-9]\+' | head -n 1)
+
+# 2. Fallback to Laptop Webcam if MX Brio isn't connected
+if [ -z "$DEVICE" ]; then
+  echo "MX Brio not found. Searching for Laptop Webcam..."
+  DEVICE=$(v4l2-ctl --list-devices | grep -A 1 "Laptop Webcam" | grep -o '/dev/video[0-9]\+' | head -n 1)
+fi
+
+# 3. Final check
+if [ -z "$DEVICE" ]; then
+  echo "Error: No cameras found."
+  # Optional: send a notification if you have libnotify installed
+  # notify-send "Camera Error" "No webcam detected"
+  exit 1
+fi
+
+echo "Launching mpv on $DEVICE..."
+
+# Launch with the v4l2 prefix for reliability
+mpv \
+  --no-audio \
+  --title="$WINDOW_TITLE" \
+  --input-vo-keyboard=no \
+  --autofit=30% \
+  "av://v4l2:$DEVICE" &
