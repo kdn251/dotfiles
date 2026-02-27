@@ -1,161 +1,108 @@
 #!/bin/bash
-exec >/tmp/mpv-picker.log 2>&1
-echo "Picker triggered at $(date)"
+# Usage: ./mpv-picker.sh [watch_later|history]
+MODE="${1:-watch_later}"
+WL_CACHE="$HOME/.cache/yt-watch-later.tsv"
 WATCH_LOG="$HOME/.local/share/mpv-youtube-history.tsv"
-# Keep only the most recent 100 entries
-if [[ -f "$WATCH_LOG" ]] && [[ $(wc -l <"$WATCH_LOG") -gt 100 ]]; then
-  tail -100 "$WATCH_LOG" >"${WATCH_LOG}.tmp" && mv "${WATCH_LOG}.tmp" "$WATCH_LOG"
-fi
-CHROME_HISTORY="$HOME/.config/google-chrome/Default/History"
 THUMB_CACHE="$HOME/.cache/yt-thumbnails"
-TMPDIR=$(mktemp -d)
-MERGED="$TMPDIR/merged.tsv"
+LOCK_FILE="/tmp/yt-wl-fetch.lock"
 
 mkdir -p "$THUMB_CACHE"
+exec >/tmp/mpv-picker.log 2>&1
 
-# --- Source 1: mpv watch log ---
-if [[ -f "$WATCH_LOG" ]]; then
-  cp "$WATCH_LOG" "$TMPDIR/watchlog.tsv"
-else
-  touch "$TMPDIR/watchlog.tsv"
-fi
-# --- Source 2: Chrome history (YouTube only) ---
-if [[ -f "$CHROME_HISTORY" ]]; then
-  cp "$CHROME_HISTORY" "$TMPDIR/History"
-  sqlite3 "$TMPDIR/History" "
-    SELECT
-      CAST((last_visit_time / 1000000) - 11644473600 AS INTEGER),
-      title,
-      url
-    FROM urls
-    WHERE url LIKE '%youtube.com/watch%' AND url NOT LIKE '%music.youtube.com%'
-    ORDER BY last_visit_time DESC
-    LIMIT 50;
-  " -separator $'\t' >"$TMPDIR/chrome.tsv" 2>/dev/null
-else
-  touch "$TMPDIR/chrome.tsv"
-fi
-# --- Merge and deduplicate ---
-cat "$TMPDIR/watchlog.tsv" "$TMPDIR/chrome.tsv" |
-  awk -F'\t' '
+# --- Background Cache Update ---
+update_wl_cache() {
+  # Don't start a second fetch if one is already running
+  if [ -f "$LOCK_FILE" ]; then return; fi
+
+  (
+    touch "$LOCK_FILE"
+    echo "Updating Watch Later cache..."
+    yt-dlp --cookies-from-browser firefox \
+      --flat-playlist --playlist-end 50 \
+      --print "%(title)s	https://www.youtube.com/watch?v=%(id)s	%(uploader)s" \
+      "https://www.youtube.com/playlist?list=WL" >"${WL_CACHE}.tmp" 2>/dev/null &&
+      mv "${WL_CACHE}.tmp" "$WL_CACHE"
+    rm "$LOCK_FILE"
+  ) &
+}
+
+fetch_history() {
   {
-    match($3, /v=([^&]+)/, m)
-    vid = m[1]
-    if (vid != "" && (!(vid in seen) || $1 > ts[vid])) {
-      seen[vid] = NR
-      ts[vid] = $1
-      title[vid] = $2
-      url[vid] = $3
-      channel[vid] = ($4 != "" ? $4 : "")
-    }
-  }
-  END {
-    n = asorti(ts, sorted)
-    for (i = n; i >= 1; i--) {
-      vid = sorted[i]
-      printf "%s\t%s\t%s\t%s\n", ts[vid], title[vid], url[vid], channel[vid]
-    }
-  }' | sort -t$'\t' -k1 -rn | head -30 >"$MERGED"
+    [[ -f "$WATCH_LOG" ]] && cat "$WATCH_LOG"
+    if [[ -f "$HOME/.config/google-chrome/Default/History" ]]; then
+      TMP_HIST=$(mktemp)
+      cp "$HOME/.config/google-chrome/Default/History" "$TMP_HIST"
+      sqlite3 "$TMP_HIST" "
+            SELECT CAST((last_visit_time / 1000000) - 11644473600 AS INTEGER), title, url
+            FROM urls WHERE url LIKE '%youtube.com/watch%' 
+            ORDER BY last_visit_time DESC LIMIT 50;" -separator $'\t' 2>/dev/null
+      rm "$TMP_HIST"
+    fi
+  } | sort -t$'\t' -k1 -rn | awk -F'\t' '!seen[$3]++' | head -50
+}
 
-# --- Download thumbnails ---
-while IFS=$'\t' read -r ts title url channel; do
-  VIDEO_ID=$(echo "$url" | grep -oP '(?<=v=)[^&]+')
-  THUMB_PATH="$THUMB_CACHE/${VIDEO_ID}.jpg"
-  if [ -n "$VIDEO_ID" ] && [ ! -f "$THUMB_PATH" ]; then
-    curl -s -o "$THUMB_PATH" "https://img.youtube.com/vi/${VIDEO_ID}/mqdefault.jpg" &
-  fi
-done <"$MERGED"
+# --- Build the List ---
+MENU_BODY=""
 
-# --- Build display list ---
-MENU_ENTRIES=""
-URL_MAP=""
-while IFS=$'\t' read -r ts title url channel; do
-  NOW=$(date +%s)
-  AGO=$(((NOW - ts) / 60))
-  if ((AGO < 60)); then
-    TIME_STR="${AGO}m ago"
-  elif ((AGO < 1440)); then
-    TIME_STR="$((AGO / 60))h ago"
+if [[ "$MODE" == "watch_later" ]]; then
+  PROMPT="Watch Later"
+  SWITCH_LABEL="󰄮 SWITCH TO HISTORY"
+  SWITCH_ACTION="GOTO_HISTORY"
+
+  # Trigger the background update every time, but show cache immediately
+  update_wl_cache
+
+  if [[ -f "$WL_CACHE" ]]; then
+    while IFS=$'\t' read -r title url channel; do
+      VIDEO_ID=$(echo "$url" | grep -oP '(?<=v=)[^&]+')
+      LABEL="${title:0:60} — ${channel}"
+      MENU_BODY+="img:${THUMB_CACHE}/${VIDEO_ID}.jpg:text:${LABEL}\t${url}\n"
+      # Background download thumbs if missing
+      [[ ! -f "${THUMB_CACHE}/${VIDEO_ID}.jpg" ]] && curl -s -L -o "${THUMB_CACHE}/${VIDEO_ID}.jpg" "https://img.youtube.com/vi/${VIDEO_ID}/mqdefault.jpg" &
+    done <"$WL_CACHE"
   else
-    TIME_STR="$((AGO / 1440))d ago"
+    MENU_BODY="Fetching Watch Later for the first time... Close and re-open in 5s.\tRETRY\n"
   fi
-  SHORT_TITLE="${title:0:55}"
-  [[ ${#title} -gt 55 ]] && SHORT_TITLE="${SHORT_TITLE}..."
-  SHORT_TITLE="${SHORT_TITLE//&/&amp;}"
-  [[ ${#title} -gt 55 ]] && SHORT_TITLE="${SHORT_TITLE}..."
-
-  VIDEO_ID=$(echo "$url" | grep -oP '(?<=v=)[^&]+')
-  THUMB_PATH="$THUMB_CACHE/${VIDEO_ID}.jpg"
-
-  if [[ -n "$channel" ]]; then
-    LABEL="${SHORT_TITLE} — ${channel}  (${TIME_STR})"
-  else
-    LABEL="${SHORT_TITLE}  (${TIME_STR})"
-  fi
-
-  if [ -f "$THUMB_PATH" ]; then
-    MENU_ENTRIES+="img:${THUMB_PATH}:text:${LABEL}\t${url}\n"
-  else
-    MENU_ENTRIES+="${LABEL}\t${url}\n"
-  fi
-done <"$MERGED"
-
-if [[ -z "$MENU_ENTRIES" ]]; then
-  notify-send "MPV" "No YouTube history found"
-  rm -rf "$TMPDIR"
-  exit 1
-fi
-# --- Show picker ---
-if command -v wofi &>/dev/null; then
-  CHOICE=$(echo -e "$MENU_ENTRIES" | awk -F'\t' '{print $1}' |
-    wofi --dmenu --prompt "YouTube History" --width 800 --lines 15 --allow-images)
-elif command -v rofi &>/dev/null; then
-  CHOICE=$(echo -e "$MENU_ENTRIES" | awk -F'\t' '{print $1}' |
-    rofi -dmenu -p "YouTube History" -width 800 -lines 15)
 else
-  notify-send "Error" "No picker found (install wofi or rofi)"
-  rm -rf "$TMPDIR"
-  exit 1
-fi
-if [[ -z "$CHOICE" ]]; then
-  rm -rf "$TMPDIR"
-  exit 0
-fi
-# --- Find the URL for the chosen entry ---
-# Strip the image prefix for matching
-CLEAN_CHOICE=$(echo "$CHOICE" | sed 's/.*:text://')
-echo "CHOICE: $CHOICE"
-echo "CLEAN_CHOICE: $CLEAN_CHOICE"
-URL=$(echo -e "$MENU_ENTRIES" | grep -F "$CLEAN_CHOICE" | head -1 | awk -F'\t' '{print $2}')
-echo "URL: $URL"
-echo "About to launch mpv..."
+  PROMPT="YouTube History"
+  SWITCH_LABEL="󰄮 SWITCH TO WATCH LATER"
+  SWITCH_ACTION="GOTO_WL"
 
-if [[ -n "$URL" ]]; then
-  VIDEO_ID=$(echo "$URL" | grep -oP '(?<=v=)[^&]+')
-  TITLE=$(echo "$CLEAN_CHOICE" | sed 's/ — .*//')
-  CHANNEL=$(echo "$CLEAN_CHOICE" | sed -n 's/.*— \(.*\)  ([0-9]*[dhm] ago)/\1/p')
-  TIMESTAMP=$(date +%s)
-  if [[ -f "$WATCH_LOG" ]]; then
-    grep -v -- "$VIDEO_ID" "$WATCH_LOG" >"${WATCH_LOG}.tmp" && mv "${WATCH_LOG}.tmp" "$WATCH_LOG"
-  fi
-  echo -e "${TIMESTAMP}\t${TITLE}\t${URL}\t${CHANNEL}" >>"$WATCH_LOG"
-  echo "YT_URL=\"$URL\"" >/tmp/youtube-stream-context.conf
-  if [ -f "$THUMB_CACHE/${VIDEO_ID}.jpg" ]; then
-    notify-send -i "$THUMB_CACHE/${VIDEO_ID}.jpg" "MPV" "Resuming: ${TITLE}"
-  else
-    notify-send "MPV" "Resuming: ${TITLE}"
-  fi
-  # Kill previous mpv instance by saved PID
-  if [ -f /tmp/mpv-yt-pid ]; then
-    kill $(cat /tmp/mpv-yt-pid) 2>/dev/null
-    sleep 0.3
-  fi
-  # Kill previous instance of streamlink if there
-  pkill streamlink
-  mpv --ytdl-raw-options=cookies-from-browser=firefox "$URL" &>/dev/null &
-  echo $! >/tmp/mpv-yt-pid
-  disown
-else
-  notify-send "Error" "Could not find URL"
+  while IFS=$'\t' read -r ts title url channel; do
+    VIDEO_ID=$(echo "$url" | grep -oP '(?<=v=)[^&]+')
+    LABEL="${title:0:60} (${channel:-History})"
+    MENU_BODY+="img:${THUMB_CACHE}/${VIDEO_ID}.jpg:text:${LABEL}\t${url}\n"
+    [[ ! -f "${THUMB_CACHE}/${VIDEO_ID}.jpg" ]] && curl -s -L -o "${THUMB_CACHE}/${VIDEO_ID}.jpg" "https://img.youtube.com/vi/${VIDEO_ID}/mqdefault.jpg" &
+  done <<<"$(fetch_history)"
 fi
-rm -rf "$TMPDIR"
+
+# --- Assembly: Switch is ALWAYS at index 0 ---
+FINAL_MENU="${SWITCH_LABEL}\t${SWITCH_ACTION}\n${MENU_BODY}"
+
+# --- Show Picker ---
+CHOICE=$(echo -e "$FINAL_MENU" | awk -F'\t' '{print $1}' |
+  wofi --dmenu --prompt "$PROMPT" --width 900 --lines 15 --allow-images)
+
+[[ -z "$CHOICE" ]] && exit 0
+
+# Match the label back to the URL/Action
+FINAL_TARGET=$(echo -e "$FINAL_MENU" | grep -F -m 1 "$CHOICE" | awk -F'\t' '{print $2}')
+
+case "$FINAL_TARGET" in
+GOTO_HISTORY) exec "$0" history ;;
+GOTO_WL) exec "$0" watch_later ;;
+RETRY)
+  sleep 0.5
+  exec "$0" watch_later
+  ;;
+*)
+  if [[ -n "$FINAL_TARGET" ]]; then
+    notify-send "MPV" "Opening Video..."
+    # Cleanly kill existing mpv instances
+    pkill -f "mpv --ytdl-raw-options=cookies-from-browser=firefox"
+    mpv --ytdl-raw-options=cookies-from-browser=firefox "$FINAL_TARGET" &>/dev/null &
+    echo $! >/tmp/mpv-yt-pid
+    disown
+  fi
+  ;;
+esac
