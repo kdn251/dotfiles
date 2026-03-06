@@ -1,27 +1,50 @@
 #!/bin/bash
 
-source "$HOME/.zshrc" 2>/dev/null
-
+# Config paths
 WALLPAPER_DIR="$HOME/pictures/wallpapers"
+CACHE_DIR="$HOME/.cache/wallpaper-thumbs"
 HYPRLOCK_CONF="$HOME/.config/hypr/hyprlock.conf"
 
-# Check if wallpaper directory exists and has files
-if [ ! -d "$WALLPAPER_DIR" ] || [ -z "$(ls -A "$WALLPAPER_DIR")" ]; then
-  notify-send "Wallpaper Error" "No wallpapers found in $WALLPAPER_DIR"
-  exit 1
-fi
+# Create cache dir if it doesn't exist
+mkdir -p "$CACHE_DIR"
 
-# Select random wallpaper
-# Use -L to dereference symbolic links and search the actual file locations
-WALLPAPER=$(find -L "$WALLPAPER_DIR" -type f \( -iname "*.jpg" -o -iname "*.png" -o -iname "*.jpeg" \) | shuf -n 1)
+# 1. Generate/Update Thumbnails
+# This keeps the menu fast. It only creates thumbs for new files.
+find "$WALLPAPER_DIR" -type f \( -iname "*.jpg" -o -iname "*.png" -o -iname "*.jpeg" \) | while read -r img; do
+  thumb="$CACHE_DIR/$(basename "$img")"
+  if [ ! -f "$thumb" ] || [ "$img" -nt "$thumb" ]; then
+    magick "$img" -thumbnail 200x200^ -gravity center -extent 200x200 "$thumb"
+  fi
+done
 
-# Update hyprpaper via hyprctl
-hyprctl hyprpaper preload "$WALLPAPER"
-hyprctl hyprpaper wallpaper ",$WALLPAPER"
+# 2. Build the list for wofi
+# Syntax: img:<path>:text:<label>
+WOFI_LIST=""
+while read -r img; do
+  thumb="$CACHE_DIR/$(basename "$img")"
+  WOFI_LIST+="img:$thumb:text:$(basename "$img")\n"
+done < <(find "$WALLPAPER_DIR" -type f \( -iname "*.jpg" -o -iname "*.png" -o -iname "*.jpeg" \))
 
-# Update hyprlock config
-if [ -f "$HYPRLOCK_CONF" ]; then
-  # Replace the path line, keeping the tilde format for consistency
-  WALLPAPER_RELATIVE="${WALLPAPER/#$HOME/\~}"
-  sed -i "s|^\s*path\s*=.*|    path = $WALLPAPER_RELATIVE|" "$HYPRLOCK_CONF"
+# 3. Show the menu
+# --allow-images is the magic flag here
+SELECTED=$(echo -e "$WOFI_LIST" | wofi --dmenu --allow-images -i -p "Select Wallpaper" --width 400 --height 500)
+
+[ -z "$SELECTED" ] && exit 0
+
+# Extract the filename from the selection
+FILE_NAME=$(echo "$SELECTED" | sed 's/.*text://')
+FULL_PATH="$WALLPAPER_DIR/$FILE_NAME"
+
+# 4. Apply the wallpaper
+if [ -f "$FULL_PATH" ]; then
+  hyprctl hyprpaper preload "$FULL_PATH"
+  hyprctl hyprpaper wallpaper ",$FULL_PATH"
+
+  # Update hyprlock
+  if [ -f "$HYPRLOCK_CONF" ]; then
+    WALL_REL="${FULL_PATH/#$HOME/\~}"
+    sed -i "s|^\s*path\s*=.*|    path = $WALL_REL|" "$HYPRLOCK_CONF"
+  fi
+
+  notify-send "Wallpaper Set" "$FILE_NAME"
 fi
