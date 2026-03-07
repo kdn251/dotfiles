@@ -1,37 +1,43 @@
 #!/bin/bash
 
-# Use absolute paths for stability
+# Configuration
 WALLPAPER_DIR="$HOME/pictures/wallpapers"
 HYPRLOCK_CONF="$HOME/.config/hypr/hyprlock.conf"
-
-# Ensure we can find hyprctl and kitty
 PATH=$PATH:/usr/bin:/bin
 
-export -f hyprctl
-update_bg() {
-  # Check if hyprpaper is actually running
-  if pgrep -x "hyprpaper" >/dev/null; then
-    hyprctl hyprpaper preload "$1" >/dev/null
-    hyprctl hyprpaper wallpaper ",$1" >/dev/null
-  fi
-}
-export -f update_bg
+# 1. Get current wallpaper path and ensure it's an absolute path
+CURRENT_WALLPAPER=$(hyprctl hyprpaper listactive | cut -d ' ' -f 3 | head -n 1)
 
-# The Picker
-# Note: --transfer-mode=memory is often more reliable for fzf previews
-SELECTED=$(find -L "$WALLPAPER_DIR" -type f \( -iname "*.jpg" -o -iname "*.png" -o -iname "*.jpeg" \) |
-  fzf --preview 'bash -c "update_bg {} && kitty +kitten icat --clear --stdin no --silent --transfer-mode memory --place 30x15@65x5 {}"' \
-    --preview-window=right:60%:noborder \
-    --layout=reverse --margin=1 --padding=1 \
-    --prompt="󰸉 Wallpaper > " \
-    --border="rounded")
+# 2. Prepare the list
+# We want to make sure the current wallpaper is exactly at the top of the input stream
+ALL_FILES=$(find -L "$WALLPAPER_DIR" -type f \( -iname "*.jpg" -o -iname "*.png" -o -iname "*.jpeg" \) | sort)
+# Put the current one first, then everything else (excluding the current one)
+LIST_TO_FZF=$(
+  echo "$CURRENT_WALLPAPER"
+  echo "$ALL_FILES" | grep -vF "$CURRENT_WALLPAPER"
+)
 
-# Finalize
+# 3. Launch fzf
+SELECTED=$(echo "$LIST_TO_FZF" | fzf --ansi \
+  --preview '
+        img={}
+        # Update the wallpaper background live
+        hyprctl hyprpaper preload "$img" > /dev/null
+        hyprctl hyprpaper wallpaper ",$img" > /dev/null
+        # Show the preview in kitty
+        kitty +kitten icat --clear --stdin no --silent --transfer-mode memory --place 30x15@65x5 "$img"
+    ' \
+  --preview-window=right:60%:noborder \
+  --layout=reverse --margin=1 --padding=1 \
+  --prompt="󰸉 Select Wallpaper > " \
+  --border="rounded" \
+  --no-sort) # Crucial: prevents fzf from re-sorting our list
+
+# 4. Finalize
 if [ -n "$SELECTED" ]; then
-  update_bg "$SELECTED"
   if [ -f "$HYPRLOCK_CONF" ]; then
-    # Use sed with a different delimiter in case of spaces in paths
     WALL_REL="${SELECTED/#$HOME/\~}"
     sed -i "s|^\s*path\s*=.*|    path = $WALL_REL|" "$HYPRLOCK_CONF"
   fi
+  notify-send "Wallpaper Set" "$(basename "$SELECTED")"
 fi

@@ -103,9 +103,10 @@ URL="https://www.twitch.tv/$STREAMER_USERNAME"
   if [ -z "$LOW_URL" ]; then
     echo "DEBUG: Fast-start failed, falling back to standard streamlink"
     streamlink "${SL_COMMON[@]}" \
-      --player mpv \
-      --player-args "--cache=yes --force-window=immediate --vo=gpu --hwdec=auto --profile=low-latency --demuxer-max-bytes=500KiB --demuxer-readahead-secs=2 --demuxer-lavf-o=fflags=+nobuffer" \
-      "$URL" best,720p,480p
+      --player mpv
+    # Comment out these lines since I have these configured (or at least I should inside of ~/.config/mpv/mpv.conf)
+    # --player-args "--cache=yes --force-window=immediate --vo=gpu --hwdec=auto --profile=low-latency --demuxer-max-bytes=500KiB --demuxer-readahead-secs=2 --demuxer-lavf-o=fflags=+nobuffer" \
+    "$URL" best,720p,480p
     exit $?
   fi
 
