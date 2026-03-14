@@ -11,6 +11,7 @@ blueman
 bluez
 bluez-utils
 brightnessctl
+btop
 btrfs-progs
 clinfo
 cmake
@@ -20,6 +21,7 @@ dmenu
 dmidecode
 dnsmasq
 docker
+docker-buildx
 dolphin
 dos2unix
 dosfstools
@@ -34,6 +36,7 @@ firewalld
 flameshot
 flatpak
 fprintd
+fuzzel
 fwupd
 gimp
 git
@@ -50,6 +53,7 @@ gvfs-mtp
 htop
 hypridle
 hyprland
+hyprland-protocols
 hyprlock
 hyprpaper
 hyprpicker
@@ -84,6 +88,7 @@ ly
 man-db
 man-pages
 modemmanager
+mpv-mpris
 mtools
 mtr
 nautilus
@@ -95,6 +100,7 @@ ninja
 noto-fonts-emoji
 nwg-look
 obs-studio
+obsidian
 okular
 openssh
 papirus-icon-theme
@@ -161,6 +167,7 @@ xdotool
 xf86-input-synaptics
 xournalpp
 ydotool
+yt-dlp
 zathura
 zsh
 zsh-autosuggestions

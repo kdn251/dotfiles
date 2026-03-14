@@ -10,11 +10,10 @@ chatterino2-bin
 cryptomator
 cursor-bin
 davinci-resolve
-docker-desktop
 downgrade
 geforcenow-electron
 google-chrome
-google-messages
+google-messages-bin
 i7z
 localsend
 neofetch
@@ -40,5 +39,4 @@ wlrobs
 woomer
 yay
 yay-debug
-yt-dlp-git
 zoom
