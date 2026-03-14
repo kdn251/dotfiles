@@ -9,7 +9,15 @@ RECORDING_STATUS_FILE="/tmp/recording.txt"
 OUTPUT_FILE="$RECORDING_DIR/recording_$(date +%Y%m%d_%H%M%S)"
 
 # Device specific settings
-WEBCAM_DEVICE="/dev/video2"
+# WEBCAM_DEVICE="/dev/video1"
+WEBCAM_DEVICE=$(v4l2-ctl --list-devices | grep -A 1 "MX Brio" | grep -o '/dev/video[0-9]\+' | head -n 1)
+
+# 2. Fallback to Laptop Webcam if MX Brio isn't connected
+if [ -z "$DEVICE" ]; then
+  echo "MX Brio not found. Searching for Laptop Webcam..."
+  DEVICE=$(v4l2-ctl --list-devices | grep -A 1 "Laptop Webcam" | grep -o '/dev/video[0-9]\+' | head -n 1)
+fi
+
 WEBCAM_RESOLUTION="1920x1080"
 # Using 'default' is the safest choice for PulseAudio/PipeWire unless another source is required.
 WEBCAM_AUDIO_SOURCE='default'
