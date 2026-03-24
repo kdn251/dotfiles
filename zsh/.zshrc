@@ -27,6 +27,8 @@ alias wifi="nmtui"
 alias pip-toggle="HYPRLAND_INSTANCE_SIGNATURE=dummy ./pip-toggle.sh"
 alias php='php-legacy'
 alias fixplanewifi='sudo resolvectl dns wlan0 8.8.8.8 1.1.1.1 && sudo nmcli general reload && sudo systemctl restart NetworkManager'
+alias fixplanewifiagain='nmcli networking off && nmcli networking on'
+
 alias newsboat='newsboat && ~/scripts/update-live-list.sh &'
 
 alias gstart='systemctl --user start rclone-gdrive.service'
