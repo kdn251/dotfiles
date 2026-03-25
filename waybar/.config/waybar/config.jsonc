@@ -7,13 +7,14 @@
     "hyprland/window"
   ],
   "modules-center": [
-    "hyprland/workspaces"
+    "hyprland/workspaces",
   ],
   "modules-right": [
     "custom/recording",
     "custom/miniflux_download",
     "custom/twitch_vod_download",
     "custom/yt-download",
+    "custom/voxtype",
     "custom/rclone",
     "pulseaudio",
     // "temperature",
@@ -73,6 +74,18 @@
     "format-disconnected": "OFFLINE",
     "on-click": "kitty --class networkmanager-float nmtui",
     "tooltip-format": "{ifname}: {ipaddr}"
+  },
+  "custom/voxtype": {
+    "exec": "voxtype status --follow --format json",
+    "return-type": "json",
+    "format": "{icon}",
+    "format-icons": {
+      "idle": "\uf130",
+      "recording": "\uf111",
+      "transcribing": "\uf110",
+      "stopped": "\uf131"
+    },
+    "tooltip": true
   },
   "custom/recording": {
     "format": "{}",

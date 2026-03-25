@@ -20,90 +20,117 @@
     padding: 0 10px;
 }
 
+#custom-voxtype {
+  padding: 0 10px;
+}
+
+#custom-voxtype.recording {
+  color: #ff5555;
+  animation: pulse 1s ease-in-out infinite;
+}
+
+#custom-voxtype.transcribing {
+  color: #f1fa8c;
+}
+
+#custom-voxtype.idle {
+  color: #50fa7b;
+}
+
+#custom-voxtype.stopped {
+  color: #6272a4;
+}
+
+@keyframes pulse {
+  0% { opacity: 1; }
+  50% { opacity: 0.5; }
+  100% { opacity: 1; }
+}
+
 #custom-recording {
-    color: #FF0000; /* Green color for download status */
-    font-weight: bold;
-    padding: 0 10px;
+  color: #FF0000; /* Green color for download status */
+  font-weight: bold;
+  padding: 0 10px;
 }
 
 #custom-yt-download.downloading {
-    color: #f9e2af;
+  color: #f9e2af;
 }
 #custom-yt-download.done {
-    color: #a6e3a1;
+  color: #a6e3a1;
 }
 #custom-yt-download.failed {
-    color: #f38ba8;
+  color: #f38ba8;
 }
 
 #custom-rclone.syncing {
-    color: #f9e2af; /* Yellow for active sync */
-    animation-name: blink;
-    animation-duration: 2s;
-    animation-timing-function: linear;
-    animation-iteration-count: infinite;
+  color: #f9e2af; /* Yellow for active sync */
+  animation-name: blink;
+  animation-duration: 2s;
+  animation-timing-function: linear;
+  animation-iteration-count: infinite;
 }
 
 #custom-rclone.synced {
-    color: #a6e3a1; /* Green for finished */
+  color: #a6e3a1; /* Green for finished */
 }
 
 @keyframes blink {
-    to {
-        color: #fab387; /* Fade to orange while syncing */
-    }
+  to {
+    color: #fab387; /* Fade to orange while syncing */
+  }
 }
 
 window#waybar {
-    background-color: rgba(0, 0, 0, 0.7);
-    border: 1px solid rgba(51, 51, 51, 0.5);
-    border-radius: 10px;
+  background-color: rgba(0, 0, 0, 0.7);
+  border: 1px solid rgba(51, 51, 51, 0.5);
+  border-radius: 10px;
 }
 
 #workspaces {
-    background: transparent;
-    margin: 0 4px;
+  background: transparent;
+  margin: 0 4px;
 }
 
 #workspaces button {
-    color: #666666;
-    background: transparent;
-    border: none;
-    padding: 0 8px;
-    margin: 0 2px;
-    border-radius: 0;
-    transition: color 0.2s ease;
+  color: #666666;
+  background: transparent;
+  border: none;
+  padding: 0 8px;
+  margin: 0 2px;
+  border-radius: 0;
+  transition: color 0.2s ease;
 }
 
 #workspaces button:hover {
-    color: #cccccc;
-    background: transparent;
+  color: #cccccc;
+  background: transparent;
 }
 
 /* non-empty persistent workspaces */
 #workspaces button.persistent {
-    font-weight: bold;
-    color: #cad3f5;
+  font-weight: bold;
+  color: #cad3f5;
 }
 
 /* empty persistent workspaces */
 #workspaces button.empty {
-    color: #444444;  /* Very dim gray text */
-    opacity: 0.5;    /* Make them semi-transparent */
+  color: #444444;  /* Very dim gray text */
+  opacity: 0.5;    /* Make them semi-transparent */
 }
 
 /* active or visible workspaces */
 #workspaces button.active,
 #workspaces button.visible {
-    color: #cad3f5;
-    background-color: #64727D; /* Example: grey */
-    font-weight: bold;
+  color: #cad3f5;
+  background-color: #64727D; /* Example: grey */
+  font-weight: bold;
 }
 
 #workspaces button.urgent {
-    background-color: #e74c3c;  /* Red background */
-    color: #ffffff;
-    animation: blink 1s ease-in-out infinite;
+  background-color: #e74c3c;  /* Red background */
+  color: #ffffff;
+  animation: blink 1s ease-in-out infinite;
 }
 
 #window,
@@ -114,67 +141,67 @@ window#waybar {
 #temperature,
 #network,
 #pulseaudio {
-    color: #ffffff;
-    background: transparent;
-    padding: 0 8px;
-    margin: 0 2px;
-    border-radius: 0;
+  color: #ffffff;
+  background: transparent;
+  padding: 0 8px;
+  margin: 0 2px;
+  border-radius: 0;
 }
 
 #window {
-    color: #cccccc;
+  color: #cccccc;
 }
 
 #clock {
-    color: #ffffff;
-    font-weight: bold;
+  color: #ffffff;
+  font-weight: bold;
 }
 
 #battery {
-    color: #ffffff;
+  color: #ffffff;
 }
 
 #battery.warning {
-    color: #cccccc;
+  color: #cccccc;
 }
 
 #battery.critical {
-    color: #000000;
-    background-color: #ffffff;
+  color: #000000;
+  background-color: #ffffff;
 }
 
 #temperature {
-    color: #ffffff;
+  color: #ffffff;
 }
 
 #temperature.critical {
-    color: #000000;
-    background-color: #ffffff;
+  color: #000000;
+  background-color: #ffffff;
 }
 
 #network {
-    color: #ffffff;
+  color: #ffffff;
 }
 
 #network.disconnected {
-    color: #666666;
+  color: #666666;
 }
 
 #pulseaudio {
-    color: #ffffff;
+  color: #ffffff;
 }
 
 #pulseaudio.muted {
-    color: #666666;
+  color: #666666;
 }
 
 tooltip {
-    background: #000000;
-    border: 1px solid #333333;
-    border-radius: 0;
-    color: #ffffff;
+  background: #000000;
+  border: 1px solid #333333;
+  border-radius: 0;
+  color: #ffffff;
 }
 
 tooltip label {
-    color: #ffffff;
+  color: #ffffff;
 }
