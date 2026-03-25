@@ -16,6 +16,7 @@ google-chrome
 google-messages-bin
 i7z
 localsend
+mpv-uosc
 neofetch
 ngrok
 nordvpn-bin
@@ -34,6 +35,7 @@ twitch-dl-git
 tzupdate
 vesktop
 visual-studio-code-bin
+voxtype
 wayland-boomer-git
 wlrobs
 woomer

@@ -108,6 +108,7 @@ pavucontrol
 php-legacy
 picom
 pipewire
+pipewire-alsa
 pipewire-jack
 pipewire-pulse
 postgresql
