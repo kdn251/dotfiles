@@ -93,6 +93,7 @@ mtools
 mtr
 nautilus
 neovim
+nethogs
 network-manager-applet
 networkmanager
 newsboat
@@ -112,6 +113,7 @@ pipewire-alsa
 pipewire-jack
 pipewire-pulse
 postgresql
+power-profiles-daemon
 powertop
 proton-vpn-gtk-app
 python-pip
