@@ -291,11 +291,14 @@ if [ -f "aur-packages.txt" ]; then
   yay --save --answerclean All --answerdiff None --removemake
 
   # Install AUR packages
-  if yay -S --needed --noconfirm - <aur-packages.txt; then
+  # 1. Ensure we are using the full path to the file
+  # 2. Use 'runuser' or 'sudo -u' if your setup script is running as root
+  # 3. Use the --answerdiff and --answerclean flags to pre-answer common prompts
+  if yay -S --needed --noconfirm --answerdiff None --answerclean All - <"$HOME/dotfiles/aur-packages.txt"; then
     AUR_SUCCESS=true
     print_success "AUR packages installed successfully"
   else
-    print_error "Some AUR packages failed to install"
+    print_error "AUR installation failed. Check if a package was removed from the AUR or renamed."
     AUR_SUCCESS=false
   fi
 else
@@ -400,6 +403,29 @@ for SERVICE_NAME in "${REQUIRED_SERVICES[@]}"; do
     echo "-> ${SERVICE_NAME} is already enabled."
   fi
 done
+
+print_status "Applying custom Ly display manager configuration..."
+
+# We check for ly@tty2 specifically since that's your working fix
+if ! systemctl is-enabled ly@tty2.service &>/dev/null; then
+  # Disable the generic one if it was accidentally enabled by the loop above
+  sudo systemctl disable ly.service &>/dev/null
+
+  # Apply your working fixes
+  if sudo systemctl enable ly@tty2.service &&
+    sudo systemctl set-default graphical.target &&
+    sudo systemctl mask getty@tty2.service; then
+
+    LY_SERVICE_SUCCESS=true
+    print_success "Ly configured on TTY2 successfully."
+  else
+    LY_SERVICE_SUCCESS=false
+    print_error "Failed to configure Ly on TTY2."
+  fi
+else
+  LY_SERVICE_SUCCESS=true
+  print_status "Ly is already enabled on TTY2."
+fi
 
 echo "Systemd service configuration complete."
 
