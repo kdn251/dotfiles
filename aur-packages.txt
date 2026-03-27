@@ -31,7 +31,6 @@ timeshift-autosnap
 twitch-dl-git
 vesktop
 visual-studio-code-bin
-voxtype-bin
 wayland-boomer-git
 wlrobs
 woomer
