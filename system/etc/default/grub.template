@@ -1,0 +1,1 @@
+GRUB_CMDLINE_LINUX_DEFAULT="loglevel=3 quiet cryptdevice=UUID=PUT_LUKS_ID_HERE:main root=/dev/mapper/main amdgpu.dcfeaturemask=0x8 nvme_core.default_ps_max_latency_us=5500 amdgpu.abmlevel=0 pcie_aspm=powersupersave"
