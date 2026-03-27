@@ -1,0 +1,15 @@
+acpid
+bluetooth
+cronie
+enable-usb-wake
+firewalld
+keyd
+libvirtd
+NetworkManager-dispatcher
+NetworkManager
+power-profiles-daemon
+proton.VPN
+sshd
+systemd-resolved
+systemd-timesyncd
+tailscaled

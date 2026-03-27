@@ -1,0 +1,7 @@
+rclone-gdrive
+swayosd-server
+syncthing
+voxtype
+wireplumber
+xdg-user-dirs
+ydotool

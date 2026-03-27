@@ -1,0 +1,11 @@
+[Unit]
+Description=Enable USB wake from sleep
+After=multi-user.target
+
+[Service]
+Type=oneshot
+ExecStart=/bin/bash -c 'echo XHC2 > /proc/acpi/wakeup'
+RemainAfterExit=yes
+
+[Install]
+WantedBy=multi-user.target
