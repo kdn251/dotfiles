@@ -4,7 +4,6 @@ android-studio
 antigravity-bin
 auto-cpufreq
 bluebubbles-bin
-bluebubbles-bin-debug
 brave-bin
 chatterino2-bin
 cryptomator
@@ -22,7 +21,6 @@ nordvpn-bin
 nordvpn-gui
 opencl-amd
 opencode-bin
-paru
 pinta
 quickjs
 sent
@@ -31,13 +29,11 @@ stripe-cli-bin
 tableplus
 timeshift-autosnap
 twitch-dl-git
-tzupdate
 vesktop
 visual-studio-code-bin
-voxtype
+voxtype-bin
 wayland-boomer-git
 wlrobs
 woomer
 yay
-yay-debug
 zoom
