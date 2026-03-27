@@ -9,7 +9,6 @@ brave-bin
 chatterino2-bin
 cryptomator
 cursor-bin
-davinci-resolve
 downgrade
 geforcenow-electron
 google-chrome
