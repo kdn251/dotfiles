@@ -19,12 +19,13 @@ echo "[$(date)] Starting package list update..." >>"$LOG_FILE"
 # 1. Update package lists
 # -Qen: Native (Pacman) explicitly installed
 # -Qem: Foreign (AUR) explicitly installed
-pacman -Qen | awk '{print $1}' >"$PACMAN_FILE"
+# Filter out 'steam' to prevent installation failures on systems without multilib enabled.
+pacman -Qen | awk '{print $1}' | grep -v "^steam$" >"$PACMAN_FILE"
 pacman -Qem | awk '{print $1}' >"$AUR_FILE"
 
 # 2. Git Operations
 cd "$REPO_DIR" || {
-  echo "Error: Could not enter $REPO_DIR" >>"$LOG_FILE"
+  echo "[$(date)] Error: Could not enter $REPO_DIR" >>"$LOG_FILE"
   exit 1
 }
 
@@ -41,7 +42,7 @@ if [[ -n $(git status --porcelain) ]]; then
     notify-send "Package Backup" "Successfully pushed updated package lists to GitHub."
   else
     echo "[$(date)] ERROR: Git push failed." >>"$LOG_FILE"
-    notify-send -u critical "Package Backup" "Failed to push to GitHub. check $LOG_FILE"
+    notify-send -u critical "Package Backup" "Failed to push to GitHub. Check $LOG_FILE"
   fi
 else
   echo "[$(date)] No changes detected. Skipping push." >>"$LOG_FILE"
