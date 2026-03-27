@@ -130,7 +130,6 @@ sfml
 signal-desktop
 socat
 sof-firmware
-steam
 stow
 streamlink
 sudo
