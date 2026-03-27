@@ -1,0 +1,27 @@
+[Unit]
+Description=Voxtype push-to-talk voice-to-text daemon
+Documentation=man:voxtype(1)
+PartOf=graphical-session.target
+After=graphical-session.target pipewire.service pipewire-pulse.service
+Wants=ydotool.service
+# This ensures it retries if it fails on boot
+StartLimitIntervalSec=0
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/voxtype daemon
+Restart=on-failure
+RestartSec=5
+
+# Note: User must be in 'input' group for evdev access
+# Before enabling this service, run: voxtype setup --download
+
+# GPU Selection (for systems with multiple GPUs):
+# Create ~/.config/systemd/user/voxtype.service.d/gpu.conf with:
+#   [Service]
+#   Environment="VOXTYPE_VULKAN_DEVICE=nvidia"
+# Valid values: nvidia, amd, intel
+# Run: voxtype setup gpu  to see detected GPUs
+
+[Install]
+WantedBy=graphical-session.target

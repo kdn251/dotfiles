@@ -68,7 +68,7 @@ URL="https://www.twitch.tv/$STREAMER_USERNAME"
   echo "TWITCH_TOKEN_FILE=\"$TWITCH_TOKEN_FILE\"" >>/tmp/twitch-stream-context.conf
 
   (
-    pkill chatterino
+    pkillall chatterino
     chatterino --channels "$STREAMER_USERNAME" >/dev/null 2>&1
   ) &
 

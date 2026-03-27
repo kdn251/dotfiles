@@ -40,7 +40,9 @@ profile framework_undocked {
     output "BOE NE135A1M-NY1 Unknown" {
         enable
         # Use the specific mode found in the hyprctl output
-        mode 2880x1920@120.00Hz
+        # mode 2880x1920@120.00Hz
+        # Use lower refresh rate to increase battery life
+        mode 2880x1920@60.00Hz
         position 0,0
         scale 2.0
     }

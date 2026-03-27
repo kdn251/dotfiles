@@ -69,10 +69,12 @@
   animation-duration: 2s;
   animation-timing-function: linear;
   animation-iteration-count: infinite;
+  padding: 0 10px;
 }
 
 #custom-rclone.synced {
   color: #a6e3a1; /* Green for finished */
+  padding: 0 10px;
 }
 
 @keyframes blink {
@@ -146,6 +148,7 @@ window#waybar {
   padding: 0 8px;
   margin: 0 2px;
   border-radius: 0;
+  padding: 0 15px;
 }
 
 #window {
@@ -189,6 +192,7 @@ window#waybar {
 
 #pulseaudio {
   color: #ffffff;
+  padding: 0 15px;
 }
 
 #pulseaudio.muted {

@@ -18,6 +18,7 @@
     "custom/rclone",
     "pulseaudio",
     // "temperature",
+    "bluetooth",
     "battery",
     "network",
     "clock"
@@ -55,6 +56,17 @@
   //   "format": "{icon} {temperatureC}°C",
   //   "format-icons": ["", "", ""]
   // },
+  "bluetooth": {
+    "format": "",         // Only the icon when on but disconnected
+    "format-disabled": "", // Only the icon when off
+    "format-off": "",      // Catch-all for powered-down state
+    "format-connected": " {device_alias}", 
+    "format-connected-battery": " {device_alias} {device_battery_percentage}%",
+    "on-click": "blueman-manager",
+    "tooltip-format": "{controller_alias}\t{controller_address}\n\n{device_enumerate}",
+    "tooltip-format-enumerate-connected": "{device_alias}\t{device_address}",
+    "tooltip-format-enumerate-connected-battery": "{device_alias}\t{device_address}\t{device_battery_percentage}%"
+  },
   "battery": {
     "states": {
       "warning": 30,
@@ -90,7 +102,7 @@
   "custom/recording": {
     "format": "{}",
     "exec": "cat /tmp/recording.txt",
-    "interval": 1,
+    "interval": 5,
     "hide-empty-text": false,
     "tooltip": true, // Explicitly enables tooltips
     "max-length": 30 // Optional: Keeps the bar tidy
@@ -98,7 +110,7 @@
   "custom/miniflux_download": {
     "format": "{}",
     "exec": "cat /tmp/miniflux_download_status.txt",
-    "interval": 1,
+    "interval": 60,
     "hide-empty-text": true,
     "tooltip": true, // Explicitly enables tooltips
     "max-length": 30 // Optional: Keeps the bar tidy
@@ -106,20 +118,20 @@
   "custom/twitch_vod_download": {
     "format": "{}",
     "exec": "cat /tmp/twitch_vod_status.txt",
-    "interval": 2, // Check less frequently than the Miniflux script
+    "interval": 60, // Check less frequently than the Miniflux script
     "hide-empty-text": true,
     "tooltip": true
   },
   "custom/yt-download": {
     "exec": "~/scripts/waybar-yt-download.sh",
     "return-type": "json",
-    "interval": 1,
+    "interval": 60,
     "tooltip": false
   },
   "custom/rclone": {
     "format": "{}",
     "return-type": "json",
-    "interval": 3,
+    "interval": 60,
     "exec": "~/.config/waybar/scripts/rclone_status.sh",
     "on-click": "notify-send 'Rclone Stats' \"$(rclone rc core/stats --rc-no-auth | jq -r '.transferring[] | .name' | head -n 5)\""
   },
