@@ -47,10 +47,14 @@ fi
 # --- 3. Build fuzzel list & Launch ---
 # Direct pipe from awk to fuzzel preserves the \0 and \x1f characters.
 # We use printf in awk to generate the exact byte sequence fuzzel needs.
-CHOICE=$(awk '{printf "%s\0icon\x1f%s\n", $1, $1}' "$USERNAME_LIST" | sort | fuzzel --dmenu \
-  --prompt "󰕃  " \
-  --width 40 \
-  --lines 15)
+CHOICE=$(
+  awk '{printf "%s\0icon\x1f%s\n", $1, $1}' "$USERNAME_LIST" | sort | fuzzel --dmenu \
+    --prompt "󰕃  " \
+    --width 40 \
+    --line-height 25 \
+    --width 35
+  --lines 10
+)
 
 if [ -z "$CHOICE" ]; then
   exit 0

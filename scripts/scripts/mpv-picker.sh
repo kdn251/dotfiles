@@ -94,7 +94,7 @@ CHOICE=$({
     # Build the Fuzzel dmenu row (Label\0icon\x1fPath)
     printf "%s — %s\0icon\x1f%s\n" "${TITLE:0:60}" "${CHAN:-History}" "$ICON"
   done
-} | fuzzel --dmenu --index --prompt "$PROMPT" --width 80 --lines 10)
+} | fuzzel --dmenu --index --prompt "$PROMPT" --width 60 --lines 10 --line-height 45)
 
 # --- Choice Execution ---
 if [[ -n "$CHOICE" ]]; then
