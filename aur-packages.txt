@@ -3,6 +3,7 @@
 android-studio
 antigravity-bin
 auto-cpufreq
+balena-etcher
 bluebubbles-bin
 brave-bin
 chatterino2-bin
@@ -21,6 +22,7 @@ nordvpn-gui
 opencl-amd
 opencode-bin
 pinta
+popsicle-bin
 quickjs
 sent
 slack-desktop
@@ -30,6 +32,7 @@ timeshift-autosnap
 twitch-dl-git
 vesktop
 visual-studio-code-bin
+voxtype-bin
 wayland-boomer-git
 wlrobs
 woomer

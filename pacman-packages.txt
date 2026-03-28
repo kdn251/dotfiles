@@ -112,6 +112,7 @@ pipewire
 pipewire-alsa
 pipewire-jack
 pipewire-pulse
+polkit-gnome
 postgresql
 power-profiles-daemon
 powertop
