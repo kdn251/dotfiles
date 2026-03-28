@@ -35,8 +35,9 @@
 #### helpful notes
 1. if `ly` fails to get enabled run `sudo systemctl enable ly@tty2.service` and then `sudo systemctl set-default graphical.target` and `sudo reboot`
 2. if `yay` failed to successfully installs the `AUR` packages run `yay -S --needed --noconfirm - < ~/dotfiles/aur-packages.txt` manually
-3. probably need to manually install Steam just figure out how to do that with `yay` and the `AUR`
-4. probably need to manually install davinci resolve as well just figure out how to do that with `yay` and the `AUR` (removed it since it manually compiles a massive library qt5-location which slows down setup for new machines massively)
+3. probably need to manually install localsend just figure out how to do that with `yay` and the `AUR`
+4. probably need to manually install Steam just figure out how to do that with `yay` and the `AUR`
+5. probably need to manually install davinci resolve as well just figure out how to do that with `yay` and the `AUR` (removed it since it manually compiles a massive library qt5-location which slows down setup for new machines massively)
 
 #### old/archived notes that may help with debugging but shouldn't be actively used
 1. Run `pacman -Qqm > aur-packages.txt` to update list of AUR installed packages
