@@ -1,28 +1,30 @@
 #!/bin/bash
 # Usage: ./mpv-picker.sh [watch_later|history]
-MODE="${1:-watch_later}"
+MODE="${1:-history}"
 WL_CACHE="$HOME/.cache/yt-watch-later.tsv"
 WATCH_LOG="$HOME/.local/share/mpv-youtube-history.tsv"
 THUMB_CACHE="$HOME/.cache/yt-thumbnails"
-LOCK_FILE="/tmp/yt-wl-fetch.lock"
+PIXMAPS="$HOME/.local/share/pixmaps"
 
-mkdir -p "$THUMB_CACHE"
+# Fallback to a working icon (Bluebubbles or Shroud)
+FALLBACK_ICON="/usr/share/pixmaps/bluebubbles.png"
+[ ! -f "$FALLBACK_ICON" ] && FALLBACK_ICON="$PIXMAPS/shroud.png"
+
+mkdir -p "$THUMB_CACHE" "$PIXMAPS"
 exec >/tmp/mpv-picker.log 2>&1
 
-# --- Background Cache Update ---
+# --- Helpers ---
 update_wl_cache() {
-  # Don't start a second fetch if one is already running
-  if [ -f "$LOCK_FILE" ]; then return; fi
-
+  if [ -f "/tmp/yt-wl-fetch.lock" ]; then return; fi
   (
-    touch "$LOCK_FILE"
+    touch "/tmp/yt-wl-fetch.lock"
     echo "Updating Watch Later cache..."
     yt-dlp --cookies-from-browser firefox \
       --flat-playlist --playlist-end 50 \
       --print "%(title)s	https://www.youtube.com/watch?v=%(id)s	%(uploader)s" \
       "https://www.youtube.com/playlist?list=WL" >"${WL_CACHE}.tmp" 2>/dev/null &&
       mv "${WL_CACHE}.tmp" "$WL_CACHE"
-    rm "$LOCK_FILE"
+    rm "/tmp/yt-wl-fetch.lock"
   ) &
 }
 
@@ -32,77 +34,85 @@ fetch_history() {
     if [[ -f "$HOME/.config/google-chrome/Default/History" ]]; then
       TMP_HIST=$(mktemp)
       cp "$HOME/.config/google-chrome/Default/History" "$TMP_HIST"
-      sqlite3 "$TMP_HIST" "
-            SELECT CAST((last_visit_time / 1000000) - 11644473600 AS INTEGER), title, url
-            FROM urls WHERE url LIKE '%youtube.com/watch%' 
-            ORDER BY last_visit_time DESC LIMIT 50;" -separator $'\t' 2>/dev/null
+      sqlite3 "$TMP_HIST" "SELECT CAST((last_visit_time/1000000)-11644473600 AS INTEGER), title, url FROM urls WHERE url LIKE '%youtube.com/watch%' ORDER BY last_visit_time DESC LIMIT 50;" -separator $'\t' 2>/dev/null
       rm "$TMP_HIST"
     fi
-  } | sort -t$'\t' -k1 -rn | awk -F'\t' '!seen[$3]++' | head -50
+  } | sort -rn | awk -F'\t' '!seen[$3]++' | head -50
 }
 
-# --- Build the List ---
-MENU_BODY=""
-
+# --- Build URL Map ---
+URL_MAP=$(mktemp)
 if [[ "$MODE" == "watch_later" ]]; then
-  PROMPT="Watch Later"
-  SWITCH_LABEL="󰄮 SWITCH TO HISTORY"
-  SWITCH_ACTION="GOTO_HISTORY"
-
-  # Trigger the background update every time, but show cache immediately
+  echo "SWITCH_TO_HISTORY" >"$URL_MAP"
+  [ -f "$WL_CACHE" ] && cut -f2 "$WL_CACHE" >>"$URL_MAP"
+  PROMPT="Watch Later ❯ "
   update_wl_cache
-
-  if [[ -f "$WL_CACHE" ]]; then
-    while IFS=$'\t' read -r title url channel; do
-      VIDEO_ID=$(echo "$url" | grep -oP '(?<=v=)[^&]+')
-      LABEL="${title:0:60} — ${channel}"
-      MENU_BODY+="img:${THUMB_CACHE}/${VIDEO_ID}.jpg:text:${LABEL}\t${url}\n"
-      # Background download thumbs if missing
-      [[ ! -f "${THUMB_CACHE}/${VIDEO_ID}.jpg" ]] && curl -s -L -o "${THUMB_CACHE}/${VIDEO_ID}.jpg" "https://img.youtube.com/vi/${VIDEO_ID}/mqdefault.jpg" &
-    done <"$WL_CACHE"
-  else
-    MENU_BODY="Fetching Watch Later for the first time... Close and re-open in 5s.\tRETRY\n"
-  fi
 else
-  PROMPT="YouTube History"
-  SWITCH_LABEL="󰄮 SWITCH TO WATCH LATER"
-  SWITCH_ACTION="GOTO_WL"
-
-  while IFS=$'\t' read -r ts title url channel; do
-    VIDEO_ID=$(echo "$url" | grep -oP '(?<=v=)[^&]+')
-    LABEL="${title:0:60} (${channel:-History})"
-    MENU_BODY+="img:${THUMB_CACHE}/${VIDEO_ID}.jpg:text:${LABEL}\t${url}\n"
-    [[ ! -f "${THUMB_CACHE}/${VIDEO_ID}.jpg" ]] && curl -s -L -o "${THUMB_CACHE}/${VIDEO_ID}.jpg" "https://img.youtube.com/vi/${VIDEO_ID}/mqdefault.jpg" &
-  done <<<"$(fetch_history)"
+  echo "SWITCH_TO_WL" >"$URL_MAP"
+  fetch_history | cut -f3 >>"$URL_MAP"
+  PROMPT="YouTube History ❯ "
 fi
 
-# --- Assembly: Switch is ALWAYS at index 0 ---
-FINAL_MENU="${SWITCH_LABEL}\t${SWITCH_ACTION}\n${MENU_BODY}"
+# --- The Fuzzel Pipe ---
+CHOICE=$({
+  # Row 0: Switcher with standard system icon
+  printf "󰄮 SWITCH MODE\0icon\x1fview-refresh\n"
 
-# --- Show Picker ---
-CHOICE=$(echo -e "$FINAL_MENU" | awk -F'\t' '{print $1}' |
-  wofi --dmenu --prompt "$PROMPT" --width 900 --lines 15 --allow-images)
+  # Get the data stream
+  DATA=$([[ "$MODE" == "watch_later" ]] && cat "$WL_CACHE" 2>/dev/null || fetch_history)
 
-[[ -z "$CHOICE" ]] && exit 0
+  echo "$DATA" | while IFS=$'\t' read -r c1 c2 c3 c4; do
+    # Column mapping varies by source
+    if [[ "$MODE" == "watch_later" ]]; then
+      URL="$c2"
+      TITLE="$c1"
+      CHAN="$c3"
+    else
+      URL="$c3"
+      TITLE="$c2"
+      CHAN="$c4"
+    fi
 
-# Match the label back to the URL/Action
-FINAL_TARGET=$(echo -e "$FINAL_MENU" | grep -F -m 1 "$CHOICE" | awk -F'\t' '{print $2}')
+    VIDEO_ID=$(echo "$URL" | grep -oP '(?<=v=)[^&]+')
+    JPG_PATH="${THUMB_CACHE}/${VIDEO_ID}.jpg"
+    PNG_PATH="${THUMB_CACHE}/${VIDEO_ID}.png"
 
-case "$FINAL_TARGET" in
-GOTO_HISTORY) exec "$0" history ;;
-GOTO_WL) exec "$0" watch_later ;;
-RETRY)
-  sleep 0.5
-  exec "$0" watch_later
-  ;;
-*)
-  if [[ -n "$FINAL_TARGET" ]]; then
-    notify-send "MPV" "Opening Video..."
-    # Cleanly kill existing mpv instances
+    ICON="$FALLBACK_ICON"
+
+    # Check and convert to PNG (Cairo/Fuzzel preferred format)
+    if [ -f "$PNG_PATH" ]; then
+      ICON="$PNG_PATH"
+    elif [ -f "$JPG_PATH" ]; then
+      # Resize to 256px wide for high-density displays (sharpness)
+      magick "$JPG_PATH" -resize 256x "$PNG_PATH" && ICON="$PNG_PATH"
+    else
+      # Download and convert in background for next run
+      (curl -s -L -o "$JPG_PATH" "https://img.youtube.com/vi/${VIDEO_ID}/mqdefault.jpg" &&
+        magick "$JPG_PATH" -resize 256x "$PNG_PATH") &
+    fi
+
+    # Build the Fuzzel dmenu row (Label\0icon\x1fPath)
+    printf "%s — %s\0icon\x1f%s\n" "${TITLE:0:60}" "${CHAN:-History}" "$ICON"
+  done
+} | fuzzel --dmenu --index --prompt "$PROMPT" --width 80 --lines 10)
+
+# --- Choice Execution ---
+if [[ -n "$CHOICE" ]]; then
+  # Grab the URL from the index map
+  TARGET=$(sed "$((CHOICE + 1))q;d" "$URL_MAP")
+  rm "$URL_MAP"
+
+  if [[ "$TARGET" == "SWITCH_TO_HISTORY" ]]; then
+    exec "$0" history
+  elif [[ "$TARGET" == "SWITCH_TO_WL" ]]; then
+    exec "$0" watch_later
+  else
     pkill -f "mpv --ytdl-raw-options=cookies-from-browser=firefox"
-    mpv --ytdl-raw-options=cookies-from-browser=firefox "$FINAL_TARGET" &>/dev/null &
+    notify-send "MPV" "Opening Video..."
+    mpv --ytdl-raw-options=cookies-from-browser=firefox "$TARGET" &>/dev/null &
     echo $! >/tmp/mpv-yt-pid
     disown
   fi
-  ;;
-esac
+else
+  rm "$URL_MAP"
+fi
