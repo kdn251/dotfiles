@@ -3,16 +3,21 @@
 USERNAME_LIST="$HOME/scripts/twitch_usernames.txt"
 TWITCH_TOKEN_FILE="$HOME/.newsboat/.twitch_oauth"
 IMAGE_CACHE="$HOME/.cache/twitch-profiles"
+PIXMAPS="$HOME/.local/share/pixmaps"
 CLIENT_ID="kimne78kx3ncx6brgo4mv6wki5h1ko"
 MPV_SOCKET="/tmp/mpv-twitch-ipc"
 exec >>/tmp/twitch-stream-debug.log 2>&1
 
-# --- 1. Setup ---
+# --- 1. Setup & Force Icon Sync ---
 if [ ! -f "$USERNAME_LIST" ]; then
-  notify-send "Twitch Error" "Username list not found: $USERNAME_LIST" -t 5000 -u critical
+  notify-send "Twitch Error" "Username list not found" -t 5000 -u critical
   exit 1
 fi
 mkdir -p "$IMAGE_CACHE"
+mkdir -p "$PIXMAPS"
+
+# Ensure all cached images are available in the pixmaps directory
+ln -sf "$IMAGE_CACHE/"*.png "$PIXMAPS/" 2>/dev/null
 
 # --- 2. Fetch profile images in parallel ---
 USERNAMES=$(awk '{print $1}' "$USERNAME_LIST" | sort)
@@ -31,6 +36,7 @@ if [ "$MISSING" -eq 1 ]; then
           "https://gql.twitch.tv/gql" | jq -r '.data.user.profileImageURL')
         if [ -n "$IMG_URL" ] && [ "$IMG_URL" != "null" ]; then
           curl -s --max-time 2 -o "$IMG_PATH" "$IMG_URL"
+          ln -sf "$IMG_PATH" "$PIXMAPS/${user}.png"
         fi
       ) &
     fi
@@ -38,24 +44,20 @@ if [ "$MISSING" -eq 1 ]; then
   wait
 fi
 
-# --- 3. Build wofi list ---
-WOFI_LIST=""
-while IFS= read -r line; do
-  user=$(echo "$line" | awk '{print $1}')
-  IMG_PATH="$IMAGE_CACHE/${user}.png"
-  if [ -f "$IMG_PATH" ]; then
-    WOFI_LIST+="img:${IMG_PATH}:text:${line}\n"
-  else
-    WOFI_LIST+="${line}\n"
-  fi
-done < <(sort "$USERNAME_LIST")
+# --- 3. Build fuzzel list & Launch ---
+# Direct pipe from awk to fuzzel preserves the \0 and \x1f characters.
+# We use printf in awk to generate the exact byte sequence fuzzel needs.
+CHOICE=$(awk '{printf "%s\0icon\x1f%s\n", $1, $1}' "$USERNAME_LIST" | sort | fuzzel --dmenu \
+  --prompt "󰕃  " \
+  --width 40 \
+  --lines 15)
 
-CHOICE=$(echo -e "$WOFI_LIST" | wofi --dmenu --prompt "Select Twitch Streamer" --width 800 --lines 15 --allow-images)
 if [ -z "$CHOICE" ]; then
   exit 0
 fi
 
-STREAMER_USERNAME=$(echo "$CHOICE" | sed 's/.*:text://' | awk '{print $1}')
+# Extract username (fuzzel returns the label part)
+STREAMER_USERNAME=$(echo "$CHOICE" | awk '{print $1}')
 STREAMER="$STREAMER_USERNAME"
 URL="https://www.twitch.tv/$STREAMER_USERNAME"
 
@@ -72,7 +74,7 @@ URL="https://www.twitch.tv/$STREAMER_USERNAME"
     chatterino --channels "$STREAMER_USERNAME" >/dev/null 2>&1
   ) &
 
-  IMG_PATH="$HOME/.cache/twitch-profiles/${STREAMER_USERNAME}.png"
+  IMG_PATH="$PIXMAPS/${STREAMER_USERNAME}.png"
   if [ -f "$IMG_PATH" ]; then
     notify-send -i "$IMG_PATH" "MPV" "Loading $STREAMER stream..." -t 2000 -u low &
   else
@@ -97,22 +99,13 @@ URL="https://www.twitch.tv/$STREAMER_USERNAME"
   pkill mpv
   rm -f "$MPV_SOCKET"
 
-  # --- Fast start: get low quality URL first ---
   LOW_URL=$(streamlink "${SL_COMMON[@]}" --stream-url "$URL" 480p,360p,worst 2>/dev/null)
 
   if [ -z "$LOW_URL" ]; then
-    echo "DEBUG: Fast-start failed, falling back to standard streamlink"
-    streamlink "${SL_COMMON[@]}" \
-      --player mpv
-    # Comment out these lines since I have these configured (or at least I should inside of ~/.config/mpv/mpv.conf)
-    # --player-args "--cache=yes --force-window=immediate --vo=gpu --hwdec=auto --profile=low-latency --demuxer-max-bytes=500KiB --demuxer-readahead-secs=2 --demuxer-lavf-o=fflags=+nobuffer" \
-    "$URL" best,720p,480p
+    streamlink "${SL_COMMON[@]}" --player mpv "$URL" best,720p,480p
     exit $?
   fi
 
-  echo "DEBUG: Got low-quality URL, launching mpv"
-
-  # Start mpv with low quality stream + IPC socket
   mpv \
     --cache=yes \
     --force-window=immediate \
@@ -126,41 +119,17 @@ URL="https://www.twitch.tv/$STREAMER_USERNAME"
     "$LOW_URL" &
   MPV_PID=$!
 
-  # --- Background: resolve best quality and upgrade ---
   (
-    # Wait for mpv socket to be ready first
     for i in $(seq 1 20); do
       [ -S "$MPV_SOCKET" ] && break
       sleep 0.1
     done
-
-    if [ ! -S "$MPV_SOCKET" ]; then
-      echo "DEBUG: MPV socket never appeared, aborting upgrade"
-      exit 1
-    fi
-
-    echo "DEBUG: Resolving best quality stream..."
+    [ ! -S "$MPV_SOCKET" ] && exit 1
     BEST_URL=$(streamlink "${SL_COMMON[@]}" --stream-url "$URL" best,1080p60,1080p,720p60,720p 2>/dev/null)
-
-    echo "DEBUG: BEST_URL result: ${BEST_URL:0:120}..."
-
-    if [ -z "$BEST_URL" ]; then
-      echo "DEBUG: Failed to resolve best quality URL"
-      exit 1
-    fi
-
-    # Use jq to safely construct the JSON command (handles URL special chars)
-    IPC_CMD=$(jq -cn --arg url "$BEST_URL" '{"command": ["loadfile", $url, "replace"]}')
-    echo "DEBUG: Sending IPC command: ${IPC_CMD:0:120}..."
-
-    RESULT=$(echo "$IPC_CMD" | socat - "$MPV_SOCKET" 2>&1)
-    echo "DEBUG: socat result: $RESULT"
-
-    if echo "$RESULT" | grep -q '"error":"success"'; then
-      echo "DEBUG: Quality upgrade successful"
+    if [ -n "$BEST_URL" ]; then
+      IPC_CMD=$(jq -cn --arg url "$BEST_URL" '{"command": ["loadfile", $url, "replace"]}')
+      echo "$IPC_CMD" | socat - "$MPV_SOCKET" >/dev/null 2>&1
       notify-send "MPV" "Quality upgraded ✓" -t 1500 -u low
-    else
-      echo "DEBUG: IPC command may have failed: $RESULT"
     fi
   ) &
 
