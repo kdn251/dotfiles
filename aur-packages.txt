@@ -13,7 +13,6 @@ geforcenow-electron
 google-chrome
 google-messages-bin
 i7z
-localsend
 mpv-uosc
 neofetch
 ngrok

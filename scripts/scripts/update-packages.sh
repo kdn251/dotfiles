@@ -22,8 +22,10 @@ echo "[$(date)] Starting package list update..." >>"$LOG_FILE"
 # Filter out 'steam' to prevent installation failures on systems without multilib enabled.
 pacman -Qen | awk '{print $1}' | grep -v "^steam$" >"$PACMAN_FILE"
 
-# Filter out 'davinci-resolve' to prevent unwanted heavy dependencies like qt5-location.
-pacman -Qem | awk '{print $1}' | grep -v "^davinci-resolve$" >"$AUR_FILE"
+# Filter out 'davinci-resolve' and others to prevent unwanted heavy dependencies like qt5-location.
+pacman -Qem | awk '{print $1}' |
+  grep -vE "^davinci-resolve$|^paru$|-debug$|^tzupdate$|^localsend$" |
+  sed 's/^voxtype$/voxtype-bin/' >"$AUR_FILE"
 
 # 2. Git Operations
 cd "$REPO_DIR" || {
