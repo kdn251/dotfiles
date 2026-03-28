@@ -1,0 +1,10 @@
+aur-packages.txt
+pacman-packages.txt
+services.txt
+user_services.txt
+README.md
+setup.sh
+post_install.sh
+install_system_power.sh
+crontab_knaught
+.git
