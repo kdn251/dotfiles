@@ -38,6 +38,29 @@
 3. probably need to manually install localsend just figure out how to do that with `yay` and the `AUR`
 4. probably need to manually install Steam just figure out how to do that with `yay` and the `AUR`
 5. probably need to manually install davinci resolve as well just figure out how to do that with `yay` and the `AUR` (removed it since it manually compiles a massive library qt5-location which slows down setup for new machines massively)
+6. set up powertop on new machine
+```
+# 1. Install the package
+sudo pacman -S --needed powertop
+
+# 2. Create the service file
+sudo tee /etc/systemd/system/powertop.service <<EOF
+[Unit]
+Description=Powertop tunables autotuner
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/bin/powertop --auto-tune
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
+# 3. Reload, enable, and start
+sudo systemctl daemon-reload
+sudo systemctl enable --now powertop.service
+```
 
 #### old/archived notes that may help with debugging but shouldn't be actively used
 1. Run `pacman -Qqm > aur-packages.txt` to update list of AUR installed packages

@@ -56,17 +56,18 @@
   //   "format": "{icon} {temperatureC}°C",
   //   "format-icons": ["", "", ""]
   // },
-  "bluetooth": {
-    "format": "",         // Only the icon when on but disconnected
-    "format-disabled": "", // Only the icon when off
-    "format-off": "",      // Catch-all for powered-down state
+"bluetooth": {
+    "format": "",
+    "format-disabled": "",
+    "format-off": "",
     "format-connected": " {device_alias}", 
     "format-connected-battery": " {device_alias} {device_battery_percentage}%",
     "on-click": "blueman-manager",
-    "tooltip-format": "{controller_alias}\t{controller_address}\n\n{device_enumerate}",
-    "tooltip-format-enumerate-connected": "{device_alias}\t{device_address}",
-    "tooltip-format-enumerate-connected-battery": "{device_alias}\t{device_address}\t{device_battery_percentage}%"
-  },
+    // These lines control the hover state (tooltip)
+    "tooltip-format": "{controller_alias}\n\n{device_enumerate}",
+    "tooltip-format-enumerate-connected": "{device_alias}",
+    "tooltip-format-enumerate-connected-battery": "{device_alias} ({device_battery_percentage}%)"
+},
   "battery": {
     "states": {
       "warning": 30,
@@ -79,14 +80,14 @@
     "format-alt": "{time} {icon}",
     "format-icons": ["", "", "", "", ""]
   },
-  "network": {
-    // "format-wifi": "WIFI {signalStrength}%",
-    "format-wifi": "  {signalStrength}%",
+"network": {
+    "format-wifi": "",
     "format-ethernet": "ETH",
     "format-disconnected": "OFFLINE",
     "on-click": "kitty --class networkmanager-float nmtui",
-    "tooltip-format": "{ifname}: {ipaddr}"
-  },
+    "tooltip-format": "{ifname}: {ipaddr}",
+    "tooltip-format-wifi": "SSID: {essid}\nStrength: {signalStrength}%" // Add this line
+},
   "custom/voxtype": {
     "exec": "voxtype status --follow --format json",
     "return-type": "json",
