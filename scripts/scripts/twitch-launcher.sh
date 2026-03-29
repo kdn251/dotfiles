@@ -4,6 +4,7 @@ USERNAME_LIST="$HOME/scripts/twitch_usernames.txt"
 TWITCH_TOKEN_FILE="$HOME/.newsboat/.twitch_oauth"
 IMAGE_CACHE="$HOME/.cache/twitch-profiles"
 PIXMAPS="$HOME/.local/share/pixmaps"
+STATS_FILE="$HOME/.cache/twitch_stats.txt"
 CLIENT_ID="kimne78kx3ncx6brgo4mv6wki5h1ko"
 MPV_SOCKET="/tmp/mpv-twitch-ipc"
 exec >>/tmp/twitch-stream-debug.log 2>&1
@@ -15,6 +16,7 @@ if [ ! -f "$USERNAME_LIST" ]; then
 fi
 mkdir -p "$IMAGE_CACHE"
 mkdir -p "$PIXMAPS"
+touch "$STATS_FILE"
 
 # Ensure all cached images are available in the pixmaps directory
 ln -sf "$IMAGE_CACHE/"*.png "$PIXMAPS/" 2>/dev/null
@@ -44,29 +46,67 @@ if [ "$MISSING" -eq 1 ]; then
   wait
 fi
 
-# --- 3. Build fuzzel list & Launch ---
-# Direct pipe from awk to fuzzel preserves the \0 and \x1f characters.
-# We use printf in awk to generate the exact byte sequence fuzzel needs.
-# $0 is the whole line (Username (Category))
-# $1 is just the first word (Username) for the icon path
+# --- 3. Build prioritized fuzzel list ---
+# Logic: Merge counts with usernames, sort by count (desc), then format for fuzzel
 CHOICE=$(
-  awk '{printf "%s\0icon\x1f%s\n", $0, $1}' "$USERNAME_LIST" | sort | fuzzel --dmenu \
-    --prompt "󰕃  " \
-    --line-height 35 \
-    --width 45 \
-    --lines 10
+  awk -v stats="$STATS_FILE" '
+    BEGIN {
+      # Load watch counts into memory
+      while ((getline < stats) > 0) {
+        count[$1] = $2
+      }
+    }
+    {
+      user_id = $1
+      c = (count[user_id] ? count[user_id] : 0)
+      # Prepend count and a pipe for sorting, but keep the icon metadata intact
+      printf "%05d|%s\0icon\x1f%s\n", c, $0, user_id
+    }' "$USERNAME_LIST" |
+    sort -rn |
+    awk -F'|' '
+      # First 5 lines go straight out (stripped of the count)
+      NR <= 5 { sub(/^[0-9]+\|/, ""); print; next }
+      # Everything else gets buffered for a second sort
+      { others[NR] = $0 }
+      END {
+        # Sort the remaining streamers A-Z by name (the part after the count|)
+        for (i in others) print others[i] | "sort -t\"|\" -k2 | sed \"s/^[0-9]*|//\""
+      }' |
+    fuzzel --dmenu \
+      --prompt "󰕃  " \
+      --line-height 35 \
+      --width 45 \
+      --lines 10
 )
 
 if [ -z "$CHOICE" ]; then
   exit 0
 fi
 
-# Extract just the username (first word) to build the URL and launch apps
+if [ -n "$CHOICE" ]; then
+  awk -v user="$STREAMER_USERNAME" '
+    BEGIN { found=0 }
+    $1 == user { $2=$2+1; found=1 }
+    { print $1, $2 }
+    END { if (!found) print user, 1 }
+  ' "$STATS_FILE" >"${STATS_FILE}.tmp" && mv "${STATS_FILE}.tmp" "$STATS_FILE"
+fi
+
+# Extract just the username
 STREAMER_USERNAME=$(echo "$CHOICE" | awk '{print $1}')
 STREAMER="$STREAMER_USERNAME"
 URL="https://www.twitch.tv/$STREAMER_USERNAME"
 
-# --- 4. Stream Execution ---
+# --- 4. Update Stats ---
+# Increments the count for the selected streamer in the stats file
+awk -v user="$STREAMER_USERNAME" '
+  BEGIN { found=0 }
+  $1 == user { $2=$2+1; found=1 }
+  { print $1, $2 }
+  END { if (!found) print user, 1 }
+' "$STATS_FILE" >"${STATS_FILE}.tmp" && mv "${STATS_FILE}.tmp" "$STATS_FILE"
+
+# --- 5. Stream Execution ---
 (
   echo "========== DEBUG =========="
   echo "URL: $URL | Streamer: $STREAMER | $(date)"
