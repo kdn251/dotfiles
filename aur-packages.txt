@@ -33,6 +33,7 @@ twitch-dl-git
 vesktop
 visual-studio-code-bin
 voxtype-bin
+walker-bin
 wayland-boomer-git
 wlrobs
 woomer
