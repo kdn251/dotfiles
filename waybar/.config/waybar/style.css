@@ -63,6 +63,10 @@
   color: #f38ba8;
 }
 
+#custom-rclone {
+  padding: 0 10px 0 0;
+}
+
 #custom-rclone.syncing {
   color: #f9e2af; /* Yellow for active sync */
   animation-name: blink;
@@ -187,6 +191,10 @@ window#waybar {
 
 #network.disconnected {
   color: #666666;
+}
+
+#bluetooth {
+  padding: 0 10px 0 0;
 }
 
 #pulseaudio {

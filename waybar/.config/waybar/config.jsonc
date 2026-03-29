@@ -16,7 +16,7 @@
     "custom/yt-download",
     "custom/voxtype",
     "custom/rclone",
-    "pulseaudio",
+    // "pulseaudio",
     // "temperature",
     "bluetooth",
     "battery",
@@ -60,8 +60,8 @@
     "format": "",
     "format-disabled": "",
     "format-off": "",
-    "format-connected": " {device_alias}", 
-    "format-connected-battery": " {device_alias} {device_battery_percentage}%",
+    "format-connected": "", 
+    "format-connected-battery": "",
     "on-click": "blueman-manager",
     // These lines control the hover state (tooltip)
     "tooltip-format": "{controller_alias}\n\n{device_enumerate}",
@@ -73,10 +73,10 @@
       "warning": 30,
       "critical": 15
     },
-    "format": "{icon}  {capacity}%",
-    "format-full": "{icon}  {capacity}%",
+    "format": "{icon} {capacity}%",
+    "format-full": "{icon} {capacity}%",
     "format-charging": "󰂄 {capacity}%",
-    "format-plugged": "  {capacity}%",
+    "format-plugged": " {capacity}%",
     "format-alt": "{time} {icon}",
     "format-icons": ["", "", "", "", ""]
   },
