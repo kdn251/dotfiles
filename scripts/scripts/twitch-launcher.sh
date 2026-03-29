@@ -47,20 +47,21 @@ fi
 # --- 3. Build fuzzel list & Launch ---
 # Direct pipe from awk to fuzzel preserves the \0 and \x1f characters.
 # We use printf in awk to generate the exact byte sequence fuzzel needs.
+# $0 is the whole line (Username (Category))
+# $1 is just the first word (Username) for the icon path
 CHOICE=$(
-  awk '{printf "%s\0icon\x1f%s\n", $1, $1}' "$USERNAME_LIST" | sort | fuzzel --dmenu \
+  awk '{printf "%s\0icon\x1f%s\n", $0, $1}' "$USERNAME_LIST" | sort | fuzzel --dmenu \
     --prompt "󰕃  " \
-    --width 40 \
-    --line-height 25 \
-    --width 35
-  --lines 10
+    --line-height 35 \
+    --width 45 \
+    --lines 10
 )
 
 if [ -z "$CHOICE" ]; then
   exit 0
 fi
 
-# Extract username (fuzzel returns the label part)
+# Extract just the username (first word) to build the URL and launch apps
 STREAMER_USERNAME=$(echo "$CHOICE" | awk '{print $1}')
 STREAMER="$STREAMER_USERNAME"
 URL="https://www.twitch.tv/$STREAMER_USERNAME"
