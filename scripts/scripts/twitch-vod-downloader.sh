@@ -87,8 +87,8 @@ download_vods() {
   DURATION=$(yt-dlp --get-duration "$VOD_URL" 2>/dev/null || echo "Unknown Duration")
   NOTIFY_ID=$(($(echo "$VOD_ID" | cksum | cut -f1 -d' ') % 2147483647))
 
-  notify-send -r $NOTIFY_ID "📥 Downloading" "$VOD_TITLE [$DURATION]" -t 2000 -u normal
-  write_status "⬇️ $streamer (0MB)" "$VOD_TITLE [$DURATION]"
+  notify-send -r $NOTIFY_ID "  Downloading" "$VOD_TITLE [$DURATION]" -t 2000 -u normal
+  write_status "  $streamer (0MB)" "$VOD_TITLE [$DURATION]"
 
   OUTPUT_PATH="$TWITCH_VOD_DIR/%(title)s-${VOD_ID}.mp4"
 
@@ -123,9 +123,9 @@ download_vods() {
       SIZE_MB=$(awk "BEGIN {printf \"%.0f\", $CURRENT_SIZE / 1024 / 1024}")
       if [ "$SIZE_MB" -gt 1000 ]; then
         SIZE_GB=$(awk "BEGIN {printf \"%.1f\", $CURRENT_SIZE / 1024 / 1024 / 1024}")
-        write_status "⬇️ $streamer (${SIZE_GB}GB)" "$VOD_TITLE [$DURATION]"
+        write_status "  $streamer (${SIZE_GB}GB)" "$VOD_TITLE [$DURATION]"
       else
-        write_status "⬇️ $streamer (${SIZE_MB}MB)" "$VOD_TITLE [$DURATION]"
+        write_status "  $streamer (${SIZE_MB}MB)" "$VOD_TITLE [$DURATION]"
       fi
     else
       FILENAME=$(find "$TWITCH_VOD_DIR" -type f -name "*${VOD_ID}*" 2>/dev/null | head -n 1)
@@ -149,11 +149,11 @@ download_vods() {
     echo "${streamer}:${VOD_ID}" >>"${ARCHIVE_FILE}.tmp"
     mv "${ARCHIVE_FILE}.tmp" "$ARCHIVE_FILE"
 
-    write_status "✅ $streamer" "$VOD_TITLE (Download Complete)"
+    write_status "  $streamer" "$VOD_TITLE (Download Complete)"
     sleep 5
     notify-send -r $NOTIFY_ID "✓ Download Complete" "$VOD_TITLE" -t 5000 -u normal
   else
-    write_status "❌ $streamer" "$VOD_TITLE (Download Failed)"
+    write_status "  $streamer" "$VOD_TITLE (Download Failed)"
     sleep 5
     notify-send -r $NOTIFY_ID "✗ Download Failed" "$VOD_TITLE" -t 5000 -u critical
   fi
@@ -166,7 +166,7 @@ download_vods() {
 mkdir -p "$TWITCH_VOD_DIR"
 touch "$ARCHIVE_FILE"
 
-write_status "⬇️ Twitch" "Starting VOD check for ${#STREAMERS[@]} streamers."
+write_status "  Twitch" "Starting VOD check for ${#STREAMERS[@]} streamers."
 
 for STREAMER in "${STREAMERS[@]}"; do
   echo "Checking for new VODs from $STREAMER..."
