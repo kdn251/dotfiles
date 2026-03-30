@@ -40,8 +40,6 @@ node() { nvm >/dev/null; node "$@" }
 npm() { nvm >/dev/null; npm "$@" }
 
 # --- 4. ALIASES & FUNCTIONS ---
-alias ls='eza --icons' # Use eza since we're optimizing
-alias grep='rg'        # Use ripgrep
 alias vim="nvim"
 alias wifi="nmtui"
 alias newsboat='newsboat && ~/scripts/update-live-list.sh &'
