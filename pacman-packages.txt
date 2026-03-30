@@ -36,9 +36,11 @@ firefox
 firewalld
 flameshot
 flatpak
+foot
 fprintd
 fuzzel
 fwupd
+ghostty
 gimp
 git
 gnome-keyring
@@ -78,6 +80,7 @@ kdenlive
 keyd
 kitty
 kolourpaint
+lf
 libfprint
 libreoffice-still
 libva-utils
@@ -87,6 +90,7 @@ linux
 linux-firmware
 linux-headers
 ly
+mako
 man-db
 man-pages
 modemmanager
@@ -138,11 +142,13 @@ streamlink
 sudo
 sushi
 swappy
+swaybg
 swayosd
 syncthing
 tailscale
 tealdeer
 telegram-desktop
+thunar
 tidy
 timeshift
 tlp

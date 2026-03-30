@@ -7,13 +7,16 @@ balena-etcher
 bluebubbles-bin
 brave-bin
 chatterino2-bin
+chatty-twitch
 cryptomator
+ctpv-git
 cursor-bin
 downgrade
 geforcenow-electron
 google-chrome
 google-messages-bin
 i7z
+librewolf-bin
 mpv-uosc
 neofetch
 ngrok
@@ -38,4 +41,5 @@ wayland-boomer-git
 wlrobs
 woomer
 yay
+zen-browser-bin
 zoom
