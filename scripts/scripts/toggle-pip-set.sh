@@ -1,43 +1,48 @@
 #!/bin/bash
-# Script to reliably toggle the 'pin' state for all floating MPV windows.
+# Script to reliably toggle the 'pin' state for MPV, Vesktop, and Brave PiP.
+
 # --- Configuration ---
 LOG_FILE="/tmp/hypr_pip_toggle.log"
 MPV_CLASS="mpv"
 VESKTOP_CLASS="vesktop"
-# --- Logging setup (Clear log before running) ---
+BRAVE_CLASS="brave-browser"
+
+# --- Logging setup ---
 echo "--- $(date) ---" >"$LOG_FILE"
-echo "Starting PiP Toggle Script (Pin MPV and Vesktop windows)." >>"$LOG_FILE"
+echo "Starting PiP Toggle Script." >>"$LOG_FILE"
+
 # Ensure jq is installed
 if ! command -v jq &>/dev/null; then
-  echo "ERROR: jq is not installed. Please install jq to use this script." >>"$LOG_FILE"
+  echo "ERROR: jq is not installed." >>"$LOG_FILE"
   exit 1
 fi
-# Function to toggle the 'pin' state for a single window via its unique address
+
+# Function to toggle 'pin' via address
 toggle_pin_address() {
   local ADDRESS=$1
-  local CLASS=$2
+  local LABEL=$2
   hyprctl dispatch pin address:"$ADDRESS"
-  echo "DISPATCH: Toggled pin state for $CLASS via address $ADDRESS" >>"$LOG_FILE"
+  echo "DISPATCH: Toggled pin for $LABEL at $ADDRESS" >>"$LOG_FILE"
 }
-# Toggle all floating MPV windows
-MPV_ADDRESSES=$(hyprctl clients -j | jq -r ".[] | select(.class == \"$MPV_CLASS\" and .floating == true) | .address")
 
-if [ -z "$MPV_ADDRESSES" ]; then
-  echo "STATUS: No floating MPV window found." >>"$LOG_FILE"
+# 1. Handle MPV & Vesktop (Standard Classes)
+# We also filter out any "special" workspaces (like -98) to avoid zombie windows
+STANDARD_ADDRESSES=$(hyprctl clients -j | jq -r ".[] | select((.class == \"$MPV_CLASS\" or .class == \"$VESKTOP_CLASS\") and .floating == true and .workspace.id > 0) | .address")
+
+for addr in $STANDARD_ADDRESSES; do
+  toggle_pin_address "$addr" "Standard-App"
+done
+
+# 2. Handle Brave Picture-in-Picture
+# Based on your logs, Brave PiP has an EMPTY class and specific title: "Picture in picture"
+BRAVE_PIP_ADDRESSES=$(hyprctl clients -j | jq -r ".[] | select(.title == \"Picture in picture\" and .floating == true) | .address")
+
+if [ -z "$BRAVE_PIP_ADDRESSES" ]; then
+  echo "STATUS: No Brave PiP window found." >>"$LOG_FILE"
 else
-  echo "Toggling pin state for MPV:" >>"$LOG_FILE"
-  while IFS= read -r addr; do
-    toggle_pin_address "$addr" "$MPV_CLASS"
-  done <<<"$MPV_ADDRESSES"
+  for addr in $BRAVE_PIP_ADDRESSES; do
+    toggle_pin_address "$addr" "Brave-PiP"
+  done
 fi
 
-# Toggle Vesktop
-VESKTOP_ADDRESS=$(hyprctl clients -j | jq -r ".[] | select(.class == \"$VESKTOP_CLASS\" and .floating == true) | .address" | head -n 1)
-
-if [ -z "$VESKTOP_ADDRESS" ]; then
-  echo "STATUS: No floating Vesktop window found." >>"$LOG_FILE"
-else
-  echo "Toggling pin state for Vesktop:" >>"$LOG_FILE"
-  toggle_pin_address "$VESKTOP_ADDRESS" "$VESKTOP_CLASS"
-fi
 echo "Script finished." >>"$LOG_FILE"

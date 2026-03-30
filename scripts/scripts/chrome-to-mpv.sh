@@ -5,7 +5,7 @@ exec >>/tmp/chrome-to-mpv.log 2>&1
 
 ACTIVE_CLASS=$(hyprctl activewindow -j | jq -r '.class')
 
-if [[ "$ACTIVE_CLASS" == "google-chrome" ]]; then
+if [[ "$ACTIVE_CLASS" == "google-chrome" || "$ACTIVE_CLASS" == "brave-browser" ]]; then
   # 1. Prepare
   wl-copy --clear
   sleep 0.2 # Give the hotkey time to "release"
