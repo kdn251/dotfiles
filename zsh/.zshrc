@@ -45,6 +45,7 @@ alias wifi="nmtui"
 alias newsboat='newsboat && ~/scripts/update-live-list.sh &'
 alias gstart='systemctl --user start rclone-gdrive.service'
 alias gstop='systemctl --user stop rclone-gdrive.service'
+alias claude="claude --dangerously-skip-permissions"
 
 # Fast Git Branch check (no subshells/sed for speed)
 parse_git_branch() {
@@ -72,3 +73,4 @@ autoload -U select-word-style && select-word-style bash
 
 # Dart completion
 [[ -f /home/knaught/.dart-cli-completion/zsh-config.zsh ]] && . /home/knaught/.dart-cli-completion/zsh-config.zsh
+export PATH="$HOME/.local/bin:$PATH"

@@ -60,6 +60,7 @@ if [[ "$URL" =~ twitch\.tv ]]; then
   # Check if it's a VOD (contains /videos/ in URL)
   if [[ "$URL" =~ /videos/ ]]; then
     exec mpv \
+      --save-position-on-quit \
       --ytdl-format='bestvideo[height<=?1080][ext=mp4]+bestaudio[ext=m4a]/best[height<=?1080][ext=mp4]/best[height<=?1080]' \
       --cache=yes \
       --demuxer-lavf-o=live_start_index=0 \
@@ -96,13 +97,16 @@ if [[ "$URL" =~ twitch\.tv ]]; then
 else
   # YouTube and other videos
   notify-send "MPV" "Streaming video..." -t 3000 -u low &
+  # Optimization:
+  # 1. We remove the 0.5s readahead (let it buffer 10-30s for smooth seeking).
+  # 2. We use --ytdl-raw-options to favor fast-starting streams.
   exec mpv \
-    --ytdl-format='bestvideo[height<=?1080][ext=mp4]+bestaudio[ext=m4a]/best[height<=?1080][ext=mp4]/best[height<=?1080]' \
+    --save-position-on-quit \
+    --ytdl-format="bestvideo[height<=?1080]+bestaudio/best[height<=?1080]/best" \
     --cache=yes \
-    --cache-secs=0.5 \
-    --demuxer-readahead-secs=0.5 \
-    --demuxer-max-bytes=25M \
-    --demuxer-max-back-bytes=10M \
+    --demuxer-max-bytes=128M \
+    --demuxer-readahead-secs=20 \
     --force-window=immediate \
+    --hwdec=auto \
     "$URL" >/dev/null 2>&1 &
 fi

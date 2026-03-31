@@ -32,7 +32,7 @@ macro R set browser "~/scripts/update-downloaded-query.sh" ; open-in-browser ; s
 
 # Stream YouTube video
 # macro v set browser "setsid -f mpv-yt %u" ; open-in-browser ; set browser "google-chrome-stable %u"
-macro v set browser "setsid -f ~/scripts/mpv-yt %u" ; open-in-browser ; set browser "google-chrome-stable %u"
+macro v set browser "setsid -f ~/scripts/mpv-yt %u" ; open-in-browser ; set browser "brave %u"
 
 # macro r set browser "w3m %u" ; open-in-browser ; set browser "google-chrome-stable %u"
 macro r set browser "w3m -o display_image=1 %u" ; open-in-browser ; toggle-article-read ; set browser "google-chrome-stable %u"
@@ -90,4 +90,6 @@ ignore-article "*" "tags =~ \"LIVE\""
 
 # highlight feedlist "---.*---" cyan default bold
 # highlight feedlist ".*0/0.." default default invis
+
+user-agent "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
 
