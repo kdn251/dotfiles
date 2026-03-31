@@ -82,7 +82,7 @@
   },
 "network": {
     "format-wifi": "",
-    "format-ethernet": "ETH",
+    "format-ethernet": "󰈁",
     "format-disconnected": "OFFLINE",
     "on-click": "kitty --class networkmanager-float nmtui",
     "tooltip-format": "{ifname}: {ipaddr}",
