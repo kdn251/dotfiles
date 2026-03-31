@@ -1,6 +1,5 @@
 1password
 8bitdo-ultimate-controller-udev
-android-studio
 antigravity-bin
 auto-cpufreq
 balena-etcher

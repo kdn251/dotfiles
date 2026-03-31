@@ -98,6 +98,7 @@ mpv-mpris
 mtools
 mtr
 nautilus
+ncdu
 neovim
 nethogs
 network-manager-applet
