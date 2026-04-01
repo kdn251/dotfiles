@@ -189,6 +189,10 @@ window#waybar {
   padding: 0 10px 0 0;
 }
 
+#custom-blanket {
+  padding: 0 10px 0 0;
+}
+
 #network.disconnected {
   color: #666666;
 }
