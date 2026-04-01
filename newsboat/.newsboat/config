@@ -3,7 +3,11 @@ urls-source "miniflux"
 include "~/.newsboat/miniflux_creds.conf"
 
 # Uncomment to start newsboat on tags page
-# run-on-startup select-tag
+# these 3 lines create a loop so newsboat opens to the tags page 
+# and "q" returns you back to tags page (instead of default home page)
+run-on-startup select-tag
+bind-key q select-tag feedlist
+bind-key q quit tagselection
 
 miniflux-show-special-feeds yes
 
