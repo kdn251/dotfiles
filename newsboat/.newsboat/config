@@ -2,6 +2,9 @@ urls-source "miniflux"
 # Pulling in this file to get credentials for connecting to miniflux
 include "~/.newsboat/miniflux_creds.conf"
 
+# Uncomment to start newsboat on tags page
+# run-on-startup select-tag
+
 miniflux-show-special-feeds yes
 
 articlelist-format "%4i %f %D %?T?| %-17T| ?%t"
