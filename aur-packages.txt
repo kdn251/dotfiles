@@ -16,6 +16,7 @@ google-chrome
 google-messages-bin
 i7z
 librewolf-bin
+mpv-memo-git
 mpv-uosc
 neofetch
 ngrok
