@@ -1,48 +1,38 @@
 #!/bin/bash
-# Script to reliably toggle the 'pin' state for MPV, Vesktop, and Brave PiP.
+# Refactored for speed and to prevent IPC deadlocks
 
-# --- Configuration ---
 LOG_FILE="/tmp/hypr_pip_toggle.log"
-MPV_CLASS="mpv"
-VESKTOP_CLASS="vesktop"
-BRAVE_CLASS="brave-browser"
+exec >>"$LOG_FILE" 2>&1
 
-# --- Logging setup ---
-echo "--- $(date) ---" >"$LOG_FILE"
-echo "Starting PiP Toggle Script." >>"$LOG_FILE"
+echo "--- $(date) ---"
 
-# Ensure jq is installed
-if ! command -v jq &>/dev/null; then
-  echo "ERROR: jq is not installed." >>"$LOG_FILE"
-  exit 1
+# 1. Get all client data in ONE call and parse addresses in one go
+# We combine the logic for MPV, Vesktop, and Brave PiP into a single jq filter
+TARGET_ADDRESSES=$(hyprctl clients -j | jq -r '
+  .[] | 
+  select(
+    (.floating == true) and 
+    (
+      (.class == "mpv" or .class == "vesktop") or 
+      (.title == "Picture in picture" and .class == "brave-browser")
+    )
+  ) | .address')
+
+if [ -z "$TARGET_ADDRESSES" ]; then
+  echo "STATUS: No matching PiP windows found."
+  exit 0
 fi
 
-# Function to toggle 'pin' via address
-toggle_pin_address() {
-  local ADDRESS=$1
-  local LABEL=$2
-  hyprctl dispatch pin address:"$ADDRESS"
-  echo "DISPATCH: Toggled pin for $LABEL at $ADDRESS" >>"$LOG_FILE"
-}
-
-# 1. Handle MPV & Vesktop (Standard Classes)
-# We also filter out any "special" workspaces (like -98) to avoid zombie windows
-STANDARD_ADDRESSES=$(hyprctl clients -j | jq -r ".[] | select((.class == \"$MPV_CLASS\" or .class == \"$VESKTOP_CLASS\") and .floating == true and .workspace.id > 0) | .address")
-
-for addr in $STANDARD_ADDRESSES; do
-  toggle_pin_address "$addr" "Standard-App"
+# 2. Batch the dispatch commands
+# Instead of calling hyprctl in a loop (which causes the lag),
+# we build a single string and send it once.
+BATCH_CMD=""
+for addr in $TARGET_ADDRESSES; do
+  BATCH_CMD+="dispatch pin address:$addr; "
 done
 
-# 2. Handle Brave Picture-in-Picture
-# Based on your logs, Brave PiP has an EMPTY class and specific title: "Picture in picture"
-BRAVE_PIP_ADDRESSES=$(hyprctl clients -j | jq -r ".[] | select(.title == \"Picture in picture\" and .floating == true) | .address")
+# 3. Execute everything in a single socket write
+hyprctl --batch "$BATCH_CMD"
 
-if [ -z "$BRAVE_PIP_ADDRESSES" ]; then
-  echo "STATUS: No Brave PiP window found." >>"$LOG_FILE"
-else
-  for addr in $BRAVE_PIP_ADDRESSES; do
-    toggle_pin_address "$addr" "Brave-PiP"
-  done
-fi
-
-echo "Script finished." >>"$LOG_FILE"
+echo "DISPATCH: Sent batch pin toggle for: $TARGET_ADDRESSES"
+echo "Script finished."
