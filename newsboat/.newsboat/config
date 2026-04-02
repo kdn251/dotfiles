@@ -19,7 +19,7 @@ browser "google-chrome-stable %u"
 
 # Download video (,d)
 # macro d set browser "~/scripts/download-video.sh %u &" ; open-in-browser ; set browser "~/scripts/mpv-yt %u"
-macro d set browser "~/scripts/download-video.sh %u %T &" ; open-in-browser ; set browser "~/scripts/mpv-yt %u"
+macro d set browser "~/scripts/newsboat-download-video.sh %u %T &" ; open-in-browser ; set browser "~/scripts/mpv-yt %u"
 macro c set browser "~/scripts/cancel-download.sh %u" ; open-in-browser ; set browser "~/scripts/mpv-yt %u"
 
 # Delete downloaded video (,D)

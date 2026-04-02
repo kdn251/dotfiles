@@ -3,26 +3,26 @@
 VIDEO_DIR="$HOME/Videos/newsboat"
 URL="$1"
 
-# Extract video ID from URL
-VIDEO_ID=$(echo "$URL" | grep -oP '[a-zA-Z0-9_-]{11}' | head -n 1)
+# 1. Extract the ID
+VIDEO_ID=$(echo "$URL" | grep -oP '(\d{9,12}|[a-zA-Z0-9_-]{11})' | head -n 1)
 
 if [ -n "$VIDEO_ID" ]; then
-  # Find files
-  DELETED_FILES=$(find "$VIDEO_DIR" -type f -name "*${VIDEO_ID}*" 2>/dev/null)
+  # 2. Search for the ID inside brackets [ID]
+  # This is the 'anchor' we just added to the downloader
+  DELETED_FILES=$(find "$VIDEO_DIR" -type f -name "*[${VIDEO_ID}]*" 2>/dev/null)
 
   if [ -n "$DELETED_FILES" ]; then
-    # Delete each file
-    echo "$DELETED_FILES" | while read file; do
+    echo "$DELETED_FILES" | while read -r file; do
       rm -f "$file"
     done
+    notify-send "🗑️ Video Deleted" "Removed: $VIDEO_ID" -t 3000
 
-    notify-send "Deleted Video" "Removed from downloads" -t 3000
-
-    # Update the downloaded query
-    ~/scripts/update-downloaded-query.sh
+    # Cleanup Twitch archive & Newsboat query
+    sed -i "/$VIDEO_ID/d" "$VIDEO_DIR/.downloaded-twitch-vods" 2>/dev/null
+    ~/scripts/update-downloaded-query.sh 2>/dev/null
   else
-    notify-send "Not Downloaded" "Video not found locally" -t 3000
+    notify-send "Not Found" "No file found with ID [${VIDEO_ID}]" -t 3000 -u low
   fi
 else
-  notify-send "Error" "Could not extract video ID" -t 3000
+  notify-send "Error" "Could not extract ID from URL" -t 3000 -u critical
 fi
