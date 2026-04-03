@@ -12,10 +12,12 @@ ctpv-git
 cursor-bin
 downgrade
 geforcenow-electron
+gnome-network-displays
 google-chrome
 google-messages-bin
 i7z
 librewolf-bin
+miraclecast-git
 mpv-memo-git
 mpv-uosc
 neofetch
