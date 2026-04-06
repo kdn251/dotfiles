@@ -25,20 +25,34 @@ ln -sf "$IMAGE_CACHE/"*.png "$PIXMAPS/" 2>/dev/null
 USERNAMES=$(awk '{print $1}' "$USERNAME_LIST" | sort)
 MISSING=0
 for user in $USERNAMES; do
-  [ ! -f "$IMAGE_CACHE/${user}.png" ] && MISSING=1 && break
+  LOWER_USER=$(echo "$user" | tr '[:upper:]' '[:lower:]')
+  [ ! -f "$IMAGE_CACHE/${LOWER_USER}.png" ] && MISSING=1 && break
 done
 
 if [ "$MISSING" -eq 1 ]; then
   for user in $USERNAMES; do
-    IMG_PATH="$IMAGE_CACHE/${user}.png"
+    LOWER_USER=$(echo "$user" | tr '[:upper:]' '[:lower:]')
+    IMG_PATH="$IMAGE_CACHE/${LOWER_USER}.png"
     if [ ! -f "$IMG_PATH" ]; then
       (
-        IMG_URL=$(curl -s --max-time 2 -H "Client-Id: $CLIENT_ID" \
-          -X POST -d "{\"query\":\"query{user(login:\\\"${user}\\\"){profileImageURL(width:70)}}\"}" \
+        IMG_URL=$(curl -s --max-time 3 -H "Client-Id: $CLIENT_ID" \
+          -X POST -d "{\"query\":\"query{user(login:\\\"${LOWER_USER}\\\"){profileImageURL(width:70)}}\"}" \
           "https://gql.twitch.tv/gql" | jq -r '.data.user.profileImageURL')
+
         if [ -n "$IMG_URL" ] && [ "$IMG_URL" != "null" ]; then
-          curl -s --max-time 2 -o "$IMG_PATH" "$IMG_URL"
-          ln -sf "$IMG_PATH" "$PIXMAPS/${user}.png"
+          # 1. Download to a temporary location
+          TEMP_IMG="/tmp/${LOWER_USER}_raw"
+          curl -s --max-time 3 -o "$TEMP_IMG" "$IMG_URL"
+
+          # 2. Force conversion to a standard PNG format for Fuzzel
+          # This ensures that even if Twitch sends WebP, it becomes a real PNG
+          ffmpeg -y -i "$TEMP_IMG" -vframes 1 "$IMG_PATH" >/dev/null 2>&1
+
+          # 3. Link it to pixmaps
+          ln -sf "$IMG_PATH" "$PIXMAPS/${LOWER_USER}.png"
+
+          # 4. Cleanup
+          rm -f "$TEMP_IMG"
         fi
       ) &
     fi
@@ -49,29 +63,30 @@ fi
 # --- 3. Build prioritized fuzzel list ---
 # Logic: Merge counts with usernames, sort by count (desc), then format for fuzzel
 CHOICE=$(
-  awk -v stats="$STATS_FILE" '
+  awk -v stats="$STATS_FILE" -v p="$PIXMAPS" '
     BEGIN {
-      # Load watch counts into memory
       while ((getline < stats) > 0) {
         count[$1] = $2
       }
     }
     {
       user_id = $1
+      gsub(/[[:space:]\r]+$/, "", user_id)
+      lower_id = tolower(user_id)
       c = (count[user_id] ? count[user_id] : 0)
-      # Prepend count and a pipe for sorting, but keep the icon metadata intact
-      printf "%05d|%s\0icon\x1f%s\n", c, $0, user_id
+      
+      # Using \000 for the null byte and \x1f for the unit separator
+      # Note: We removed file:// and are using the raw path
+      printf "%05d|%s\000icon\x1f%s/%s.png\n", c, user_id, p, lower_id
     }' "$USERNAME_LIST" |
     sort -rn |
     awk -F'|' '
-      # First 5 lines go straight out (stripped of the count)
       NR <= 5 { sub(/^[0-9]+\|/, ""); print; next }
-      # Everything else gets buffered for a second sort
       { others[NR] = $0 }
       END {
-        # Sort the remaining streamers A-Z by name (the part after the count|)
-        for (i in others) print others[i] | "sort -t\"|\" -k2 | sed \"s/^[0-9]*|//\""
+        for (i in others) print others[i] | "sort -t\"|\" -k2"
       }' |
+    sed 's/^[0-9]*|//' |
     fuzzel --dmenu \
       --prompt "󰕃  " \
       --line-height 35 \
