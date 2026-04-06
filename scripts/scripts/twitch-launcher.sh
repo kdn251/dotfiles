@@ -70,14 +70,19 @@ CHOICE=$(
       }
     }
     {
+      # Store the first word (Username) for the icon and stats
       user_id = $1
       gsub(/[[:space:]\r]+$/, "", user_id)
       lower_id = tolower(user_id)
+      
+      # Store the FULL LINE (Username + Category) for the display label
+      full_label = $0
+      gsub(/[\r]+$/, "", full_label) # Strip carriage returns
+      
       c = (count[user_id] ? count[user_id] : 0)
       
-      # Using \000 for the null byte and \x1f for the unit separator
-      # Note: We removed file:// and are using the raw path
-      printf "%05d|%s\000icon\x1f%s/%s.png\n", c, user_id, p, lower_id
+      # Print: SortCount|FullLabel \0 icon \x1f path/lowercase.png
+      printf "%05d|%s\000icon\x1f%s/%s.png\n", c, full_label, p, lower_id
     }' "$USERNAME_LIST" |
     sort -rn |
     awk -F'|' '
