@@ -76,7 +76,7 @@ imagemagick
 imlib2
 impala
 ipset
-iptables-nft
+iptables
 iwd
 jdk11-openjdk
 jdk17-openjdk
@@ -86,6 +86,7 @@ kdenlive
 keyd
 kitty
 kolourpaint
+lazygit
 lf
 libfprint
 libreoffice-still

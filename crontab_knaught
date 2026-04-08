@@ -4,7 +4,7 @@
 # Run Twitch VOD downloader at 6pm, 8pm, and 10pm every day
 # Hopefully this cadence will allow me to have VODs downloaded
 # at somewhat of a convenient time
-0 18,20,22 * * * DISPLAY=:0 DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/1000/bus /home/knaught/scripts/twitch-vod-downloader.sh >> /tmp/twitch-vod-download.log 2>&1
+# 0 18,20,22 * * * DISPLAY=:0 DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/1000/bus /home/knaught/scripts/twitch-vod-downloader.sh >> /tmp/twitch-vod-download.log 2>&1
 
 # Run script to download all YouTube videos from
 # starred list in newsboat
