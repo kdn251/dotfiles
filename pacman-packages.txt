@@ -146,6 +146,7 @@ signal-desktop
 socat
 sof-firmware
 stow
+strawberry
 streamlink
 sudo
 sushi
