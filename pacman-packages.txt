@@ -17,6 +17,7 @@ bolt
 brightnessctl
 btop
 btrfs-progs
+chromium
 clinfo
 cmake
 composer
