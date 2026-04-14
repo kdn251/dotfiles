@@ -26,6 +26,7 @@ nordvpn-bin
 nordvpn-gui
 opencl-amd
 opencode-bin
+opendeck
 pinta
 popsicle-bin
 quickjs

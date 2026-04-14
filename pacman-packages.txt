@@ -175,6 +175,8 @@ wev
 wf-recorder
 wget
 wikiman
+wine
+wine-mono
 wireless-regdb
 wireless_tools
 wl-mirror
