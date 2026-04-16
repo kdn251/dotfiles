@@ -46,6 +46,9 @@ alias newsboat='newsboat && ~/scripts/update-live-list.sh &'
 alias gstart='systemctl --user start rclone-gdrive.service'
 alias gstop='systemctl --user stop rclone-gdrive.service'
 alias claude="claude --dangerously-skip-permissions"
+# alias ytm-dl='yt-dlp -f "ba/b" -x --audio-format mp3 --audio-quality 0 --add-metadata --embed-thumbnail -o "%(title)s.%(ext)s"'
+# alias ytm-dl='yt-dlp -f "ba/b" -x --audio-format mp3 --audio-quality 0 --add-metadata --embed-thumbnail -o "~/Music/%(uploader)s/%(title)s.%(ext)s"'
+alias ytm-dl='yt-dlp -f "ba/b" -x --audio-format mp3 --audio-quality 0 --add-metadata --embed-thumbnail -o "~/Music/%(title)s.%(ext)s"'
 
 # Fast Git Branch check (no subshells/sed for speed)
 parse_git_branch() {
