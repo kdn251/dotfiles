@@ -189,6 +189,7 @@ xdg-desktop-portal-hyprland
 xdotool
 xf86-input-synaptics
 xournalpp
+yazi
 ydotool
 yt-dlp
 zathura
