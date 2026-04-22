@@ -17,6 +17,7 @@ google-chrome
 google-messages-bin
 i7z
 librewolf-bin
+minecraft-launcher
 miraclecast-git
 mpv-memo-git
 mpv-uosc
