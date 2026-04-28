@@ -195,6 +195,7 @@ yazi
 ydotool
 yt-dlp
 zathura
+zathura-pdf-poppler
 zoxide
 zsh
 zsh-autosuggestions
