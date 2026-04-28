@@ -12,7 +12,7 @@ for p in "${PROFILES[@]}"; do
   fi
 done
 
-CHOICE=$(printf "%s" "$LIST" | fuzzel --dmenu --prompt="Power Profile: " --lines=3 --width=20)
+CHOICE=$(printf "%s" "$LIST" | fuzzel --dmenu --prompt="> 󰂄 " --lines=3 --width=20)
 
 if [ -n "$CHOICE" ]; then
   PROFILE=$(echo "$CHOICE" | sed -E 's/^[●[:space:]]+//')
