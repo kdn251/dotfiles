@@ -31,6 +31,14 @@
 2. might need to run `sudo stow -t /etc keyd` since `/etc` requires sudo and keyd needs to live in `/etc` not `~/` 
 3. Copy my `~/.zshrc` file from another machine directly/safely since it has credentials in it
 4. Probably need to run `sudo stow -t / root-etc` to stow files in `/etc` correctly (maybe can add this to startup script as well)
+5. Probably need to update `/etc/udev/rules.d/99-powertuning.rules` to include
+```
+# Set performance profile when AC adapter is plugged in
+SUBSYSTEM=="power_supply", ATTR{online}=="1", RUN+="/usr/bin/powerprofilesctl set performance"
+
+# Set power-saver profile when AC adapter is unplugged
+SUBSYSTEM=="power_supply", ATTR{online}=="0", RUN+="/usr/bin/powerprofilesctl set power-saver"
+```
 
 #### helpful notes
 1. if `ly` fails to get enabled run `sudo systemctl enable ly@tty2.service` and then `sudo systemctl set-default graphical.target` and `sudo reboot`
