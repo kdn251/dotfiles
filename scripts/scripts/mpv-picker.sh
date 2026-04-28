@@ -109,7 +109,18 @@ if [[ -n "$CHOICE" ]]; then
   else
     pkill -f "mpv --ytdl-raw-options=cookies-from-browser=firefox"
     notify-send "MPV" "Opening Video..."
-    mpv --ytdl-raw-options=cookies-from-browser=firefox "$TARGET" &>/dev/null &
+    # mpv --ytdl-raw-options=cookies-from-browser=firefox "$TARGET" &>/dev/null &
+    # mpv --ytdl-raw-options="cookies-from-browser=firefox,format=bestvideo[height<=?1080]+bestaudio/best,no-check-certificates=,ignore-config=" \
+    #   --cache=yes \
+    #   --demuxer-max-bytes=124M \
+    #   --demuxer-readahead-secs=30 \
+    #   "$TARGET" &>/dev/null &
+    # yt-dlp --cookies "$HOME/my_cookies.txt" \
+    #   --format "bestvideo[height<=?1080]+bestaudio/best" \
+    #   --no-playlist \
+    #   --quiet --no-warnings \
+    #   -o - "$TARGET" | mpv - --cache=yes --force-window=yes &>/dev/null &
+    mpv --cache=yes --force-window=yes "$TARGET"
     echo $! >/tmp/mpv-yt-pid
     disown
   fi

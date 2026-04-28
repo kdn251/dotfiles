@@ -16,6 +16,7 @@
     "custom/yt-download",
     "custom/voxtype",
     "custom/blanket",
+    "custom/tailscale",
     "custom/rclone",
     // "pulseaudio",
     // "temperature",
@@ -115,6 +116,14 @@
     "on-click": "blanket",
     "exec": "echo '{\"text\": \"Blanket\", \"tooltip\": \"Click to toggle controls\"}'",
     "return-type": "json"
+  },
+  "custom/tailscale": {
+    "format": "{}",
+    "return-type": "json",
+    "interval": 5,
+    "exec": "~/scripts/tailscale-exit-node.sh",
+    "on-click": "~/scripts/tailscale-exit-node.sh toggle",
+    "tooltip": true
   },
   "custom/miniflux_download": {
     "format": "{}",

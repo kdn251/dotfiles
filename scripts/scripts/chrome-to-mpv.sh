@@ -43,6 +43,13 @@ fi
 
 # 7. Final Logic
 if [[ -n "$URL" ]] && [[ "$URL" == *"youtube.com/watch"* || "$URL" == *"youtu.be/"* ]]; then
+  # 1. Clean up old context files so they don't confuse the switcher
+  rm -f "$TWITCH_CONTEXT"
+
+  # 2. SAVE the current URL into the context file
+  echo "YT_URL=\"$URL\"" >"$YT_CONTEXT"
+
+  # 3. Launch MPV
   pkill -f "mpv --ytdl-raw-options=cookies-from-browser=firefox"
   notify-send "MPV" "Opening Video..." -t 2000
   mpv --ytdl-raw-options=cookies-from-browser=firefox "$URL" &

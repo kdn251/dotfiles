@@ -193,6 +193,16 @@ window#waybar {
   padding: 0 10px 0 0;
 }
 
+#custom-tailscale {
+    color: #6c7086; /* Dim color for inactive */
+    padding: 0 10px 0 0;
+}
+#custom-tailscale.active {
+    color: #a6e3a1; /* Green color for active */
+    font-weight: bold;
+    padding: 0 10px 0 0;
+}
+
 #network.disconnected {
   color: #666666;
 }

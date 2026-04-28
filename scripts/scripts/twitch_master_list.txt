@@ -11,7 +11,6 @@ TwitchRivals
 xQc
 shroud
 shrood
-Khalamity
 georgehotz
 EsfandTV
 aikobliss
@@ -35,20 +34,16 @@ LowkeyAbu
 Adapt
 codegirl007
 killdozer_tv
-HollywoodBob
-KarasMai
 Greekgodx
 Atrioc
 thesketchreal
 Fandy
 Morgpie
 iiTzTimmy
-QuarterJade
 Arky
 Alinity
 MrSavage
 Chess
-bbreadman
 Twitch
 KatEvolved
 fanfan
@@ -58,6 +53,7 @@ yourragegaming
 stableronaldo
 spaceghostkari
 ohnePixel
+ohnepixel247
 CouRageJD
 PointCrow
 Tsoding

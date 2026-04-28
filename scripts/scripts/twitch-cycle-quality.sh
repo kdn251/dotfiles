@@ -4,14 +4,16 @@ YT_CONTEXT="/tmp/youtube-stream-context.conf"
 QUALITY_FILE="/tmp/current-quality.txt"
 
 # Detect what's playing — check if streamlink is running (Twitch) or just mpv (YouTube)
-if pgrep -f "streamlink.*--player" >/dev/null 2>&1 && [ -f "$TWITCH_CONTEXT" ]; then
+# Prioritize Twitch detection
+if [ -f "$TWITCH_CONTEXT" ]; then
   MODE="twitch"
   source "$TWITCH_CONTEXT"
+# Fallback to YouTube detection
 elif [ -f "$YT_CONTEXT" ]; then
   MODE="youtube"
   source "$YT_CONTEXT"
 else
-  notify-send "Quality" "No active stream found"
+  notify-send "Quality" "No context files found in /tmp/"
   exit 1
 fi
 

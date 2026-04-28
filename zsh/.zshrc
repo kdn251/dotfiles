@@ -18,6 +18,7 @@ export JAVA_HOME=/usr/lib/jvm/java-11-openjdk
 export ANDROID_HOME=/opt/android-sdk
 export PATH=$PATH:$ANDROID_HOME/tools:$ANDROID_HOME/platform-tools
 export EDITOR=nvim
+export MANPAGER="bat -l man -p"
 
 # --- 3. LAZY LOADING (The Big Performance Gain) ---
 
@@ -49,6 +50,10 @@ alias claude="claude --dangerously-skip-permissions"
 # alias ytm-dl='yt-dlp -f "ba/b" -x --audio-format mp3 --audio-quality 0 --add-metadata --embed-thumbnail -o "%(title)s.%(ext)s"'
 # alias ytm-dl='yt-dlp -f "ba/b" -x --audio-format mp3 --audio-quality 0 --add-metadata --embed-thumbnail -o "~/Music/%(uploader)s/%(title)s.%(ext)s"'
 alias ytm-dl='yt-dlp -f "ba/b" -x --audio-format mp3 --audio-quality 0 --add-metadata --embed-thumbnail -o "~/Music/%(title)s.%(ext)s"'
+alias ls='eza --icons'
+alias ll='eza -lh --icons --git'
+alias la='eza -lah --icons --git'
+alias cat='bat'
 
 # Fast Git Branch check (no subshells/sed for speed)
 parse_git_branch() {
@@ -73,6 +78,8 @@ ZSH_AUTOSUGGEST_STRATEGY=(history completion)
 # Basic options
 setopt AUTO_LIST AUTO_MENU COMPLETE_IN_WORD
 autoload -U select-word-style && select-word-style bash
+
+eval "$(zoxide init zsh)"
 
 # Dart completion
 [[ -f /home/knaught/.dart-cli-completion/zsh-config.zsh ]] && . /home/knaught/.dart-cli-completion/zsh-config.zsh
