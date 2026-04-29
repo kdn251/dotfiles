@@ -12,6 +12,7 @@ bat
 bemenu
 blanket
 blueman
+bluetui
 bluez
 bluez-utils
 bolt
