@@ -41,6 +41,7 @@ vesktop
 visual-studio-code-bin
 voxtype-bin
 walker-bin
+wallust
 wayland-boomer-git
 wlrobs
 woomer

@@ -101,6 +101,7 @@ linux
 linux-firmware
 linux-headers
 ly
+lynx
 mako
 man-db
 man-pages
