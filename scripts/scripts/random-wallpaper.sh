@@ -36,5 +36,15 @@ if [ -n "$SELECTED" ]; then
   if [ -f "$HYPRLOCK_CONF" ]; then
     sed -i -E "s|^(\s*path\s*=\s*).*|\1$WALL_REL|" "$HYPRLOCK_CONF"
   fi
+
+  if command -v wallust >/dev/null; then
+    if wallust run -q "$SELECTED"; then
+      pkill -SIGUSR2 waybar
+      pkill -SIGUSR1 -x kitty
+      command -v makoctl >/dev/null && makoctl reload
+      hyprctl reload >/dev/null
+    fi
+  fi
+
   notify-send "Wallpaper Set" "$(basename "$SELECTED")"
 fi

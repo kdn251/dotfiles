@@ -1,7 +1,9 @@
+@import "colors-waybar.css";
+
 * {
     font-family: "JetBrainsMono Nerd Font", Roboto, Helvetica, Arial, sans-serif;
     font-size: 16px;
-    color: #ffffff;
+    color: @fg;
     background: transparent;
     border: none;
     box-shadow: none;
@@ -87,8 +89,8 @@
 }
 
 window#waybar {
-  background-color: rgba(0, 0, 0, 0.7);
-  border: 1px solid rgba(51, 51, 51, 0.5);
+  background-color: @bar_bg;
+  border: 1px solid @bar_border;
   border-radius: 10px;
 }
 
@@ -115,7 +117,7 @@ window#waybar {
 /* non-empty persistent workspaces */
 #workspaces button.persistent {
   font-weight: bold;
-  color: #cad3f5;
+  color: @ws_persistent;
 }
 
 /* empty persistent workspaces */
@@ -127,8 +129,8 @@ window#waybar {
 /* active or visible workspaces */
 #workspaces button.active,
 #workspaces button.visible {
-  color: #cad3f5;
-  background-color: #64727D; /* Example: grey */
+  color: @ws_active_fg;
+  background-color: @ws_active_bg;
   font-weight: bold;
 }
 
@@ -146,7 +148,7 @@ window#waybar {
 #temperature,
 #network,
 #pulseaudio {
-  color: #ffffff;
+  color: @fg;
   background: transparent;
   padding: 0 5px;
   margin: 0 2px;
@@ -158,12 +160,12 @@ window#waybar {
 }
 
 #clock {
-  color: #ffffff;
+  color: @fg;
   font-weight: bold;
 }
 
 #battery {
-  color: #ffffff;
+  color: @fg;
 }
 
 #battery.warning {
@@ -176,7 +178,7 @@ window#waybar {
 }
 
 #temperature {
-  color: #ffffff;
+  color: @fg;
 }
 
 #temperature.critical {
@@ -185,7 +187,7 @@ window#waybar {
 }
 
 #network {
-  color: #ffffff;
+  color: @fg;
   padding: 0 10px 0 0;
 }
 
@@ -212,7 +214,7 @@ window#waybar {
 }
 
 #pulseaudio {
-  color: #ffffff;
+  color: @fg;
   padding: 0 15px;
 }
 
@@ -221,12 +223,12 @@ window#waybar {
 }
 
 tooltip {
-  background: #000000;
-  border: 1px solid #333333;
+  background: @tooltip_bg;
+  border: 1px solid @tooltip_border;
   border-radius: 0;
-  color: #ffffff;
+  color: @tooltip_fg;
 }
 
 tooltip label {
-  color: #ffffff;
+  color: @tooltip_fg;
 }
