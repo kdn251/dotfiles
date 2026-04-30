@@ -19,6 +19,7 @@ LIST_TO_FZF=$(
 
 # 3. fzf with thumbnail preview
 SELECTED=$(echo "$LIST_TO_FZF" | fzf --ansi \
+  --delimiter=/ --with-nth=-1 \
   --preview 'kitty +kitten icat --clear --stdin no --silent --transfer-mode memory --place 30x15@65x5 {}' \
   --preview-window=right:60%:noborder \
   --layout=reverse --margin=1 --padding=1 \
