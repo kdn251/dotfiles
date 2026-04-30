@@ -58,10 +58,13 @@ show-read-feeds no
 # Keybinds
 bind-key j down
 bind-key k up
-bind-key g home 
+bind-key g home
 bind-key G end
-# bind-key L pagedown 
-# bind-key h pagedown 
+# bind-key L pagedown
+# bind-key h pagedown
+
+# Opening in browser auto-marks the article read
+bind-key o open-in-browser-and-mark-read
 
 # Colors - clean and minimal
 color listfocus          black   cyan    bold
