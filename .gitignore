@@ -14,8 +14,8 @@ vesktop/
 
 newsboat/.newsboat/cache.db
 
-# Ignore miniflux credentials
-miniflux_creds.conf
+# Ignore miniflux credentials (matches miniflux_creds, miniflux_creds.conf, etc.)
+miniflux_creds*
 
 # Ignore zsh secrets
 ~/.config/zsh/secrets.zsh
