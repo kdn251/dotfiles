@@ -10,19 +10,13 @@
 # }
 
 profile framework_docked {
-    # output "DP-5" enable
-    # output "DP-5" enable mode 1920x1080@120.00Hz position 0,0 scale 1.0
-    output "DP-5" enable mode 1920x1080@120.00Hz position 0,0 scale 1.0
-    # output "DP-5" enable mode 2560x1440@143.97Hz position 0,0 scale 1.0
+    output "DP-5" enable mode 3840x2160@60Hz position 0,0 scale 1.5
     output "eDP-1" disable
     exec ~/.config/kanshi/docked-setup.sh
 }
 
 profile framework_docked {
-    # output "DP-5" enable
-    # output "DP-5" enable mode 1920x1080@120.00Hz position 0,0 scale 1.0
-    output "DP-6" enable mode 1920x1080@120.00Hz position 0,0 scale 1.0
-    # output "DP-5" enable mode 2560x1440@143.97Hz position 0,0 scale 1.0
+    output "DP-6" enable mode 3840x2160@60Hz position 0,0 scale 1.5
     output "eDP-1" disable
     exec ~/.config/kanshi/docked-setup.sh
 }
@@ -67,6 +61,27 @@ profile thinkpad_undocked {
         mode 1920x1080@60.01Hz
         position 0,0
         scale 1.5
+    }
+    exec ~/.config/kanshi/undocked-setup.sh
+}
+
+# Profile for knuth (Framework 13 Pro) when external monitor is connected (Docked).
+# 4K@60 (not 144) because the Intel xe driver on Panther Lake silently fails the
+# DSC handshake required for 4K@144 over USB-C — panel goes black at 144Hz.
+profile knuth_docked {
+    output "LG Electronics LG ULTRAGEAR+ 309NTUW0R734" enable mode 3840x2160@60Hz position 0,0 scale 1.5
+    output "eDP-1" disable
+    exec ~/.config/kanshi/docked-setup.sh
+}
+
+# Profile for knuth when only laptop screen is available (Undocked)
+profile knuth_undocked {
+    output "eDP-1" {
+        enable
+        # 60Hz for battery; bump to 120Hz if you want smoother
+        mode 2880x1920@60.00Hz
+        position 0,0
+        scale 2.0
     }
     exec ~/.config/kanshi/undocked-setup.sh
 }
