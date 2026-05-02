@@ -9,14 +9,12 @@
 #     output "eDP-1" disable
 # }
 
+# Match the LG by EDID description rather than the DP-N port name —
+# amdgpu enumerates DisplayPort connectors differently than Intel's i915/xe,
+# so the port number is not stable across kernels/reboots on this Ryzen box.
+# AMD has no DSC handshake bug, so 4K@144 should work here if you want it.
 profile framework_docked {
-    output "DP-5" enable mode 3840x2160@60Hz position 0,0 scale 1.5
-    output "eDP-1" disable
-    exec ~/.config/kanshi/docked-setup.sh
-}
-
-profile framework_docked {
-    output "DP-6" enable mode 3840x2160@60Hz position 0,0 scale 1.5
+    output "LG Electronics LG ULTRAGEAR+ 309NTUW0R734" enable mode 3840x2160@60Hz position 0,0 scale 1.5
     output "eDP-1" disable
     exec ~/.config/kanshi/docked-setup.sh
 }
