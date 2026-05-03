@@ -39,7 +39,7 @@ macro R set browser "~/scripts/update-downloaded-query.sh" ; open-in-browser ; s
 
 # Stream YouTube video
 # macro v set browser "setsid -f mpv-yt %u" ; open-in-browser ; set browser "google-chrome-stable %u"
-macro v set browser "setsid -f ~/scripts/mpv-yt %u" ; open-in-browser ; set browser "~/scripts/newsboat-brave-app.sh %u"
+macro v set browser "setsid -f ~/scripts/mpv-yt %u" ; open-in-browser ; toggle-article-read ; set browser "~/scripts/newsboat-brave-app.sh %u"
 
 # macro r set browser "w3m %u" ; open-in-browser ; set browser "google-chrome-stable %u"
 macro r set browser "w3m -o display_image=1 %u" ; open-in-browser ; toggle-article-read ; set browser "~/scripts/newsboat-brave-app.sh %u"

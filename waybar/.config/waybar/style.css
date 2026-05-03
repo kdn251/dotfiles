@@ -1,9 +1,14 @@
-@import "colors-waybar.css";
+/* Wallust-generated palette — disabled. Uncomment to re-enable
+   wallpaper-derived theming and replace the hardcoded colors below
+   (#ffffff, rgba(0,0,0,0.7), #cad3f5, #64727D, #000000, #333333) with
+   the @fg / @bar_bg / @bar_border / @ws_persistent / @ws_active_fg /
+   @ws_active_bg / @tooltip_bg / @tooltip_border / @tooltip_fg vars. */
+/* @import "colors-waybar.css"; */
 
 * {
     font-family: "JetBrainsMono Nerd Font", Roboto, Helvetica, Arial, sans-serif;
     font-size: 16px;
-    color: @fg;
+    color: #ffffff;
     background: transparent;
     border: none;
     box-shadow: none;
@@ -89,8 +94,8 @@
 }
 
 window#waybar {
-  background-color: @bar_bg;
-  border: 1px solid @bar_border;
+  background-color: rgba(0, 0, 0, 0.7);
+  border: 1px solid rgba(51, 51, 51, 0.5);
   border-radius: 10px;
 }
 
@@ -117,7 +122,7 @@ window#waybar {
 /* non-empty persistent workspaces */
 #workspaces button.persistent {
   font-weight: bold;
-  color: @ws_persistent;
+  color: #cad3f5;
 }
 
 /* empty persistent workspaces */
@@ -129,8 +134,8 @@ window#waybar {
 /* active or visible workspaces */
 #workspaces button.active,
 #workspaces button.visible {
-  color: @ws_active_fg;
-  background-color: @ws_active_bg;
+  color: #cad3f5;
+  background-color: #64727D; /* Example: grey */
   font-weight: bold;
 }
 
@@ -148,7 +153,7 @@ window#waybar {
 #temperature,
 #network,
 #pulseaudio {
-  color: @fg;
+  color: #ffffff;
   background: transparent;
   padding: 0 5px;
   margin: 0 2px;
@@ -160,12 +165,12 @@ window#waybar {
 }
 
 #clock {
-  color: @fg;
+  color: #ffffff;
   font-weight: bold;
 }
 
 #battery {
-  color: @fg;
+  color: #ffffff;
 }
 
 #battery.warning {
@@ -178,7 +183,7 @@ window#waybar {
 }
 
 #temperature {
-  color: @fg;
+  color: #ffffff;
 }
 
 #temperature.critical {
@@ -187,7 +192,7 @@ window#waybar {
 }
 
 #network {
-  color: @fg;
+  color: #ffffff;
   padding: 0 10px 0 0;
 }
 
@@ -214,7 +219,7 @@ window#waybar {
 }
 
 #pulseaudio {
-  color: @fg;
+  color: #ffffff;
   padding: 0 15px;
 }
 
@@ -223,12 +228,12 @@ window#waybar {
 }
 
 tooltip {
-  background: @tooltip_bg;
-  border: 1px solid @tooltip_border;
+  background: #000000;
+  border: 1px solid #333333;
   border-radius: 0;
-  color: @tooltip_fg;
+  color: #ffffff;
 }
 
 tooltip label {
-  color: @tooltip_fg;
+  color: #ffffff;
 }

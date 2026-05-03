@@ -64,7 +64,7 @@
     "format-off": "",
     "format-connected": "", 
     "format-connected-battery": "",
-    "on-click": "kitty --class bluetui-float bluetui",
+    "on-click": "bash -c 'bluetoothctl power on >/dev/null; sleep 0.3; kitty --class bluetui-float bluetui'",
     // These lines control the hover state (tooltip)
     "tooltip-format": "{controller_alias}\n\n{device_enumerate}",
     "tooltip-format-enumerate-connected": "{device_alias}",

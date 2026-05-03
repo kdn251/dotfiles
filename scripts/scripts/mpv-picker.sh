@@ -56,7 +56,7 @@ fi
 # --- The Fuzzel Pipe ---
 CHOICE=$({
   # Row 0: Switcher with standard system icon
-  printf "󰄮 SWITCH MODE\0icon\x1fview-refresh\n"
+  printf "Switch Mode\0icon\x1fview-refresh\n"
 
   # Get the data stream
   DATA=$([[ "$MODE" == "watch_later" ]] && cat "$WL_CACHE" 2>/dev/null || fetch_history)
@@ -94,7 +94,7 @@ CHOICE=$({
     # Build the Fuzzel dmenu row (Label\0icon\x1fPath)
     printf "%s — %s\0icon\x1f%s\n" "${TITLE:0:60}" "${CHAN:-History}" "$ICON"
   done
-} | fuzzel --dmenu --index --prompt "$PROMPT" --width 60 --lines 10 --line-height 45)
+} | fuzzel --dmenu --index --prompt "$PROMPT" --width 45 --lines 10 --line-height 35)
 
 # --- Choice Execution ---
 if [[ -n "$CHOICE" ]]; then

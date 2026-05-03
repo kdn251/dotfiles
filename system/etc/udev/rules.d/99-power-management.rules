@@ -1,5 +1,10 @@
-# Battery: Shift CPU to 'power' efficiency
-SUBSYSTEM=="power_supply", ATTR{online}=="0", RUN+="/usr/bin/sh -c 'echo power > /sys/devices/system/cpu/cpu*/cpufreq/energy_performance_preference'"
+# Auto-switch power-profiles-daemon profile based on AC state.
+# PPD manages EPP / platform_profile / scaling internally for each profile,
+# so we only need to change the PPD profile here — don't write to EPP
+# directly or you'll fight PPD.
 
-# Plugged In: Shift CPU to 'balance_performance'
-SUBSYSTEM=="power_supply", ATTR{online}=="1", RUN+="/usr/bin/sh -c 'echo balance_performance > /sys/devices/system/cpu/cpu*/cpufreq/energy_performance_preference'"
+# AC plugged in → performance
+SUBSYSTEM=="power_supply", ATTR{online}=="1", RUN+="/usr/bin/powerprofilesctl set performance"
+
+# AC unplugged → power-saver (max battery life)
+SUBSYSTEM=="power_supply", ATTR{online}=="0", RUN+="/usr/bin/powerprofilesctl set power-saver"

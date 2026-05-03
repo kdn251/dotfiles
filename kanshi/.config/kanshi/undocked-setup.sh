@@ -9,3 +9,6 @@ done
 
 # Switch to workspace 1
 hyprctl dispatch workspace 1
+
+# Brave: relaunch at default scale (counterpart to docked-setup.sh).
+~/.config/kanshi/brave-rezoom.sh

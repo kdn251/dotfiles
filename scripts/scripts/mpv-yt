@@ -69,11 +69,13 @@ if [[ "$URL" =~ twitch\.tv ]]; then
       --demuxer-max-bytes=25M \
       --demuxer-max-back-bytes=10M \
       --force-window=immediate \
+      --vo=gpu \
+      --gpu-api=opengl \
       "$URL" >/dev/null 2>&1 &
     exit 0
   else
     # Live stream - use low latency settings
-    PLAYER_ARGS="--cache=yes --force-window=immediate"
+    PLAYER_ARGS="--cache=yes --force-window=immediate --vo=gpu --gpu-api=opengl"
     STREAM_ARGS="--twitch-low-latency --stream-segment-threads 3 --stream-segment-attempts 3 --stream-segment-timeout 10 --retry-streams 2 --retry-open 2"
   fi
 
@@ -108,5 +110,7 @@ else
     --demuxer-readahead-secs=20 \
     --force-window=immediate \
     --hwdec=auto \
+    --vo=gpu \
+    --gpu-api=opengl \
     "$URL" >/dev/null 2>&1 &
 fi

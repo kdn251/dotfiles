@@ -135,7 +135,7 @@ awk -v user="$STREAMER_USERNAME" '
   echo "TWITCH_TOKEN_FILE=\"$TWITCH_TOKEN_FILE\"" >>/tmp/twitch-stream-context.conf
 
   (
-    pkillall chatterino
+    pkill chatterino
     chatterino --channels "$STREAMER_USERNAME" >/dev/null 2>&1
   ) &
 
@@ -175,8 +175,14 @@ awk -v user="$STREAMER_USERNAME" '
     --cache=yes \
     --force-window=immediate \
     --vo=gpu \
+    --gpu-api=opengl \
     --hwdec=auto \
     --profile=low-latency \
+    --video-sync=audio \
+    --no-interpolation \
+    --scale=spline36 \
+    --cscale=spline36 \
+    --dscale=mitchell \
     --demuxer-max-bytes=500KiB \
     --demuxer-readahead-secs=2 \
     --demuxer-lavf-o=fflags=+nobuffer \

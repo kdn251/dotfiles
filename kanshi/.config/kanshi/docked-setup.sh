@@ -21,3 +21,6 @@ done
 # Switch to workspace 1 so the user lands on a populated workspace, not the empty one
 # that Hyprland auto-creates for the new monitor.
 hyprctl dispatch workspace 1
+
+# Brave: relaunch at 1.33x device scale to compensate for the external monitor.
+~/.config/kanshi/brave-rezoom.sh 1.33
