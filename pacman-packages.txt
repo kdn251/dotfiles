@@ -3,7 +3,6 @@ alacritty
 alsa-utils
 amd-ucode
 android-tools
-aquamarine
 arch-wiki-docs
 base
 base-devel
@@ -23,6 +22,7 @@ chromium
 clinfo
 cmake
 composer
+cronie
 dbeaver
 dmenu
 dmidecode
@@ -61,17 +61,14 @@ gst-plugins-ugly
 gvfs-gphoto2
 gvfs-mtp
 htop
-hyprgraphics
 hypridle
 hyprland
 hyprland-protocols
-hyprlang
 hyprlock
 hyprpaper
 hyprpicker
 hyprshot
 hyprsunset
-hyprutils
 i3-wm
 i3blocks
 i3lock
@@ -79,8 +76,9 @@ i3status
 imagemagick
 imlib2
 impala
+intel-media-driver
+intel-ucode
 ipset
-iptables
 iwd
 jdk11-openjdk
 jdk17-openjdk
@@ -143,7 +141,7 @@ qutebrowser
 rclone
 re2c
 reflector
-rsync
+rust
 satty
 sddm
 sfml
@@ -162,6 +160,7 @@ syncthing
 tailscale
 tealdeer
 telegram-desktop
+terminus-font
 thunar
 tidy
 timeshift
@@ -174,6 +173,7 @@ ttf-nerd-fonts-symbols-mono
 ttf-roboto
 virt-manager
 vlc
+vulkan-intel
 waybar
 wev
 wf-recorder
@@ -199,5 +199,6 @@ yt-dlp
 zathura
 zathura-pdf-poppler
 zoxide
+zram-generator
 zsh
 zsh-autosuggestions
