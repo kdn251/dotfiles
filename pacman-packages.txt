@@ -45,6 +45,7 @@ flameshot
 flatpak
 foot
 fprintd
+fuse2
 fuzzel
 fwupd
 ghostty
@@ -164,7 +165,6 @@ terminus-font
 thunar
 tidy
 timeshift
-tlp
 tmux
 ttf-firacode-nerd
 ttf-jetbrains-mono-nerd
