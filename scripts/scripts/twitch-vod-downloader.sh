@@ -89,7 +89,8 @@ download_vods() {
   notify-send -r $NOTIFY_ID "  Downloading" "$VOD_TITLE [$DURATION]" -t 2000 -u normal
   write_status "  $streamer (0MB)" "$VOD_TITLE [$DURATION]"
 
-  OUTPUT_PATH="$TWITCH_VOD_DIR/%(title)s-${VOD_ID}.mp4"
+  SAFE_TITLE=$(echo "$VOD_TITLE" | tr '/\\:*?"<>|' '_' | tr -s ' ' | sed 's/^ *//;s/ *$//')
+  OUTPUT_PATH="$TWITCH_VOD_DIR/${streamer} - ${SAFE_TITLE} - ${VOD_ID}.mp4"
 
   # Streamlink execution (Fixed the backslash/space bugs)
   if [ -n "$TWITCH_TOKEN" ]; then

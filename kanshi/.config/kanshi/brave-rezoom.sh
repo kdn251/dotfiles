@@ -42,3 +42,20 @@ if [ -n "$SCALE" ]; then
 else
   setsid -f brave >/dev/null 2>&1
 fi
+
+# Move any brave-browser windows that appear within ~12s onto workspace 2
+# silently (without yanking the user's focus). Session-restore can spawn
+# multiple windows, so we keep watching and dedupe by address.
+(
+  seen=""
+  for _ in $(seq 1 60); do
+    while IFS= read -r addr; do
+      [ -z "$addr" ] && continue
+      case " $seen " in *" $addr "*) continue ;; esac
+      hyprctl dispatch movetoworkspacesilent "2,address:$addr" >/dev/null 2>&1
+      seen="$seen $addr"
+    done < <(hyprctl clients -j 2>/dev/null | jq -r '.[] | select(.class == "brave-browser") | .address')
+    sleep 0.2
+  done
+) &
+disown

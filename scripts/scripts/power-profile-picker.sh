@@ -26,6 +26,11 @@ if [ -n "$CHOICE" ]; then
   PROFILE=$(echo "$CHOICE" | awk '{print $2}')
   if [ "$PROFILE" != "$CURRENT" ]; then
     powerprofilesctl set "$PROFILE"
+    # Workaround: PPD 0.30 leaves cores capped at 400 MHz after exiting
+    # power-saver. Reset scaling_max_freq when switching to a non-saver profile.
+    if [ "$PROFILE" != "power-saver" ]; then
+      sudo -n /usr/local/bin/reset-cpu-freq
+    fi
     notify-send "Power Profile" "Set to $PROFILE"
   fi
 fi
