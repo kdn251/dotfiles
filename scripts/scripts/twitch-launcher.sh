@@ -164,6 +164,13 @@ awk -v user="$STREAMER_USERNAME" '
   pkill mpv
   rm -f "$MPV_SOCKET"
 
+  # Pillarbox only shows up on the 16:9 LG; on the 3:2 laptop panel
+  # panscan=1.0 would crop ~14% off the sides. Apply only when docked.
+  ASPECT_ARGS=()
+  if hyprctl monitors -j 2>/dev/null | jq -e '.[] | select(.disabled == false and (.description | test("LG ULTRAGEAR"))) ' >/dev/null; then
+    ASPECT_ARGS=(--panscan=1.0)
+  fi
+
   LOW_URL=$(streamlink "${SL_COMMON[@]}" --stream-url "$URL" 480p,360p,worst 2>/dev/null)
 
   if [ -z "$LOW_URL" ]; then
@@ -177,6 +184,7 @@ awk -v user="$STREAMER_USERNAME" '
     --vo=gpu \
     --gpu-api=opengl \
     --hwdec=auto \
+    "${ASPECT_ARGS[@]}" \
     --profile=low-latency \
     --video-sync=audio \
     --no-interpolation \
