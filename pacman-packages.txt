@@ -173,6 +173,7 @@ ttf-nerd-fonts-symbols-mono
 ttf-roboto
 virt-manager
 vlc
+vpl-gpu-rt
 vulkan-intel
 waybar
 wev
