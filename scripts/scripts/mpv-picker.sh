@@ -31,12 +31,23 @@ update_wl_cache() {
 fetch_history() {
   {
     [[ -f "$WATCH_LOG" ]] && cat "$WATCH_LOG"
-    if [[ -f "$HOME/.config/google-chrome/Default/History" ]]; then
-      TMP_HIST=$(mktemp)
-      cp "$HOME/.config/google-chrome/Default/History" "$TMP_HIST"
-      sqlite3 "$TMP_HIST" "SELECT CAST((last_visit_time/1000000)-11644473600 AS INTEGER), title, url FROM urls WHERE url LIKE '%youtube.com/watch%' ORDER BY last_visit_time DESC LIMIT 50;" -separator $'\t' 2>/dev/null
-      rm "$TMP_HIST"
-    fi
+
+    # Chrome and Brave are both Chromium-based and share the History schema.
+    # Copy WAL+SHM sidecars too so we don't miss writes in-flight while the
+    # browser is running.
+    for HIST_DB in \
+      "$HOME/.config/google-chrome/Default/History" \
+      "$HOME/.config/BraveSoftware/Brave-Browser/Default/History"; do
+      [[ -f "$HIST_DB" ]] || continue
+      TMP_DIR=$(mktemp -d)
+      cp "$HIST_DB" "$TMP_DIR/History"
+      [[ -f "${HIST_DB}-wal" ]] && cp "${HIST_DB}-wal" "$TMP_DIR/History-wal"
+      [[ -f "${HIST_DB}-shm" ]] && cp "${HIST_DB}-shm" "$TMP_DIR/History-shm"
+      sqlite3 "$TMP_DIR/History" \
+        "SELECT CAST((last_visit_time/1000000)-11644473600 AS INTEGER), title, url FROM urls WHERE url LIKE '%youtube.com/watch%' ORDER BY last_visit_time DESC LIMIT 50;" \
+        -separator $'\t' 2>/dev/null
+      rm -rf "$TMP_DIR"
+    done
   } | sort -rn | awk -F'\t' '!seen[$3]++' | head -50
 }
 
