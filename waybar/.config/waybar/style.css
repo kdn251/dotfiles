@@ -55,9 +55,9 @@
 }
 
 #custom-recording {
-  color: #FF0000; /* Green color for download status */
+  color: #FF0000;
   font-weight: bold;
-  padding: 0 10px;
+  padding: 0 6px;
 }
 
 #custom-yt-download.downloading {

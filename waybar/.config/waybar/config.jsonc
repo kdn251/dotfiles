@@ -10,10 +10,10 @@
     "hyprland/workspaces",
   ],
   "modules-right": [
-    "custom/recording",
     "custom/miniflux_download",
     "custom/twitch_vod_download",
     "custom/yt-download",
+    "custom/recording",
     "custom/voxtype",
     "custom/blanket",
     "custom/tailscale",
@@ -106,9 +106,8 @@
     "format": "{}",
     "exec": "cat /tmp/recording.txt",
     "interval": 5,
-    "hide-empty-text": false,
-    "tooltip": true, // Explicitly enables tooltips
-    "max-length": 30 // Optional: Keeps the bar tidy
+    "hide-empty-text": true,
+    "tooltip": true
   },
   "custom/blanket": {
     "format": "", // Or any icon you prefer
