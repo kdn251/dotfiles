@@ -11,10 +11,15 @@
 
 dir="${1:?usage: $0 u|d}"
 
-read -r focused_x ws addr < <(
+read -r focused_x ws addr floating < <(
   hyprctl activewindow -j |
-    jq -r '"\(.at[0]) \(.workspace.id) \(.address)"'
+    jq -r '"\(.at[0]) \(.workspace.id) \(.address) \(.floating)"'
 )
+
+if [[ "$floating" == "true" ]]; then
+  hyprctl dispatch movewindow "$dir"
+  exit 0
+fi
 
 sibling_x=$(
   hyprctl clients -j |
