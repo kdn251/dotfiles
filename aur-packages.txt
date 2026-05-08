@@ -3,6 +3,7 @@ bluebubbles-bin
 brave-bin
 chatterino2-bin
 cryptomator
+faugus-launcher
 google-chrome
 neofetch
 vesktop

@@ -45,6 +45,7 @@ flameshot
 flatpak
 foot
 fprintd
+framework-system
 fuse2
 fuzzel
 fwupd
@@ -91,6 +92,7 @@ kitty
 kolourpaint
 lazygit
 lf
+lib32-vulkan-intel
 libfprint
 libreoffice-still
 libva-utils
@@ -99,6 +101,7 @@ libxml2-legacy
 linux
 linux-firmware
 linux-headers
+lutris
 ly
 lynx
 mako
