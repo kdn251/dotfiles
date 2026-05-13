@@ -1,4 +1,5 @@
 1password
+automatic-timezoned
 bluebubbles-bin
 brave-bin
 chatterino2-bin

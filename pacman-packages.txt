@@ -49,6 +49,7 @@ framework-system
 fuse2
 fuzzel
 fwupd
+geoclue
 ghostty
 gimp
 git
