@@ -10,4 +10,5 @@ neofetch
 opendeck
 vesktop
 wallust
+wayland-boomer-git
 yay
