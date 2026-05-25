@@ -9,6 +9,7 @@ google-chrome
 neofetch
 opendeck
 vesktop
+voxtype-bin
 wallust
 wayland-boomer-git
 yay
