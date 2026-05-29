@@ -108,6 +108,7 @@ lynx
 mako
 man-db
 man-pages
+mediainfo
 modemmanager
 mpv-mpris
 mtools
