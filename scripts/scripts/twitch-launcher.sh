@@ -139,7 +139,7 @@ awk -v user="$STREAMER_USERNAME" '
     chatterino --channels "$STREAMER_USERNAME" >/dev/null 2>&1
   ) &
 
-  IMG_PATH="$PIXMAPS/${STREAMER_USERNAME}.png"
+  IMG_PATH="$PIXMAPS/${STREAMER_USERNAME,,}.png"
   if [ -f "$IMG_PATH" ]; then
     notify-send -i "$IMG_PATH" "MPV" "Loading $STREAMER stream..." -t 2000 -u low &
   else
@@ -147,18 +147,21 @@ awk -v user="$STREAMER_USERNAME" '
   fi
 
   # Build streamlink auth args
-  SL_ARGS=(--twitch-low-latency --twitch-disable-ads)
+  # NOTE: --twitch-low-latency dropped on purpose. It forces playback to the
+  # bleeding edge of the stream, which is the #1 cause of constant re-buffering.
+  SL_ARGS=(--twitch-disable-ads)
   TWITCH_TOKEN=$(cat "$TWITCH_TOKEN_FILE" 2>/dev/null)
   [ -n "$TWITCH_TOKEN" ] && SL_ARGS+=(--twitch-api-header "Authorization=OAuth $TWITCH_TOKEN")
 
   SL_COMMON=(
     "${SL_ARGS[@]}"
     --stream-segment-threads 3
-    --stream-segment-attempts 3
-    --stream-segment-timeout 10
-    --hls-live-edge 1
-    --retry-streams 2
-    --retry-open 2
+    --stream-segment-attempts 5
+    --stream-segment-timeout 15
+    --hls-live-edge 3
+    --ringbuffer-size 32M
+    --retry-streams 5
+    --retry-open 3
   )
 
   pkill mpv
@@ -180,20 +183,20 @@ awk -v user="$STREAMER_USERNAME" '
 
   mpv \
     --cache=yes \
+    --cache-secs=30 \
+    --demuxer-max-bytes=150MiB \
+    --demuxer-max-back-bytes=50MiB \
+    --demuxer-readahead-secs=20 \
     --force-window=immediate \
     --vo=gpu \
     --gpu-api=opengl \
     --hwdec=auto \
     "${ASPECT_ARGS[@]}" \
-    --profile=low-latency \
     --video-sync=audio \
     --no-interpolation \
     --scale=spline36 \
     --cscale=spline36 \
     --dscale=mitchell \
-    --demuxer-max-bytes=500KiB \
-    --demuxer-readahead-secs=2 \
-    --demuxer-lavf-o=fflags=+nobuffer \
     --input-ipc-server="$MPV_SOCKET" \
     "$LOW_URL" &
   MPV_PID=$!

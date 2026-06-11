@@ -36,13 +36,14 @@ if [[ "$MODE" == "twitch" ]]; then
 
   MPV_SOCKET="/tmp/mpv-twitch-ipc"
 
-  SL_ARGS=(--twitch-low-latency --twitch-disable-ads
+  SL_ARGS=(--twitch-disable-ads
     --stream-segment-threads 3
-    --stream-segment-attempts 3
-    --stream-segment-timeout 10
-    --hls-live-edge 1
-    --retry-streams 2
-    --retry-open 2)
+    --stream-segment-attempts 5
+    --stream-segment-timeout 15
+    --hls-live-edge 3
+    --ringbuffer-size 32M
+    --retry-streams 5
+    --retry-open 3)
   TWITCH_TOKEN=$(cat "$TWITCH_TOKEN_FILE" 2>/dev/null)
   [ -n "$TWITCH_TOKEN" ] && SL_ARGS+=(--twitch-api-header "Authorization=OAuth $TWITCH_TOKEN")
 
@@ -84,12 +85,15 @@ if [[ "$MODE" == "twitch" ]]; then
 
   mpv \
     --cache=yes \
+    --cache-secs=30 \
+    --demuxer-max-bytes=150MiB \
+    --demuxer-max-back-bytes=50MiB \
+    --demuxer-readahead-secs=20 \
     --force-window=immediate \
     --vo=gpu \
     --gpu-api=opengl \
     --hwdec=auto \
     "${ASPECT_ARGS[@]}" \
-    --profile=low-latency \
     --video-sync=audio \
     --no-interpolation \
     --input-ipc-server="$MPV_SOCKET" \
