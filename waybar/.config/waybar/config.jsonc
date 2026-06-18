@@ -14,7 +14,7 @@
     "custom/twitch_vod_download",
     "custom/yt-download",
     "custom/recording",
-    "custom/voxtype",
+    "custom/handy",
     "custom/blanket",
     "custom/tailscale",
     "custom/rclone",
@@ -90,9 +90,10 @@
     "tooltip-format": "{ifname}: {ipaddr}",
     "tooltip-format-wifi": "SSID: {essid}\nStrength: {signalStrength}%" // Add this line
 },
-  "custom/voxtype": {
-    "exec": "voxtype status --follow --format json",
+  "custom/handy": {
+    "exec": "/home/knaught/scripts/handy-waybar.sh",
     "return-type": "json",
+    "restart-interval": 1,
     "format": "{icon}",
     "format-icons": {
       "idle": "\uf130",
@@ -100,6 +101,7 @@
       "transcribing": "\uf110",
       "stopped": "\uf131"
     },
+    "on-click": "handy --toggle-transcription",
     "tooltip": true
   },
   "custom/recording": {

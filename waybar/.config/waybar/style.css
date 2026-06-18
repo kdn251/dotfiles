@@ -27,24 +27,24 @@
     padding: 0 10px;
 }
 
-#custom-voxtype {
+#custom-handy {
   padding: 0 10px;
 }
 
-#custom-voxtype.recording {
+#custom-handy.recording {
   color: #ff5555;
   animation: pulse 1s ease-in-out infinite;
 }
 
-#custom-voxtype.transcribing {
+#custom-handy.transcribing {
   color: #f1fa8c;
 }
 
-#custom-voxtype.idle {
+#custom-handy.idle {
   color: #50fa7b;
 }
 
-#custom-voxtype.stopped {
+#custom-handy.stopped {
   color: #6272a4;
 }
 

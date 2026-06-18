@@ -6,10 +6,10 @@ chatterino2-bin
 cryptomator
 faugus-launcher
 google-chrome
+handy-bin
 neofetch
 opendeck
 vesktop
-voxtype-bin
 wallust
 wayland-boomer-git
 yay
