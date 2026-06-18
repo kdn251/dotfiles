@@ -50,6 +50,7 @@ alias claude="claude --dangerously-skip-permissions"
 # alias ytm-dl='yt-dlp -f "ba/b" -x --audio-format mp3 --audio-quality 0 --add-metadata --embed-thumbnail -o "%(title)s.%(ext)s"'
 # alias ytm-dl='yt-dlp -f "ba/b" -x --audio-format mp3 --audio-quality 0 --add-metadata --embed-thumbnail -o "~/Music/%(uploader)s/%(title)s.%(ext)s"'
 alias ytm-dl='yt-dlp -f "ba/b" -x --audio-format mp3 --audio-quality 0 --add-metadata --embed-thumbnail -o "~/Music/%(title)s.%(ext)s"'
+alias ytv-dl='yt-dlp -f "bv*+ba/b" --merge-output-format mp4 --add-metadata --embed-thumbnail -o "~/Videos/%(title)s.%(ext)s"'
 alias ls='eza --icons'
 alias ll='eza -lh --icons --git'
 alias la='eza -lah --icons --git'

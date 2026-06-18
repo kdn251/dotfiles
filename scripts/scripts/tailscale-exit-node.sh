@@ -24,11 +24,19 @@ select_node() {
 
     # TOGGLE LOGIC
     if [[ "$SELECTED_IP" == "$CURRENT_EXIT_IP" ]]; then
-      tailscale set --exit-node=""
-      notify-send "Tailscale" "Exit node disabled."
+      ERR=$(tailscale set --exit-node="" 2>&1)
+      if [ $? -eq 0 ]; then
+        notify-send "Tailscale" "Exit node disabled."
+      else
+        notify-send -u critical "Tailscale" "Failed to disable exit node: $ERR"
+      fi
     else
-      tailscale set --exit-node="$SELECTED_IP"
-      notify-send "Tailscale" "Routing through $SELECTED_IP"
+      ERR=$(tailscale set --exit-node="$SELECTED_IP" 2>&1)
+      if [ $? -eq 0 ]; then
+        notify-send "Tailscale" "Routing through $SELECTED_IP"
+      else
+        notify-send -u critical "Tailscale" "Failed to set exit node: $ERR"
+      fi
     fi
   fi
 }

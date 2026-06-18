@@ -1,4 +1,3 @@
-"query:Downloaded:link =~ \"(-2591271415|-2604044870|-2604424755|-2604513862|-2604700562|-2605083016|l38DNubd1Z4|VZ1XspToV1E|wTYDBFO0y78|yWMYAAg1HAo)\" and feedtitle !~ \"Starred\"" downloaded
 "query:═══YouTube═══:tags # \"yt\""
 "query:═══Twitch═══:tags # \"twitch\""
 "query:═══Blogs═══:tags # \"blogs\""
