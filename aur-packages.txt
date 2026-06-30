@@ -1,5 +1,6 @@
 1password
 automatic-timezoned
+beekeeper-studio
 bluebubbles-bin
 brave-bin
 chatterino2-bin
