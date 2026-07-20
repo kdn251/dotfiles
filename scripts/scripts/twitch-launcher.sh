@@ -61,55 +61,47 @@ if [ "$MISSING" -eq 1 ]; then
 fi
 
 # --- 3. Build prioritized fuzzel list ---
-# Logic: Merge counts with usernames, sort by count (desc), then format for fuzzel
-CHOICE=$(
-  awk -v stats="$STATS_FILE" -v p="$PIXMAPS" '
-    BEGIN {
-      while ((getline < stats) > 0) {
-        count[$1] = $2
-      }
+# Top 5 most-watched live streamers (by pick count) first, then everyone
+# else alphabetically. Lines in MENU_TMP: count \t lowercase-label \t label
+MENU_TMP=$(mktemp)
+awk -v stats="$STATS_FILE" '
+  BEGIN {
+    while ((getline line < stats) > 0) {
+      n = split(line, a, " ")
+      if (n >= 2 && a[2] ~ /^[0-9]+$/) count[a[1]] = a[2] + 0
     }
-    {
-      # Store the first word (Username) for the icon and stats
-      user_id = $1
-      gsub(/[[:space:]\r]+$/, "", user_id)
-      lower_id = tolower(user_id)
-      
-      # Store the FULL LINE (Username + Category) for the display label
-      full_label = $0
-      gsub(/[\r]+$/, "", full_label) # Strip carriage returns
-      
-      c = (count[user_id] ? count[user_id] : 0)
-      
-      # Print: SortCount|FullLabel \0 icon \x1f path/lowercase.png
-      printf "%05d|%s\000icon\x1f%s/%s.png\n", c, full_label, p, lower_id
-    }' "$USERNAME_LIST" |
-    sort -rn |
-    awk -F'|' '
-      NR <= 5 { sub(/^[0-9]+\|/, ""); print; next }
-      { others[NR] = $0 }
-      END {
-        for (i in others) print others[i] | "sort -t\"|\" -k2"
+  }
+  NF {
+    label = $0
+    gsub(/[[:space:]\r]+$/, "", label)
+    user = $1
+    sub(/\r$/, "", user)
+    c = (user in count) ? count[user] : 0
+    printf "%05d\t%s\t%s\n", c, tolower(label), label
+  }' "$USERNAME_LIST" >"$MENU_TMP"
+
+TOP5=$(sort -t"$(printf '\t')" -k1,1nr -k2,2 "$MENU_TMP" | awk -F'\t' '$1 + 0 > 0' | head -n 5)
+
+CHOICE=$(
+  {
+    [ -n "$TOP5" ] && printf '%s\n' "$TOP5"
+    sort -t"$(printf '\t')" -k2,2 "$MENU_TMP" | grep -vxF -f <(printf '%s\n' "$TOP5")
+  } |
+    awk -F'\t' -v p="$PIXMAPS" '
+      NF >= 3 {
+        split($3, w, " ")
+        printf "%s\000icon\x1f%s/%s.png\n", $3, p, tolower(w[1])
       }' |
-    sed 's/^[0-9]*|//' |
     fuzzel --dmenu \
       --prompt "󰕃  " \
       --line-height 35 \
       --width 45 \
       --lines 10
 )
+rm -f "$MENU_TMP"
 
 if [ -z "$CHOICE" ]; then
   exit 0
-fi
-
-if [ -n "$CHOICE" ]; then
-  awk -v user="$STREAMER_USERNAME" '
-    BEGIN { found=0 }
-    $1 == user { $2=$2+1; found=1 }
-    { print $1, $2 }
-    END { if (!found) print user, 1 }
-  ' "$STATS_FILE" >"${STATS_FILE}.tmp" && mv "${STATS_FILE}.tmp" "$STATS_FILE"
 fi
 
 # Extract just the username
