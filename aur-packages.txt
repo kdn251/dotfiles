@@ -10,6 +10,7 @@ google-chrome
 neofetch
 opencode-bin
 opendeck
+slack-desktop
 vesktop
 voxtype-bin
 wallust
