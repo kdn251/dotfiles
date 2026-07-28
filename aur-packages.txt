@@ -9,6 +9,7 @@ faugus-launcher
 google-chrome
 neofetch
 opencode-bin
+opencode-desktop-bin
 opendeck
 slack-desktop
 vesktop
