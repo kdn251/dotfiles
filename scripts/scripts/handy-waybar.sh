@@ -41,7 +41,7 @@ for m in json.load(sys.stdin):
     if m.get("focused"):
         lw=m["width"]/m["scale"]; lh=m["height"]/m["scale"]
         w=800/m["scale"]; h=400/m["scale"]
-        print(f"{int(m[\"x\"]+lw/2-w/2)} {int(m[\"y\"]+lh-h-20)}")
+        print(int(m["x"]+lw/2-w/2), int(m["y"]+lh-m["reserved"][3]-h-20))
         break
 ') || return
     [ -n "$pos" ] && hyprctl dispatch movewindowpixel "exact $pos,title:^(Recording)$" >/dev/null 2>&1
