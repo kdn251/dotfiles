@@ -27,6 +27,27 @@ emit() {
 
 emit idle
 
+# Handy repositions its Recording overlay right after showing it, with math that
+# is wrong under GDK_SCALE=2 (it hangs off the bottom edge and ignores the
+# Hyprland windowrule move). Nudge it to bottom-center of the focused monitor
+# shortly after each recording starts; a manual move sticks once applied.
+# Overlay is 800x400 physical px (400x200 @ GDK_SCALE=2) under force_zero_scaling.
+position_overlay() {
+  (
+    sleep 0.35
+    pos=$(hyprctl monitors -j 2>/dev/null | python3 -c '
+import json,sys
+for m in json.load(sys.stdin):
+    if m.get("focused"):
+        lw=m["width"]/m["scale"]; lh=m["height"]/m["scale"]
+        w=800/m["scale"]; h=400/m["scale"]
+        print(f"{int(m[\"x\"]+lw/2-w/2)} {int(m[\"y\"]+lh-h-20)}")
+        break
+') || return
+    [ -n "$pos" ] && hyprctl dispatch movewindowpixel "exact $pos,title:^(Recording)$" >/dev/null 2>&1
+  ) &
+}
+
 # Resilient follow loop: never exits on its own (an idle Handy logs nothing, so
 # the read timeout must NOT end the loop), and restarts tail if Handy rotates or
 # recreates its log on restart.
@@ -47,7 +68,7 @@ while true; do
       break   # EOF: tail ended (log rotated / Handy restarted) -> respawn it
     fi
     case $line in
-      *"TranscribeAction::start called"*) [ "$state" != recording ]    && { state=recording;    emit recording; } ;;
+      *"TranscribeAction::start called"*) [ "$state" != recording ]    && { state=recording;    emit recording; position_overlay; } ;;
       *"TranscribeAction::stop called"*)  [ "$state" != transcribing ] && { state=transcribing; emit transcribing; } ;;
       *"skipping persistence"*|*"Transcription complete"*|*"CancelAction"*|*"cancel called"*)
         [ "$state" != idle ] && { state=idle; emit idle; } ;;
