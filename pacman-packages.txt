@@ -25,6 +25,7 @@ cmake
 composer
 cronie
 dbeaver
+ddrescue
 dmenu
 dmidecode
 dnsmasq
@@ -95,6 +96,7 @@ kolourpaint
 lazygit
 lf
 lib32-vulkan-intel
+libdvdcss
 libfprint
 libreoffice-still
 libva-utils
