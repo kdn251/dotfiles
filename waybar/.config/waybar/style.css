@@ -200,6 +200,16 @@ window#waybar {
   padding: 0 10px 0 0;
 }
 
+#custom-protonvpn {
+    color: #6c7086; /* Dim color for disconnected */
+    padding: 0 10px 0 0;
+}
+#custom-protonvpn.connected {
+    color: #a6e3a1; /* Green color for connected */
+    font-weight: bold;
+    padding: 0 10px 0 0;
+}
+
 #custom-tailscale {
     color: #6c7086; /* Dim color for inactive */
     padding: 0 10px 0 0;
