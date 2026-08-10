@@ -159,6 +159,7 @@ sfml
 signal-desktop
 socat
 sof-firmware
+sshfs
 stow
 strawberry
 streamlink
