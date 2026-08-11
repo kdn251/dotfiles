@@ -1,17 +1,29 @@
 #!/bin/bash
 
 # Proton VPN waybar module.
-#   (no args) -> JSON status for waybar (connected = proton0 interface up)
-#   toggle    -> show/hide the Proton VPN app window like a menubar dropdown
-#                (launches the app if it isn't running)
+#   (no args)       -> JSON status for waybar (connected = proton0 interface up)
+#   toggle          -> show/hide the Proton VPN app window like a menubar dropdown
+#                      (launches the app if it isn't running)
+#   hide-if-visible -> stash the window if it's currently shown (used by the
+#                      connect/disconnect watcher)
+#
+# While the window is shown, a background watcher waits for the proton0
+# interface to appear/disappear (i.e. the user clicked Connect/Disconnect)
+# and auto-hides the window, then refreshes the waybar icon via SIGRTMIN+8.
 
 APP_CLASS_RE='^(proton\.vpn\.app\.gtk|protonvpn-app)$'
 SPECIAL_WS="special:protonvpn"
 MARGIN_RIGHT=10
 MARGIN_TOP=5
+WATCHER_PIDFILE="/tmp/protonvpn-waybar-watcher.pid"
+SCRIPT="$HOME/scripts/protonvpn-waybar.sh"
 
 get_window() {
   hyprctl clients -j | jq -c --arg re "$APP_CLASS_RE" 'first(.[] | select(.class | test($re))) // empty'
+}
+
+refresh_waybar() {
+  pkill -SIGRTMIN+8 waybar 2>/dev/null
 }
 
 # Anchor the window below the bar at the top-right of the focused monitor,
@@ -45,6 +57,51 @@ position_window_once() {
   hyprctl dispatch movewindowpixel "exact $X $Y,address:$ADDR" >/dev/null
 }
 
+hide_window() {
+  local ADDR="$1"
+  hyprctl dispatch movetoworkspacesilent "$SPECIAL_WS,address:$ADDR" >/dev/null
+}
+
+kill_watcher() {
+  if [ -f "$WATCHER_PIDFILE" ]; then
+    kill -- -"$(cat "$WATCHER_PIDFILE")" 2>/dev/null
+    rm -f "$WATCHER_PIDFILE"
+  fi
+}
+
+# Watch for proton0 coming or going (= Connect/Disconnect clicked) and
+# auto-hide the window. Polls instead of `ip monitor` because ip's output
+# is block-buffered into a pipe. Gives up after 10 minutes.
+start_watcher() {
+  kill_watcher
+  # setsid forks, so \$\$ inside (not \$! here) is the watcher's real
+  # pid/pgid — kill_watcher kills that whole group.
+  setsid bash -c "
+    echo \$\$ > '$WATCHER_PIDFILE'
+    INITIAL=\$(ip link show proton0 >/dev/null 2>&1 && echo up || echo down)
+    for _ in \$(seq 1 1200); do
+      sleep 0.5
+      CUR=\$(ip link show proton0 >/dev/null 2>&1 && echo up || echo down)
+      if [ \"\$CUR\" != \"\$INITIAL\" ]; then
+        sleep 1
+        exec '$SCRIPT' hide-if-visible
+      fi
+    done
+    rm -f '$WATCHER_PIDFILE'
+  " >/dev/null 2>&1 &
+}
+
+hide_if_visible() {
+  rm -f "$WATCHER_PIDFILE"
+  WIN_JSON=$(get_window)
+  refresh_waybar
+  [ -z "$WIN_JSON" ] && exit 0
+  WS=$(echo "$WIN_JSON" | jq -r '.workspace.name')
+  if [ "$WS" != "$SPECIAL_WS" ]; then
+    hide_window "$(echo "$WIN_JSON" | jq -r '.address')"
+  fi
+}
+
 toggle_window() {
   WIN_JSON=$(get_window)
 
@@ -58,6 +115,7 @@ toggle_window() {
     done
     [ -z "$WIN_JSON" ] && exit 0
     position_window "$(echo "$WIN_JSON" | jq -r '.address')"
+    start_watcher
     exit 0
   fi
 
@@ -70,16 +128,24 @@ toggle_window() {
     # doesn't warp over to it.
     hyprctl dispatch movetoworkspacesilent "$ACTIVE_WS,address:$ADDR" >/dev/null
     position_window "$ADDR"
+    start_watcher
   else
-    hyprctl dispatch movetoworkspacesilent "$SPECIAL_WS,address:$ADDR" >/dev/null
+    kill_watcher
+    hide_window "$ADDR"
   fi
 }
 
 # --- EXECUTION ---
-if [ "$1" == "toggle" ]; then
-  toggle_window
-  exit 0
-fi
+case "$1" in
+  toggle)
+    toggle_window
+    exit 0
+    ;;
+  hide-if-visible)
+    hide_if_visible
+    exit 0
+    ;;
+esac
 
 # --- WAYBAR OUTPUT ---
 if ip link show proton0 &>/dev/null; then
