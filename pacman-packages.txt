@@ -161,6 +161,7 @@ socat
 sof-firmware
 sshfs
 stow
+strace
 strawberry
 streamlink
 sudo
