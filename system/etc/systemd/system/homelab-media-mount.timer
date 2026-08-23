@@ -1,0 +1,10 @@
+[Unit]
+Description=Periodically (re)check homelab reachability for ~/homelab-media
+
+[Timer]
+OnBootSec=20s
+OnUnitActiveSec=30s
+AccuracySec=5s
+
+[Install]
+WantedBy=timers.target

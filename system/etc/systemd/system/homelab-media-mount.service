@@ -1,0 +1,7 @@
+[Unit]
+Description=Mount ~/homelab-media when the homelab is reachable
+After=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/homelab-media-mount

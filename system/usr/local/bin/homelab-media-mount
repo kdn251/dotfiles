@@ -1,0 +1,25 @@
+#!/bin/bash
+# Mount ~/homelab-media (sshfs, fstab entry) only while the homelab is reachable.
+# Run by homelab-media-mount.timer. Replaces x-systemd.automount, which blocked
+# Thunar / GTK file choosers for seconds-to-minutes whenever the host was down.
+HOST=100.74.35.69
+PORT=22
+MP=/home/knaught/homelab-media
+UNIT='home-knaught-homelab\x2dmedia.mount'
+
+reachable() { timeout 2 bash -c "exec 3<>/dev/tcp/$HOST/$PORT" 2>/dev/null; }
+# Use mountinfo rather than mountpoint(1)/stat — those can block on a dead sshfs.
+mounted()   { awk -v mp="$MP" '$5 == mp {f=1} END {exit !f}' /proc/self/mountinfo; }
+
+if mounted; then
+    if ! reachable; then
+        echo "host $HOST unreachable, lazily unmounting $MP"
+        umount -l "$MP" || true
+        systemctl reset-failed "$UNIT" 2>/dev/null || true
+    fi
+else
+    if reachable; then
+        echo "host $HOST reachable, mounting $MP"
+        systemctl start "$UNIT"
+    fi
+fi
