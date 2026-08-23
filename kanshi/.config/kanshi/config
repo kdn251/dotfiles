@@ -14,7 +14,7 @@
 # so the port number is not stable across kernels/reboots on this Ryzen box.
 # AMD has no DSC handshake bug, so 4K@144 should work here if you want it.
 profile framework_docked {
-    output "LG Electronics LG ULTRAGEAR+ 309NTUW0R734" enable mode 3840x2160@60Hz position 0,0 scale 1.5
+    output "LG Electronics LG ULTRAGEAR+ *" enable mode 3840x2160@60Hz position 0,0 scale 1.5
     output "eDP-1" disable
     exec ~/.config/kanshi/docked-setup.sh
 }
@@ -67,7 +67,7 @@ profile thinkpad_undocked {
 # 4K@60 (not 144) because the Intel xe driver on Panther Lake silently fails the
 # DSC handshake required for 4K@144 over USB-C — panel goes black at 144Hz.
 profile knuth_docked {
-    output "LG Electronics LG ULTRAGEAR+ 309NTUW0R734" enable mode 3840x2160@60Hz position 0,0 scale 1.5
+    output "LG Electronics LG ULTRAGEAR+ *" enable mode 3840x2160@60Hz position 0,0 scale 1.5
     output "eDP-1" disable
     exec ~/.config/kanshi/docked-setup.sh
 }
@@ -76,10 +76,25 @@ profile knuth_docked {
 profile knuth_undocked {
     output "eDP-1" {
         enable
-        # 60Hz for battery; bump to 120Hz if you want smoother
-        mode 2880x1920@60.00Hz
+        # 120Hz for smooth cursor; drop to 60Hz to save battery
+        mode 2880x1920@120.00Hz
         position 0,0
         scale 2.0
     }
     exec ~/.config/kanshi/undocked-setup.sh
+}
+
+# Fallback for knuth when the external monitor's EDID doesn't make it through
+# the TS4's DP chip: the monitor then identifies as the Synaptics MST hub with
+# a garbage serial and only standard VESA fallback modes (max 1920x1080), so
+# the description-matched profiles above never fire. Match the fallback
+# identity and drive it at the best mode it offers. If the monitor is a
+# higher-res panel showing up blurry, replug it (or use another dock port) to
+# get a real EDID — then knuth_docked takes over.
+profile knuth_docked_noedid {
+    # --custom: without EDID the monitor only advertises up to 1920x1080, but
+    # the panel is 4K and the link handles 3840x2160@60 fine (verified 2026-08-17).
+    output "Synaptics Inc Non-PnP 0x01010101" enable mode --custom 3840x2160@60Hz position 0,0 scale 1.5
+    output "eDP-1" disable
+    exec ~/.config/kanshi/docked-setup.sh
 }
