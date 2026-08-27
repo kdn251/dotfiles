@@ -30,9 +30,10 @@ if hyprctl clients -j | jq -e '
      [.[] | select(.title|test("^Picture[- ]in[- ]Picture$";"i"))] | length > 0' >/dev/null; then
   # index \t muted for every Brave/Chromium sink-input
   mapfile -t inputs < <(pactl -f json list sink-inputs | jq -r '
-    .[] | select((.properties["application.process.binary"] // "")
-                 | test("^(brave|chromium|chrome|google-chrome)")
-                 or (.properties["application.name"] // "" | test("^(Brave|Chromium|Google Chrome)")))
+    .[] | select(((.properties["application.process.binary"] // "")
+                   | test("^(brave|chromium|chrome|google-chrome)"))
+                 or ((.properties["application.name"] // "")
+                   | test("^(Brave|Chromium|Google Chrome)")))
         | [ (.index|tostring), (.mute|tostring) ] | @tsv')
   [ "${#inputs[@]}" -gt 0 ] || exit 0
 
