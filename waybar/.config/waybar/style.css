@@ -223,7 +223,12 @@ window#waybar {
 
 #battery {
   color: #ffffff;
-  /* Last module in modules-right: 8px shared padding + 9px to match the left. */
+  /* Last module in modules-right: 8px shared padding + 9px to match the left.
+     COUPLING: this pairs with #workspaces button:first-child's padding-left.
+     If you reorder modules-right so battery is no longer last, move this with
+     it or the right gap collapses. A structural selector
+     (.modules-right > widget:last-child) was tried and measures 8px instead
+     of 12px -- waybar's widget wrapper does not take padding the same way. */
   padding-right: 17px;
 }
 

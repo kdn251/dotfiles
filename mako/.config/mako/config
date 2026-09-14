@@ -1,0 +1,33 @@
+# NOT the active notification daemon. swaync replaced mako (see the swaync
+# package and hyprland.conf's exec-once); mako has no animation support of any
+# kind, which is why it was swapped out. It is kept installed and configured as
+# a fallback: if swaync misbehaves, `pkill swaync; mako &` restores notifications
+# with this theme. If you remove that fallback, uninstall mako and drop this
+# package too.
+#
+# Global settings
+max-history=50
+sort=-time
+
+# Appearance
+font=monospace 10
+width=300
+height=100
+margin=10
+padding=10
+border-size=1
+border-radius=5
+
+# Colors (themed by wallust)
+background-color=#010202ee
+text-color=#CACACAff
+border-color=#676767ff
+progress-color=over #7C7C7C
+
+# Behavior
+default-timeout=5000
+ignore-timeout=0
+
+[urgency=high]
+border-color=#575757ff
+default-timeout=0

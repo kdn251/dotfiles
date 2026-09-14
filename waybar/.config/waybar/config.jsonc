@@ -199,6 +199,10 @@
     "tooltip": true
   },
   "custom/miniflux_download": {
+    // Click opens the shared yt-dlp panel (both this and custom/yt-download
+    // are yt-dlp), listing what is downloading with a cancel button each.
+    "on-click": "~/scripts/yt-dl-panel.sh",
+    "cursor": true,
     "format": "{}",
     "exec": "cat /tmp/miniflux_download_status.txt",
     "interval": 60,
@@ -214,6 +218,8 @@
     "tooltip": true
   },
   "custom/yt-download": {
+    "on-click": "~/scripts/yt-dl-panel.sh",
+    "cursor": true,
     "exec": "~/scripts/waybar-yt-download.sh",
     "return-type": "json",
     "interval": 60,
