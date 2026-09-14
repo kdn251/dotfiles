@@ -18,17 +18,17 @@
 #custom-miniflux_download {
     color: #4CAF50; /* Green color for download status */
     font-weight: bold;
-    padding: 0 10px;
+    padding: 0 8px;
 }
 
 #custom-twitch_vod_download {
     color: #4CAF50; /* Green color for download status */
     font-weight: bold;
-    padding: 0 10px;
+    padding: 0 8px;
 }
 
 #custom-handy {
-  padding: 0 10px;
+  padding: 0 8px;
 }
 
 #custom-handy.recording {
@@ -57,7 +57,11 @@
 #custom-recording {
   color: #FF0000;
   font-weight: bold;
-  padding: 0 6px;
+  padding: 0 8px;
+}
+
+#custom-yt-download {
+  padding: 0 8px;
 }
 
 #custom-yt-download.downloading {
@@ -71,7 +75,7 @@
 }
 
 #custom-rclone {
-  padding: 0 10px 0 0;
+  padding: 0 8px;
 }
 
 #custom-rclone.syncing {
@@ -80,7 +84,6 @@
   animation-duration: 2s;
   animation-timing-function: linear;
   animation-iteration-count: infinite;
-  padding: 0 10px;
 }
 
 #custom-rclone.synced {
@@ -155,8 +158,8 @@ window#waybar {
 #pulseaudio {
   color: #ffffff;
   background: transparent;
-  padding: 0 5px;
-  margin: 0 2px;
+  padding: 0 8px;
+  margin: 0;
   border-radius: 0;
 }
 
@@ -199,31 +202,28 @@ window#waybar {
 
 #network {
   color: #ffffff;
-  padding: 0 10px 0 0;
 }
 
 #custom-blanket {
-  padding: 0 10px 0 0;
+  padding: 0 8px;
 }
 
 #custom-protonvpn {
-    color: #6c7086; /* Dim color for disconnected */
-    padding: 0 10px 0 0;
+    color: #ffffff; /* White when disconnected, like the other icons */
+    padding: 0 8px;
 }
 #custom-protonvpn.connected {
     color: #a6e3a1; /* Green color for connected */
     font-weight: bold;
-    padding: 0 10px 0 0;
 }
 
 #custom-tailscale {
     color: #6c7086; /* Dim color for inactive */
-    padding: 0 10px 0 0;
+    padding: 0 8px;
 }
 #custom-tailscale.active {
     color: #a6e3a1; /* Green color for active */
     font-weight: bold;
-    padding: 0 10px 0 0;
 }
 
 #network.disconnected {
@@ -231,12 +231,12 @@ window#waybar {
 }
 
 #bluetooth {
-  padding: 0 10px 0 0;
+  padding: 0 8px;
 }
 
 #pulseaudio {
   color: #ffffff;
-  padding: 0 15px;
+  padding: 0 8px;
 }
 
 #pulseaudio.muted {
