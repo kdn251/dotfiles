@@ -10,13 +10,13 @@ TWITCH_TOKEN=$(cat ~/.newsboat/.twitch_oauth 2>/dev/null)
 WAYBAR_STATUS_FILE="/tmp/twitch_vod_status.txt"
 
 STREAMERS=(
-  # "zackrawrr"
-  # "xqc"
-  # "shroud"
-  # "jynxzi"
-  # "dantes"
-  # "ohnePixel"
-  # "Doublelift"
+  "zackrawrr"
+  "xqc"
+  "shroud"
+  "jynxzi"
+  "dantes"
+  "ohnePixel"
+  "Doublelift"
   "GreekgodX"
 )
 

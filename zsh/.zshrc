@@ -13,7 +13,6 @@ else
 fi
 
 # --- 2. ENVIRONMENT & PATH ---
-export PATH="$HOME/.phpenv/bin:$HOME/scripts:/home/knaught/.opencode/bin:$PATH"
 export JAVA_HOME=/usr/lib/jvm/java-11-openjdk
 export ANDROID_HOME=/opt/android-sdk
 export PATH=$PATH:$ANDROID_HOME/tools:$ANDROID_HOME/platform-tools
@@ -85,3 +84,6 @@ eval "$(zoxide init zsh)"
 # Dart completion
 [[ -f /home/knaught/.dart-cli-completion/zsh-config.zsh ]] && . /home/knaught/.dart-cli-completion/zsh-config.zsh
 export PATH="$HOME/.local/bin:$PATH"
+
+# opencode
+export PATH=/home/knaught/.opencode/bin:$PATH

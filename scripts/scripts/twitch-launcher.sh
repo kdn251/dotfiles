@@ -126,9 +126,14 @@ awk -v user="$STREAMER_USERNAME" '
   echo "STREAMER_USERNAME=\"$STREAMER_USERNAME\"" >>/tmp/twitch-stream-context.conf
   echo "TWITCH_TOKEN_FILE=\"$TWITCH_TOKEN_FILE\"" >>/tmp/twitch-stream-context.conf
 
+  # NOTE: do NOT use `--channels` here. That flag puts Chatterino in a
+  # throwaway-layout mode where it never writes Settings/settings.json on exit,
+  # so any account you add from that window is silently discarded (login
+  # "expires" on every restart). `--activate` adds/focuses the tab in the
+  # normal main window and leaves settings saving intact. No pkill needed:
+  # if Chatterino is already running this just forwards over its IPC socket.
   (
-    pkill chatterino
-    chatterino --channels "$STREAMER_USERNAME" >/dev/null 2>&1
+    chatterino --activate "t:$STREAMER_USERNAME" >/dev/null 2>&1
   ) &
 
   IMG_PATH="$PIXMAPS/${STREAMER_USERNAME,,}.png"

@@ -4,10 +4,10 @@
   "margin-right": 10,
   "height": 15,
   "modules-left": [
-    "hyprland/window"
+    "hyprland/workspaces"
   ],
   "modules-center": [
-    "hyprland/workspaces",
+    "clock"
   ],
   "modules-right": [
     "custom/miniflux_download",
@@ -15,16 +15,15 @@
     "custom/yt-download",
     "custom/recording",
     "custom/handy",
-    "custom/blanket",
+    // "custom/blanket",
     "custom/protonvpn",
-    "custom/tailscale",
-    "custom/rclone",
+    // "custom/tailscale",
+    // "custom/rclone",
     // "pulseaudio",
     // "temperature",
     "bluetooth",
     "battery",
-    "network",
-    "clock"
+    "network"
   ],
   "hyprland/window": {
     "format": "{}",
@@ -36,6 +35,8 @@
   },
   "hyprland/workspaces": {
     "format": "{icon}",
+    // Hand2 pointer on hover, so the workspace numbers read as clickable.
+    "cursor": true,
     "on-click": "activate",
     "sort-by-number": true,
     "persistent-workspaces": {
@@ -44,8 +45,9 @@
     }
   },
   "clock": {
+    "format": "{:%A %I:%M %p}",
     "tooltip-format": "<big>{:%Y %B}</big>\n<tt><small>{calendar}</small></tt>",
-    "format-alt": "{:%m-%d}"
+    "on-click": "kitty --class calendar-float ~/scripts/waybar-calendar.sh"
   },
   "cpu": {
     "format": "  {usage}%",
@@ -147,7 +149,7 @@
   "custom/twitch_vod_download": {
     "format": "{}",
     "exec": "cat /tmp/twitch_vod_status.txt",
-    "interval": 60, // Check less frequently than the Miniflux script
+    "interval": 5,
     "hide-empty-text": true,
     "tooltip": true
   },

@@ -1,0 +1,10 @@
+[Unit]
+Description=Network outage monitor (logs to ~/.local/share/netmon/netmon.log)
+
+[Service]
+ExecStart=%h/.local/bin/netmon.sh
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=default.target

@@ -1,0 +1,9 @@
+[Desktop Entry]
+Name=Bluetooth
+Comment=Bluetooth devices (bluetui)
+Keywords=bt;bluetui;headphones;pair;
+Exec=bash -c 'bluetoothctl power on >/dev/null; sleep 0.3; kitty --class bluetui-float bluetui'
+Icon=preferences-bluetooth
+Terminal=false
+Type=Application
+Categories=Settings;

@@ -22,12 +22,19 @@ if pidof -q hyprlock; then
   exit 0
 fi
 
-# Rotate the log so it only ever holds the current lock session.
-: > "$LOG"
+# Keep the previous lock session's log around: when a resume goes wrong, the
+# evidence is in the log the next lock would otherwise wipe.
+mv -f "$LOG" "$LOG.prev" 2>/dev/null
 echo "$(date '+%F %T') watchdog: launching hyprlock" >> "$LOG"
 
 attempt=0
-args=(--grace 5)   # hyprlock.conf's old general:grace, now CLI-only
+# --restore: re-locking after a crash (display-lock-recover.sh), so there is
+# no grace period to offer -- the session was already locked.
+if [ "${1:-}" = --restore ]; then
+  args=(--grace 0 --immediate-render --no-fade-in)
+else
+  args=(--grace 5)   # hyprlock.conf's old general:grace, now CLI-only
+fi
 while true; do
   hyprlock "${args[@]}" >> "$LOG" 2>&1
   rc=$?

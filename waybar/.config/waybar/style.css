@@ -166,7 +166,13 @@ window#waybar {
 
 #clock {
   color: #ffffff;
-  font-weight: bold;
+  font-weight: normal;
+  padding: 0 10px;
+  margin: 0;
+}
+
+#clock:hover {
+  color: #cad3f5;
 }
 
 #battery {
