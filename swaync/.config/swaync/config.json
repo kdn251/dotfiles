@@ -1,0 +1,54 @@
+{
+  "$schema": "/etc/xdg/swaync/configSchema.json",
+  "// ": "Ported from the mako config this replaced. mako's defaults were a",
+  "//  ": "top-right anchor, default-timeout=5000, and [urgency=high] with",
+  "//   ": "default-timeout=0 (never expire). Those map to positionX/Y,",
+  "//    ": "timeout, and timeout-critical below.",
+  "positionX": "right",
+  "positionY": "top",
+  "layer": "overlay",
+  "control-center-layer": "top",
+  "layer-shell": true,
+  "cssPriority": "user",
+  "ignore-gtk-theme": true,
+  "timeout": 5,
+  "timeout-low": 5,
+  "timeout-critical": 0,
+  "// transition": "The notification slide/fade duration in ms. This is the",
+  "// transition2": "thing mako had no equivalent for at all. 0 disables it.",
+  "transition-time": 400,
+  "notification-window-width": 400,
+  "notification-grouping": true,
+  "notification-body-image-height": 100,
+  "notification-body-image-width": 200,
+  "image-visibility": "when-available",
+  "relative-timestamps": true,
+  "fit-to-screen": true,
+  "hide-on-action": true,
+  "hide-on-clear": true,
+  "control-center-width": 500,
+  "control-center-height": 600,
+  "control-center-margin-top": 0,
+  "control-center-margin-bottom": 0,
+  "control-center-margin-right": 0,
+  "control-center-margin-left": 0,
+  "text-empty": "No Notifications",
+  "widgets": [
+    "title",
+    "dnd",
+    "notifications"
+  ],
+  "widget-config": {
+    "title": {
+      "text": "Notifications",
+      "clear-all-button": true,
+      "button-text": "Clear All"
+    },
+    "dnd": {
+      "text": "Do Not Disturb"
+    },
+    "notifications": {
+      "vexpand": true
+    }
+  }
+}
