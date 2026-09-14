@@ -22,8 +22,8 @@
     // "pulseaudio",
     // "temperature",
     "bluetooth",
-    "battery",
-    "network"
+    "network",
+    "battery"
   ],
   "hyprland/window": {
     "format": "{}",
@@ -74,19 +74,35 @@
     "tooltip-format-enumerate-connected-battery": "{device_alias} ({device_battery_percentage}%)"
 },
   "battery": {
+    // omarchy's battery presentation: a 10-step ramp with a separate charging
+    // ramp, icon-only in the bar, and the detail moved into the tooltip.
+    // Omitted from omarchy's version: on-click "omarchy-menu power" and
+    // on-click-right "omarchy-battery-status" -- neither command exists here.
     "states": {
-      "warning": 30,
-      "critical": 15
+      "warning": 20,
+      "critical": 10
     },
-    "format": "{icon} {capacity}%",
-    "format-full": "{icon} {capacity}%",
-    "format-charging": "󰂄 {capacity}%",
-    "format-plugged": " {capacity}%",
+    "format": "{capacity}% {icon}",
+    "format-discharging": "{icon}",
+    "format-charging": "{icon}",
+    "format-plugged": "",
+    "format-full": "󰂅",
+    "format-icons": {
+      "charging": ["󰢜", "󰂆", "󰂇", "󰂈", "󰢝", "󰂉", "󰢞", "󰂊", "󰂋", "󰂅"],
+      "default": ["󰁺", "󰁻", "󰁼", "󰁽", "󰁾", "󰁿", "󰂀", "󰂁", "󰂂", "󰁹"]
+    },
     "format-alt": "{time} {icon}",
-    "format-icons": ["", "", "", "", ""]
+    "tooltip-format-discharging": "{power:>1.0f}W↓ {capacity}%",
+    "tooltip-format-charging": "{power:>1.0f}W↑ {capacity}%",
+    "interval": 5
   },
 "network": {
-    "format-wifi": "",
+    // Signal-strength ramp (empty outline -> filled cone), mapped across
+    // signalStrength 0-100. Same Material Design glyphs omarchy uses.
+    "format-icons": ["󰤯", "󰤟", "󰤢", "󰤥", "󰤨"],
+    "format-wifi": "{icon}",
+    // Signal strength only refreshes on poll, not on netlink events.
+    "interval": 5,
     "format-ethernet": "󰈁",
     "format-disconnected": "OFFLINE",
     "on-click": "kitty --class networkmanager-float nmtui",
