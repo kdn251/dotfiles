@@ -21,6 +21,7 @@
     // "custom/rclone",
     // "pulseaudio",
     // "temperature",
+    "custom/display",
     "bluetooth",
     "network",
     "battery"
@@ -88,7 +89,11 @@
     "format": "{capacity}% {icon}",
     "format-discharging": "{icon}",
     "format-charging": "{icon}",
-    "format-plugged": "",
+    // omarchy leaves this empty, which makes the module vanish whenever the
+    // battery is plugged in but not charging -- exactly what a Framework
+    // does once it hits its charge threshold ("Not charging" maps to the
+    // plugged state). Show the level icon like every other state.
+    "format-plugged": "{icon}",
     "format-full": "󰂅",
     "format-icons": {
       "charging": ["󰢜", "󰂆", "󰂇", "󰂈", "󰢝", "󰂉", "󰢞", "󰂊", "󰂋", "󰂅"],
@@ -118,6 +123,19 @@
     "tooltip-format": "{ifname}",
     "tooltip-format-wifi": "<b>{essid}</b>\n{signalStrength}% ({signaldBm} dBm)  ·  {frequency} GHz\n↓ {bandwidthDownBits}   ↑ {bandwidthUpBits}"
 },
+  "custom/display": {
+    // Screen controls. Scroll the icon for brightness; click for the panel
+    // (brightness steps, hyprsunset night light, kanshi layout reload).
+    "format": "{}",
+    "return-type": "json",
+    "exec": "~/scripts/display-panel.sh --waybar",
+    "interval": 5,
+    "cursor": true,
+    "on-click": "~/scripts/display-panel.sh",
+    "on-scroll-up": "brightnessctl set +5%",
+    "on-scroll-down": "brightnessctl set 5%-",
+    "tooltip": true
+  },
   "custom/handy": {
     "exec": "/home/knaught/scripts/handy-waybar.sh",
     "return-type": "json",

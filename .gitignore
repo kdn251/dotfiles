@@ -46,3 +46,7 @@ waybar/.config/waybar/colors-waybar.css
 mpv/.config/mpv/memo-history.log
 newsboat/.newsboat/auto-download.log
 wallpapers/pictures/screenshots/
+
+# Python bytecode from scripts/scripts/*.py
+__pycache__/
+*.pyc

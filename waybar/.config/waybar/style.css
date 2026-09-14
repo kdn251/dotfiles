@@ -27,6 +27,15 @@
     padding: 0 8px;
 }
 
+#custom-display {
+  padding: 0 8px;
+}
+
+/* Warm tint while hyprsunset is running, matching the tooltip's state */
+#custom-display.night {
+  color: #fab387;
+}
+
 #custom-handy {
   padding: 0 8px;
 }
