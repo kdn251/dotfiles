@@ -11,7 +11,11 @@
   ],
   "modules-right": [
     "custom/miniflux_download",
-    "custom/twitch_vod_download",
+    "custom/twitch_dl",
+    // Superseded by custom/twitch_dl, which shows the same state as an
+    // animated icon with a clickable panel. Uncomment to get the plain
+    // text readout back.
+    // "custom/twitch_vod_download",
     "custom/yt-download",
     "custom/recording",
     "custom/handy",
@@ -123,6 +127,19 @@
     "tooltip-format": "{ifname}",
     "tooltip-format-wifi": "<b>{essid}</b>\n{signalStrength}% ({signaldBm} dBm)  ·  {frequency} GHz\n↓ {bandwidthDownBits}   ↑ {bandwidthUpBits}"
 },
+  "custom/twitch_dl": {
+    // Only visible while a VOD download is running (cron fires the downloader
+    // at 18/20/22). Click for a panel with the streamer's profile picture,
+    // VOD title, progress and a per-download cancel button.
+    "format": "{}",
+    "return-type": "json",
+    "exec": "~/scripts/twitch-dl-panel.sh --waybar",
+    "interval": 3,
+    "hide-empty-text": true,
+    "cursor": true,
+    "on-click": "~/scripts/twitch-dl-panel.sh",
+    "tooltip": true
+  },
   "custom/display": {
     // Screen controls. Scroll the icon for brightness; click for the panel
     // (brightness steps, hyprsunset night light, kanshi layout reload).

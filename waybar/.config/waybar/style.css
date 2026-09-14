@@ -27,6 +27,26 @@
     padding: 0 8px;
 }
 
+/* Twitch VOD download indicator. Only rendered while downloading, so the
+   animation is never running idle. The glyph has more internal padding than
+   the neighbouring icons, so it needs a larger font-size to look the same
+   optical weight. */
+#custom-twitch_dl {
+  padding: 0 8px;
+  color: #ffffff;
+  font-size: 20px;
+}
+
+#custom-twitch_dl.downloading {
+  animation: dlpulse 1.6s ease-in-out infinite;
+}
+
+@keyframes dlpulse {
+  0%   { opacity: 1; }
+  50%  { opacity: 0.45; }
+  100% { opacity: 1; }
+}
+
 #custom-display {
   padding: 0 8px;
 }
