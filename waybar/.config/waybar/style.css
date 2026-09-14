@@ -102,9 +102,11 @@ window#waybar {
   border-radius: 10px;
 }
 
+/* No container margin: the left edge of the bar was insetting 20px against
+   the right edge's 11px. See the :first-child rule below. */
 #workspaces {
   background: transparent;
-  margin: 0 4px;
+  margin: 0;
 }
 
 #workspaces button {
@@ -115,6 +117,18 @@ window#waybar {
   margin: 0 2px;
   border-radius: 0;
   transition: color 0.2s ease;
+}
+
+/* Left edge padding, matched by #battery's padding-right on the other end.
+   :first-child so only the leading edge is affected -- spacing between
+   workspace buttons stays as it was.
+
+   These two rules are a matched pair; keep them in step (9px each gives an
+   equal ~12px optical inset). Padding on window#waybar would be the tidier
+   way to do this but is inert: GTK3 ignores it for the layer-shell child. */
+#workspaces button:first-child {
+  padding-left: 9px;
+  margin-left: 0;
 }
 
 #workspaces button:hover {
@@ -180,6 +194,8 @@ window#waybar {
 
 #battery {
   color: #ffffff;
+  /* Last module in modules-right: 8px shared padding + 9px to match the left. */
+  padding-right: 17px;
 }
 
 #battery.warning {

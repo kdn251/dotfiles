@@ -67,7 +67,10 @@
     "format-off": "",
     "format-connected": "", 
     "format-connected-battery": "",
-    "on-click": "bash -c 'bluetoothctl power on >/dev/null; sleep 0.3; kitty --class bluetui-float bluetui'",
+    // Click opens a device panel (swaync notification with action buttons):
+    // quick connect/disconnect for paired devices, plus "Manage..." for
+    // bluetui. The panel powers the adapter on when it is off.
+    "on-click": "~/scripts/bluetooth-panel.sh",
     // These lines control the hover state (tooltip)
     "tooltip-format": "{controller_alias}\n\n{device_enumerate}",
     "tooltip-format-enumerate-connected": "{device_alias}",
@@ -91,7 +94,11 @@
       "charging": ["󰢜", "󰂆", "󰂇", "󰂈", "󰢝", "󰂉", "󰢞", "󰂊", "󰂋", "󰂅"],
       "default": ["󰁺", "󰁻", "󰁼", "󰁽", "󰁾", "󰁿", "󰂀", "󰂁", "󰂂", "󰁹"]
     },
-    "format-alt": "{time} {icon}",
+    // Click opens a stats panel (swaync notification with action buttons)
+    // showing time remaining and the power-profile switcher, same set as
+    // Super+Shift+B. Replaces the old format-alt click-to-toggle, which an
+    // on-click would have shadowed regardless.
+    "on-click": "~/scripts/battery-panel.sh",
     "tooltip-format-discharging": "{power:>1.0f}W↓ {capacity}%",
     "tooltip-format-charging": "{power:>1.0f}W↑ {capacity}%",
     "interval": 5
@@ -105,9 +112,11 @@
     "interval": 5,
     "format-ethernet": "󰈁",
     "format-disconnected": "OFFLINE",
-    "on-click": "kitty --class networkmanager-float nmtui",
-    "tooltip-format": "{ifname}: {ipaddr}",
-    "tooltip-format-wifi": "SSID: {essid}\nStrength: {signalStrength}%" // Add this line
+    // Click opens a stats panel (swaync notification with action buttons);
+    // the "Open Network Manager" button in it launches nmtui.
+    "on-click": "~/scripts/wifi-panel.sh",
+    "tooltip-format": "{ifname}",
+    "tooltip-format-wifi": "<b>{essid}</b>\n{signalStrength}% ({signaldBm} dBm)  ·  {frequency} GHz\n↓ {bandwidthDownBits}   ↑ {bandwidthUpBits}"
 },
   "custom/handy": {
     "exec": "/home/knaught/scripts/handy-waybar.sh",

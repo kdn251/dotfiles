@@ -17,7 +17,7 @@
   "// transition": "The notification slide/fade duration in ms. This is the",
   "// transition2": "thing mako had no equivalent for at all. 0 disables it.",
   "transition-time": 400,
-  "notification-window-width": 400,
+  "notification-window-width": 520,
   "notification-grouping": true,
   "notification-body-image-height": 100,
   "notification-body-image-width": 200,
@@ -50,5 +50,6 @@
     "notifications": {
       "vexpand": true
     }
-  }
+  },
+  "notification-2fa-action": false
 }
