@@ -168,6 +168,7 @@ sudo
 sushi
 swappy
 swaybg
+swaync
 swayosd
 syncthing
 tailscale
