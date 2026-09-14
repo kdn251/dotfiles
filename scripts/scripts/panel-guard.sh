@@ -29,7 +29,50 @@ panel_guard() {
     exit 0
   fi
   trap 'rm -f "$PANEL_PIDFILE"' EXIT
+  _panel_close_others "$name"
 }
+
+# Opening one panel dismisses any other that is open, so clicking wifi then
+# battery swaps panels instead of stacking two. Each panel holds its own lock,
+# so they cannot see each other -- the pidfiles are the shared registry.
+_panel_close_others() {
+  local self="$1" f other pid closed=0
+  for f in "$PANEL_RUNTIME"/waybar-panel-*.pid; do
+    [ -e "$f" ] || continue
+    other=$(basename "$f")
+    other=${other#waybar-panel-}
+    other=${other%.pid}
+    [ "$other" = "$self" ] && continue
+    pid=$(cat "$f" 2>/dev/null)
+    [ -n "$pid" ] || continue
+    if kill "$pid" 2>/dev/null; then
+      closed=$((closed + 1))
+    fi
+    rm -f "$f"
+  done
+  # Killing the waiting notify-send does not remove the notification itself --
+  # that lives in swaync. At this point ours is not posted yet, so the other
+  # panel's notification is the most recent one.
+  while [ "$closed" -gt 0 ]; do
+    swaync-client --close-latest >/dev/null 2>&1
+    closed=$((closed - 1))
+  done
+
+  # The ProtonVPN module is not a notification at all -- it shows/hides the
+  # real app window like a dropdown, so the pidfile registry cannot see it.
+  # Its own script exposes hide-if-visible, which is a no-op when hidden.
+  if [ "$self" != "protonvpn" ] && [ -x "$HOME/scripts/protonvpn-waybar.sh" ]; then
+    "$HOME/scripts/protonvpn-waybar.sh" hide-if-visible >/dev/null 2>&1 &
+  fi
+}
+
+# Usable as a command, not just a sourced library, so the ProtonVPN dropdown
+# (which is a real window, not a notification) can close the swaync panels
+# when it opens:  panel-guard.sh close-others protonvpn
+if [ "${BASH_SOURCE[0]}" = "$0" ] && [ "$1" = "close-others" ]; then
+  _panel_close_others "${2:-__none__}"
+  exit 0
+fi
 
 # notify-send backgrounded so its PID is recorded (letting a second click kill
 # it), then waited on; echoes the chosen action exactly like notify-send does.

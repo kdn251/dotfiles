@@ -73,6 +73,11 @@ kill_watcher() {
 # auto-hide the window. Polls instead of `ip monitor` because ip's output
 # is block-buffered into a pipe. Gives up after 10 minutes.
 start_watcher() {
+  # Opening this dropdown closes any open waybar panel, matching the reverse
+  # behaviour in panel-guard.sh. Passing our own name so the sweep does not
+  # turn around and hide the window we are showing.
+  [ -x "$HOME/scripts/panel-guard.sh" ] &&
+    "$HOME/scripts/panel-guard.sh" close-others protonvpn >/dev/null 2>&1
   kill_watcher
   # setsid forks, so \$\$ inside (not \$! here) is the watcher's real
   # pid/pgid — kill_watcher kills that whole group.
