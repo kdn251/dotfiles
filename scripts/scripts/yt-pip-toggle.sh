@@ -13,6 +13,15 @@
 # menu highlight moved correctly but Enter never activated the item. ydotool
 # injects through uinput, which the browser treats as real hardware.
 
+# Fast path: talk to the page directly over the DevTools protocol, which calls
+# requestPictureInPicture/exitPictureInPicture outright -- no pointer movement,
+# no menu, and nothing that breaks when Chromium reorders its context menu.
+# Requires Brave started with --remote-debugging-port (see brave-flags.conf).
+# Falls through to the menu-driving path below if that port is not up.
+if [ -x "$HOME/scripts/yt-pip-cdp.py" ] && "$HOME/scripts/yt-pip-cdp.py" >/dev/null 2>&1; then
+  exit 0
+fi
+
 WEBAPP_MATCH="brave-youtube"
 PIP_TITLE="Picture in picture"
 
