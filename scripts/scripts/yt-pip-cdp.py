@@ -36,6 +36,16 @@ PORT = int(os.environ.get("BRAVE_CDP_PORT", "9222"))
 HOST = "127.0.0.1"
 MATCH = os.environ.get("YT_PIP_MATCH", "youtube.com")
 
+RATE_JS = """
+(() => {
+  const vids = [...document.querySelectorAll('video')].filter(v => v.readyState > 0);
+  const v = vids.find(x => !x.paused) || vids[0];
+  if (!v) return 'no-video';
+  v.playbackRate = %s;
+  return String(v.playbackRate);
+})()
+"""
+
 TOGGLE_JS = """
 (() => {
   if (document.pictureInPictureElement) {
@@ -173,13 +183,20 @@ def main():
         print("no %s page found" % MATCH, file=sys.stderr)
         return 3
 
+    # `--rate N` sets playback speed instead of toggling PiP. Setting it on the
+    # video element carries into the PiP window, since PiP renders the same
+    # element rather than a copy.
+    expr = TOGGLE_JS
+    if len(sys.argv) > 2 and sys.argv[1] == "--rate":
+        expr = RATE_JS % float(sys.argv[2])
+
     ws = WS(t["webSocketDebuggerUrl"])
     try:
         ws.send({
             "id": 1,
             "method": "Runtime.evaluate",
             "params": {
-                "expression": TOGGLE_JS,
+                "expression": expr,
                 "userGesture": True,        # the bit that makes PiP allowed
                 "awaitPromise": True,
                 "returnByValue": True,
