@@ -9,6 +9,9 @@
 # over CDP (same window, keeps the session); otherwise it launches the webapp
 # on that URL.
 
+REPLACE=0
+[ "$1" = "--replace" ] && { REPLACE=1; shift; }
+
 URL="${1:-}"
 [ -z "$URL" ] && URL=$(wl-paste 2>/dev/null)
 URL=$(printf '%s' "$URL" | tr -d '[:space:]')
@@ -37,14 +40,27 @@ ${URL:0:60}"
   ;;
 esac
 
-if hyprctl clients -j 2>/dev/null | jq -e '.[] | select(.class | test("brave-youtube"))' >/dev/null; then
-  # Reuse the running window rather than opening a second one.
+# Default is a NEW tab, so the video you are already watching is not replaced.
+# `--replace` navigates the current one in place instead.
+#
+# The windows become tabs through Hyprland's window groups (app-mode windows
+# have no tab strip). The group rule adds an opening window to the FOCUSED
+# window's group, so an existing webapp window is focused first -- otherwise
+# the new one starts a group of its own wherever focus happened to be.
+EXISTING=$(hyprctl clients -j 2>/dev/null |
+  jq -r '.[] | select(.class | test("brave.*youtube")) | .address' | head -1)
+
+if [ "$REPLACE" = 1 ] && [ -n "$EXISTING" ]; then
   if "$HOME/scripts/yt-pip-cdp.py" --open "$URL" >/dev/null 2>&1; then
-    hyprctl clients -j 2>/dev/null |
-      jq -r '.[] | select(.class | test("brave-youtube")) | .address' | head -1 |
-      while read -r a; do hyprctl dispatch focuswindow "address:$a" >/dev/null 2>&1; done
+    hyprctl dispatch focuswindow "address:$EXISTING" >/dev/null 2>&1
     exit 0
   fi
 fi
 
+[ -n "$EXISTING" ] && {
+  hyprctl dispatch focuswindow "address:$EXISTING" >/dev/null 2>&1
+  sleep 0.3
+}
+# Renumber once the new window exists, so the groupbar tabs stay 1..N.
+( sleep 6; "$HOME/scripts/yt-tab-numbers.py" >/dev/null 2>&1 ) &
 exec "$HOME/scripts/yt-webapp.sh" "$URL"

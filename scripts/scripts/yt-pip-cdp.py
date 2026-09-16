@@ -89,8 +89,14 @@ def webapp_title():
     try:
         out = subprocess.run(["hyprctl", "clients", "-j"],
                              capture_output=True, text=True, timeout=3).stdout
-        for c in json.loads(out or "[]"):
-            if "brave-youtube" in (c.get("class") or ""):
+        clients = json.loads(out or "[]")
+        # Prefer the FOCUSED window: with tabs there are several webapp windows,
+        # and the hotkeys should act on the one being watched.
+        for c in clients:
+            if c.get("focusHistoryID") == 0 and "youtube" in (c.get("class") or ""):
+                return (c.get("title") or "").strip()
+        for c in clients:
+            if "youtube" in (c.get("class") or ""):
                 return (c.get("title") or "").strip()
     except Exception:
         pass

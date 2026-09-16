@@ -22,6 +22,20 @@ URL="${1:-https://youtube.com}"
 
 mkdir -p "$PROFILE"
 
+# Hyprland's group rule attaches an opening window to the FOCUSED window's
+# group, so focus an existing webapp window first. Without this a new tab
+# starts its own group on whatever workspace happened to be active -- which is
+# how tabs ended up split across two workspaces during testing. Callers used to
+# do this themselves; doing it here covers every path.
+if [ "$1" != "--manage" ]; then
+  _existing=$(hyprctl clients -j 2>/dev/null |
+    jq -r '.[] | select(.class | test("brave.*youtube")) | .address' | head -1)
+  if [ -n "$_existing" ]; then
+    hyprctl dispatch focuswindow "address:$_existing" >/dev/null 2>&1
+    sleep 0.3
+  fi
+fi
+
 # `yt-webapp.sh --manage` opens this profile in a NORMAL window so its
 # brave://extensions page is reachable -- app-mode windows have no UI for it.
 # Anything installed here persists for later --app launches.
