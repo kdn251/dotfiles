@@ -1,0 +1,15 @@
+[D-BUS Service]
+# Pin DBus activation of the notification daemon to swaync.
+#
+# mako and swaync BOTH ship /usr/share/dbus-1/services files claiming
+# org.freedesktop.Notifications. If swaync ever exits, the next notification
+# activates whichever DBus picks -- and it picked mako (fr.emersion sorts
+# before org.erikreider). The panels then render with mako's styling: no close
+# button, none of the swaync CSS. Removing mako from exec-once did not help,
+# because nothing was launching it explicitly.
+#
+# Files in ~/.local/share/dbus-1/services take precedence over /usr/share, so
+# this makes activation deterministic while leaving mako installed for manual
+# fallback use.
+Name=org.freedesktop.Notifications
+Exec=/usr/bin/swaync

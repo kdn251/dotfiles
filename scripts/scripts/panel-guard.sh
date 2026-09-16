@@ -25,7 +25,7 @@ panel_guard() {
     # lives in swaync and would sit there until its timeout. So dismiss it
     # through swaync as well.
     [ -r "$PANEL_PIDFILE" ] && kill "$(cat "$PANEL_PIDFILE")" 2>/dev/null
-    swaync-client --close-latest >/dev/null 2>&1
+    timeout 2 swaync-client --close-latest >/dev/null 2>&1
     exit 0
   fi
   trap 'rm -f "$PANEL_PIDFILE"' EXIT
@@ -54,7 +54,7 @@ _panel_close_others() {
   # that lives in swaync. At this point ours is not posted yet, so the other
   # panel's notification is the most recent one.
   while [ "$closed" -gt 0 ]; do
-    swaync-client --close-latest >/dev/null 2>&1
+    timeout 2 swaync-client --close-latest >/dev/null 2>&1
     closed=$((closed - 1))
   done
 
