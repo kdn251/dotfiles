@@ -26,6 +26,8 @@
     // "pulseaudio",
     // "temperature",
     "custom/display",
+    // Speaker icon: click opens pavucontrol (was Alt+Shift+V).
+    "pulseaudio",
     "bluetooth",
     "network",
     "battery"
@@ -233,9 +235,9 @@
     "on-click": "notify-send 'Rclone Stats' \"$(rclone rc core/stats --rc-no-auth | jq -r '.transferring[] | .name' | head -n 5)\""
   },
   "pulseaudio": {
-    "format": "{icon}  {volume}%",
-    "format-bluetooth": "{volume}% {icon} {format_source}",
-    "format-bluetooth-muted": " {icon} {format_source}",
+    "format": "{icon}",
+    "format-bluetooth": "{icon}",
+    "format-bluetooth-muted": "",
     "format-muted": "",
     "format-icons": {
       "headphone": "",

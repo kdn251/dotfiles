@@ -206,6 +206,27 @@ def main():
     # `--rate N` sets playback speed instead of toggling PiP. Setting it on the
     # video element carries into the PiP window, since PiP renders the same
     # element rather than a copy.
+    # `--open URL` navigates the existing webapp window instead of toggling
+    # PiP. App-mode windows have no address bar, so this is how a link gets in
+    # without spawning a second window.
+    if len(sys.argv) > 2 and sys.argv[1] == "--open":
+        ws = WS(t["webSocketDebuggerUrl"])
+        try:
+            ws.send({"id": 1, "method": "Page.navigate",
+                     "params": {"url": sys.argv[2]}})
+            for _ in range(20):
+                msg = ws.recv()
+                if msg.get("id") == 1:
+                    err = msg.get("result", {}).get("errorText")
+                    if err:
+                        print(err, file=sys.stderr)
+                        return 1
+                    print("navigated")
+                    return 0
+            return 1
+        finally:
+            ws.close()
+
     expr = TOGGLE_JS
     if len(sys.argv) > 2 and sys.argv[1] == "--rate":
         expr = RATE_JS % float(sys.argv[2])
