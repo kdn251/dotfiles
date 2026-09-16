@@ -4,6 +4,7 @@ beekeeper-studio
 bluebubbles-bin
 brave-bin
 chatterino2-bin
+codex-desktop-git
 cryptomator
 faugus-launcher
 google-chrome
