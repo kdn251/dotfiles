@@ -1,5 +1,5 @@
 [Unit]
-Description=Periodically (re)check homelab reachability for ~/homelab-media
+Description=Periodically (re)check homelab reachability for /mnt/homelab-media (~/homelab-media symlink)
 
 [Timer]
 OnBootSec=20s
