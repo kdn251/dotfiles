@@ -85,22 +85,59 @@ def webapp_title():
     There can be several youtube.com pages open (a normal tab as well as the
     webapp), and CDP does not say which is app-mode. The webapp window's title
     tracks its page title, so hyprctl gives a reliable link.
+
+    With tabs there are several webapp windows and the right one is the group's
+    ACTIVE tab, which is not the same thing as the focused window. Requiring
+    focusHistoryID == 0 meant the hotkeys only worked while the webapp itself
+    had focus; from any other window nothing matched and an arbitrary tab was
+    used instead. Hyprland reports hidden=false for every group member, so the
+    active tab cannot be read directly -- it is the most recently focused one,
+    the LOWEST focusHistoryID. That is the focused window when the webapp has
+    focus and stays correct after focus moves away.
     """
     try:
         out = subprocess.run(["hyprctl", "clients", "-j"],
                              capture_output=True, text=True, timeout=3).stdout
         clients = json.loads(out or "[]")
-        # Prefer the FOCUSED window: with tabs there are several webapp windows,
-        # and the hotkeys should act on the one being watched.
-        for c in clients:
-            if c.get("focusHistoryID") == 0 and "youtube" in (c.get("class") or ""):
-                return (c.get("title") or "").strip()
-        for c in clients:
-            if "youtube" in (c.get("class") or ""):
-                return (c.get("title") or "").strip()
+        # "music.youtube.com" contains "youtube" too; the music PWA is a
+        # separate app and must never be targeted by these hotkeys.
+        yt = [c for c in clients
+              if "youtube.com" in (c.get("class") or "")
+              and "music." not in (c.get("class") or "")]
+        if not yt:
+            return ""
+        best = min(yt, key=lambda c: c.get("focusHistoryID", 1 << 30))
+        return (best.get("title") or "").strip()
     except Exception:
         pass
     return ""
+
+
+def probe(t, expr):
+    """Evaluate a tiny expression on one page, returning None on any trouble.
+
+    Used to ask pages about themselves while choosing between them, so it must
+    never raise: a tab that is slow or gone should just drop out of the running.
+    """
+    try:
+        ws = WS(t["webSocketDebuggerUrl"])
+    except Exception:
+        return None
+    try:
+        ws.send({"id": 1, "method": "Runtime.evaluate",
+                 "params": {"expression": expr, "returnByValue": True}})
+        for _ in range(20):
+            msg = ws.recv()
+            if msg.get("id") == 1:
+                return msg.get("result", {}).get("result", {}).get("value")
+    except Exception:
+        return None
+    finally:
+        try:
+            ws.close()
+        except Exception:
+            pass
+    return None
 
 
 def pick(ts):
@@ -118,6 +155,14 @@ def pick(ts):
         pages = watch
     if len(pages) == 1:
         return pages[0]
+
+    # A video in picture-in-picture is the one being watched even though its tab
+    # is neither focused nor the group's active tab -- that is the whole point of
+    # PiP. So it wins over the active tab; without this, hitting 2x while a PiP
+    # video played would change the speed of whatever tab happened to be active.
+    pip = [t for t in pages if probe(t, "!!document.pictureInPictureElement")]
+    if len(pip) == 1:
+        return pip[0]
 
     want = webapp_title()
     if want:
