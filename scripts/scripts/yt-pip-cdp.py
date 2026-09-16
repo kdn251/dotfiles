@@ -36,12 +36,23 @@ PORT = int(os.environ.get("BRAVE_CDP_PORT", "9222"))
 HOST = "127.0.0.1"
 MATCH = os.environ.get("YT_PIP_MATCH", "youtube.com")
 
+# Use YouTube's own player API, not video.playbackRate directly. Setting the
+# element fights the player: it re-asserts its stored speed a moment later, so
+# the change appears to take and then silently reverts. setPlaybackRate updates
+# the player's own state, so it sticks (and the speed menu reflects it).
+# Falls back to the raw element for any page without the YouTube player.
 RATE_JS = """
 (() => {
+  const rate = %s;
+  const p = document.getElementById('movie_player');
+  if (p && typeof p.setPlaybackRate === 'function') {
+    p.setPlaybackRate(rate);
+    return String(typeof p.getPlaybackRate === 'function' ? p.getPlaybackRate() : rate);
+  }
   const vids = [...document.querySelectorAll('video')].filter(v => v.readyState > 0);
   const v = vids.find(x => !x.paused) || vids[0];
   if (!v) return 'no-video';
-  v.playbackRate = %s;
+  v.playbackRate = rate;
   return String(v.playbackRate);
 })()
 """
@@ -90,6 +101,15 @@ def pick(ts):
     pages = [t for t in ts if t.get("type") == "page" and MATCH in t.get("url", "")]
     if not pages:
         return None
+    # Prefer an actual watch page. YouTube can leave extra page targets around
+    # (prerendered next videos, a homepage tab), and picking one of those sets
+    # the rate on a video you are not watching -- which looks exactly like the
+    # hotkey doing nothing.
+    watch = [t for t in pages if "/watch" in t.get("url", "")]
+    if len(watch) == 1:
+        return watch[0]
+    if watch:
+        pages = watch
     if len(pages) == 1:
         return pages[0]
 
