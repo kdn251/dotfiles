@@ -16,12 +16,21 @@ STEP=10
 
 bright_pct() { brightnessctl -m 2>/dev/null | awk -F, '{gsub("%","",$4); print $4}'; }
 night_on() { pgrep -x hyprsunset >/dev/null 2>&1; }
+# Night light is a 3-state cycle (off / 1 / 2); ask the toggle which is active.
+night_level() { "$HOME/scripts/toggle-hyprsunset.sh" level 2>/dev/null || echo 0; }
+night_label() {
+  case "$(night_level)" in
+  1) echo "level 1" ;;
+  2) echo "level 2" ;;
+  *) echo "off" ;;
+  esac
+}
 
 # Waybar polls this for the icon + tooltip. Handled before the guard is
 # sourced: polling must never contend for the panel's lock.
 if [ "$1" = "--waybar" ]; then
   pct=$(bright_pct)
-  if night_on; then night="on"; else night="off"; fi
+  night=$(night_label)
   mon=$(hyprctl monitors -j 2>/dev/null |
     jq -r '[.[] | select(.disabled == false)]
            | map("\(.name) \(.width)x\(.height)@\(.refreshRate|floor)Hz")
@@ -38,7 +47,7 @@ source "$HOME/scripts/panel-guard.sh"
 panel_guard display
 
 pct=$(bright_pct)
-if night_on; then night_state="on"; else night_state="off"; fi
+night_state=$(night_label)
 
 cur=$("$HOME/scripts/display-scale.py" --current 2>/dev/null)
 read -r prev next < <("$HOME/scripts/display-scale.py" --neighbours 2>/dev/null)
@@ -51,8 +60,12 @@ mons=$(hyprctl monitors -j 2>/dev/null |
 body=$(printf '<tt>Output     %s\nScale      %sx\nBrightness %s%%\nNight      %s</tt>' \
   "${mons:-unknown}" "${cur:-?}" "${pct:-?}" "$night_state")
 
-night_label="Night Light"
-night_on && night_label="Night Light ✓"
+# Button shows which level pressing it will leave behind.
+case "$(night_level)" in
+1) night_label="Night Light 1 ✓" ;;
+2) night_label="Night Light 2 ✓" ;;
+*) night_label="Night Light" ;;
+esac
 
 scale_args=()
 [ -n "$prev" ] && [ "$prev" != "-" ] && scale_args+=(-A "scaledown=Scale ${prev}x")
@@ -86,9 +99,8 @@ scaledown | scaleup)
   ;;
 night)
   "$HOME/scripts/toggle-hyprsunset.sh"
-  sleep 0.3
-  if night_on; then st="on"; else st="off"; fi
-  notify-send -a "Screen" -u low -t 2000 "Display" "Night light $st"
+  sleep 0.5
+  notify-send -a "Screen" -u low -t 2000 "Display" "Night light $(night_label)"
   ;;
 relayout)
   kanshictl reload >/dev/null 2>&1 &&
