@@ -7,7 +7,98 @@ PIXMAPS="$HOME/.local/share/pixmaps"
 STATS_FILE="$HOME/.cache/twitch_stats.txt"
 CLIENT_ID="kimne78kx3ncx6brgo4mv6wki5h1ko"
 MPV_SOCKET="/tmp/mpv-twitch-ipc"
+CHAT_CLASS="com.chatterino.chatterino"
+CHAT_LAYOUT="$HOME/.local/share/chatterino/Settings/window-layout.json"
+# Marks which launcher instance owns the current stream. Relaunching over a
+# running stream bumps this, so the old instance's mpv-exit cleanup sees a
+# stale id and leaves the new Chatterino window alone.
+SESSION_FILE="/tmp/twitch-session.id"
+SESSION_ID="$$-$(date +%s%N)"
 exec >>/tmp/twitch-stream-debug.log 2>&1
+
+# --- Chatterino lifecycle ---------------------------------------------------
+# One window, one tab, tied to the life of the stream.
+
+# Ask every Chatterino window to close, then wait for the process to actually
+# exit. Closing the window (rather than SIGKILLing) is what makes Chatterino
+# flush Settings/settings.json, which is where the login token lives.
+chat_stop() {
+  local addr i
+  for addr in $(hyprctl clients -j 2>/dev/null |
+    jq -r --arg c "$CHAT_CLASS" '.[] | select(.class == $c) | .address'); do
+    hyprctl dispatch closewindow address:"$addr" >/dev/null 2>&1
+  done
+  for i in $(seq 1 40); do
+    pgrep -x chatterino >/dev/null || return 0
+    sleep 0.1
+  done
+  pkill -x chatterino
+  for i in $(seq 1 20); do
+    pgrep -x chatterino >/dev/null || return 0
+    sleep 0.1
+  done
+  pkill -9 -x chatterino
+}
+
+# Same, but only if we are still the current stream (see SESSION_ID).
+chat_stop_if_current() {
+  [ "$(cat "$SESSION_FILE" 2>/dev/null)" = "$SESSION_ID" ] || return 0
+  chat_stop
+}
+
+# Start a fresh Chatterino showing exactly one tab: $1's chat.
+#
+# NOTE: do NOT use `--channels` here. That flag puts Chatterino in a
+# throwaway-layout mode where it never writes Settings/settings.json on exit,
+# so any account you add from that window is silently discarded (login
+# "expires" on every restart). `--activate` is no good either: it forwards over
+# the IPC socket of the running instance and *appends* a tab, which is how the
+# window ended up with a tab per streamer. Instead: close the old window
+# cleanly, rewrite window-layout.json down to the single tab we want, and start
+# Chatterino normally so it loads that layout and still saves its settings.
+chat_start() {
+  local ch tmp
+  ch="${1,,}"
+  chat_stop
+
+  mkdir -p "$(dirname "$CHAT_LAYOUT")"
+  tmp=$(mktemp)
+  # Keep the existing window geometry/state, replace its tab list wholesale.
+  if ! jq --arg ch "$ch" '
+        ((.windows // [])[0] // {"type": "main"}) as $w
+        | {windows: [$w + {tabs: [{
+            highlightsEnabled: true,
+            selected: true,
+            splits2: {
+              data: {name: $ch, type: "twitch"},
+              filters: [],
+              flexh: 1,
+              flexv: 1,
+              moderationMode: false,
+              type: "split"
+            }
+          }]}]}' "$CHAT_LAYOUT" >"$tmp" 2>/dev/null || [ ! -s "$tmp" ]; then
+    # Missing or unreadable layout: write a minimal one from scratch.
+    jq -n --arg ch "$ch" '{windows: [{
+        type: "main",
+        tabs: [{
+          highlightsEnabled: true,
+          selected: true,
+          splits2: {
+            data: {name: $ch, type: "twitch"},
+            filters: [],
+            flexh: 1,
+            flexv: 1,
+            moderationMode: false,
+            type: "split"
+          }
+        }]
+      }]}' >"$tmp"
+  fi
+  mv "$tmp" "$CHAT_LAYOUT"
+
+  chatterino >/dev/null 2>&1 &
+}
 
 # --- 1. Setup & Force Icon Sync ---
 if [ ! -f "$USERNAME_LIST" ]; then
@@ -126,15 +217,10 @@ awk -v user="$STREAMER_USERNAME" '
   echo "STREAMER_USERNAME=\"$STREAMER_USERNAME\"" >>/tmp/twitch-stream-context.conf
   echo "TWITCH_TOKEN_FILE=\"$TWITCH_TOKEN_FILE\"" >>/tmp/twitch-stream-context.conf
 
-  # NOTE: do NOT use `--channels` here. That flag puts Chatterino in a
-  # throwaway-layout mode where it never writes Settings/settings.json on exit,
-  # so any account you add from that window is silently discarded (login
-  # "expires" on every restart). `--activate` adds/focuses the tab in the
-  # normal main window and leaves settings saving intact. No pkill needed:
-  # if Chatterino is already running this just forwards over its IPC socket.
-  (
-    chatterino --activate "t:$STREAMER_USERNAME" >/dev/null 2>&1
-  ) &
+  # Claim this stream before killing the old mpv, so the previous instance's
+  # cleanup knows it has been superseded. Chatterino is (re)started further
+  # down, after the old mpv is gone.
+  echo "$SESSION_ID" >"$SESSION_FILE"
 
   IMG_PATH="$PIXMAPS/${STREAMER_USERNAME,,}.png"
   if [ -f "$IMG_PATH" ]; then
@@ -164,6 +250,8 @@ awk -v user="$STREAMER_USERNAME" '
   pkill mpv
   rm -f "$MPV_SOCKET"
 
+  chat_start "$STREAMER_USERNAME"
+
   # Pillarbox only shows up on the 16:9 LG; on the 3:2 laptop panel
   # panscan=1.0 would crop ~14% off the sides. Apply only when docked.
   ASPECT_ARGS=()
@@ -175,7 +263,9 @@ awk -v user="$STREAMER_USERNAME" '
 
   if [ -z "$LOW_URL" ]; then
     streamlink "${SL_COMMON[@]}" --player mpv "$URL" best,720p,480p
-    exit $?
+    STREAM_RC=$?
+    chat_stop_if_current
+    exit $STREAM_RC
   fi
 
   mpv \
@@ -213,4 +303,7 @@ awk -v user="$STREAMER_USERNAME" '
   ) &
 
   wait $MPV_PID
+
+  # Stream is over (window closed, or killed): take the chat window with it.
+  chat_stop_if_current
 ) &
