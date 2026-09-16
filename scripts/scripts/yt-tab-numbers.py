@@ -9,7 +9,8 @@ the order the tabs sit in the bar. Hyprland knows the visual order (the group
 member list) but has no idea which CDP target belongs to which window. So this
 runs in two phases -- stamp every target with a unique token, read back which
 window carries which token to build the mapping, then write the final numbers
-in group order.
+in group order. The stamp is invisible (see STAMP_JS) so the groupbar never
+shows it while a tab is being added or closed.
 
 The keeper (MutationObserver on <title>) re-applies the number because YouTube
 rewrites the title on every in-page navigation. It lives in the page, so a
@@ -45,18 +46,49 @@ SET_JS = """
 })()
 """
 
+# Phase-1 stamp. The groupbar renders whatever the title happens to be, and
+# there is a ~0.6 s gap before phase 2 lands, so the stamp must not be visible
+# -- it used to read "yt~0~". It keeps the title the tab already shows and
+# appends k zero-width spaces, which render as nothing but survive the trip
+# through Brave, Wayland and the compositor intact (verified: hyprctl reports
+# them byte for byte, and str.strip() leaves them alone since Python does not
+# class U+200B as whitespace). Uniqueness rides entirely on k, so the visible
+# part is free to be whatever is least jarring. Trailing ZWSPs left by an
+# interrupted earlier run are dropped first, so k stays the only variable.
+STAMP_JS = r"""
+(() => {
+  const k = %d;
+  if (window.__ytTabNum) { window.__ytTabNum.disconnect(); }
+  const base = (document.title || '').replace(/\u200b+$/, '') || 'YouTube';
+  const n = base + '\u200b'.repeat(k);
+  document.title = n;
+  const t = document.querySelector('title');
+  if (t) {
+    window.__ytTabNum = new MutationObserver(() => {
+      if (document.title !== n) document.title = n;
+    });
+    window.__ytTabNum.observe(t, {childList: true});
+  }
+  return n;
+})()
+"""
+
+ZWSP = "\u200b"
+
 
 def evaluate(target, js):
+    """Run js in the page, returning its value (None if the call failed)."""
     ws = cdp.WS(target["webSocketDebuggerUrl"])
     try:
         ws.send({"id": 1, "method": "Runtime.evaluate",
                  "params": {"expression": js, "returnByValue": True}})
         for _ in range(20):
-            if ws.recv().get("id") == 1:
-                return True
+            msg = ws.recv()
+            if msg.get("id") == 1:
+                return msg.get("result", {}).get("result", {}).get("value")
     finally:
         ws.close()
-    return False
+    return None
 
 
 def clients():
@@ -88,16 +120,22 @@ def main():
             return 0
 
         # Phase 1: unique token per target, so each window can be identified.
+        # Key off the string the page reports back rather than rebuilding it
+        # here: the base is whatever the tab was already showing, which only
+        # the page knows.
         tokens = {}
         for i, t in enumerate(targets):
-            tok = "yt~%d~" % i
-            if evaluate(t, SET_JS % tok):
+            tok = evaluate(t, STAMP_JS % (i + 1))
+            if isinstance(tok, str):
                 tokens[tok] = t
         time.sleep(0.6)   # let the titles propagate to the compositor
 
         # Phase 2: walk the group in visual order and number accordingly.
         cs = clients()
-        yt = [c for c in cs if "youtube" in (c.get("class") or "")]
+        cls = lambda c: c.get("class") or ""
+        # "music.youtube.com" also contains "youtube.com"; the music PWA is a
+        # separate app and is never part of these tabs.
+        yt = [c for c in cs if "youtube.com" in cls(c) and "music." not in cls(c)]
         ordered = []
         grouped = next((c.get("grouped") or [] for c in yt if c.get("grouped")), [])
         if grouped:
@@ -136,7 +174,9 @@ def main():
                         break
             finally:
                 ws.close()
-            if isinstance(title, str) and title.startswith("yt~"):
+            # A real page title never ends in a zero-width space, so this
+            # only ever catches a stamp phase 2 failed to overwrite.
+            if isinstance(title, str) and title.endswith(ZWSP):
                 n += 1
                 evaluate(t, SET_JS % str(n))
 

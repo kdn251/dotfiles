@@ -11,11 +11,12 @@ SOCK="$XDG_RUNTIME_DIR/hypr/$HYPRLAND_INSTANCE_SIGNATURE/.socket2.sock"
 
 # Hyprland has no "hide the bar when there is only one tab" option, so the bar
 # is toggled at runtime instead. Note group:groupbar:enabled is GLOBAL -- it
-# applies to every group, not just the YouTube one. That is fine while these
-# are the only groups in use; revisit if other groups appear.
+# applies to every group, so only the www.youtube windows are counted here;
+# music.youtube is a separate app and must never put a titlebar on screen.
 sync_groupbar() {
   local biggest
-  biggest=$(hyprctl clients -j 2>/dev/null | jq '[.[] | (.grouped | length)] | max // 0')
+  biggest=$(hyprctl clients -j 2>/dev/null |
+    jq '[.[] | select(.class | test("brave-(www\\.)?youtube\\.com")) | (.grouped | length)] | max // 0')
   if [ "${biggest:-0}" -gt 1 ]; then
     hyprctl keyword group:groupbar:enabled 1 >/dev/null 2>&1
   else
@@ -38,7 +39,7 @@ socat -U - "UNIX-CONNECT:$SOCK" 2>/dev/null | while read -r line; do
     sleep 0.4
     sync_groupbar
     # Only bother renumbering when a webapp window is actually present.
-    if hyprctl clients -j 2>/dev/null | jq -e '.[] | select(.class | test("youtube"))' >/dev/null 2>&1; then
+    if hyprctl clients -j 2>/dev/null | jq -e '.[] | select(.class | test("brave-(www\\.)?youtube\\.com"))' >/dev/null 2>&1; then
       renumber
     fi
     ;;
