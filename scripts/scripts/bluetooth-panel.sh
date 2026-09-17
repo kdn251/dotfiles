@@ -6,8 +6,8 @@
 # and toggle to disconnect. A final button opens bluetui for anything this
 # panel does not cover (pairing, removing, scanning).
 #
-# NOTE: power state is managed with `bluetoothctl power`, never `rfkill block`.
-# rfkill leaves the waybar module unable to turn the adapter back on.
+# Clear any software radio block before powering on with bluetoothctl.
+# A block can survive a reboot and prevents BlueZ from enabling the adapter.
 
 # App name is "BT", not "Bluetooth": swaync maps the latter to a themed icon
 # that fails to render, leaving a broken-image placeholder in the panel.
@@ -27,8 +27,25 @@ if [ "$powered" != "yes" ]; then
     -A "poweron=Turn On" -A "manage=Manage...")
   case "$action" in
   poweron)
-    bluetoothctl power on >/dev/null
-    notify-send -a "BT" -u low -t 2000 "Bluetooth" "Adapter powered on."
+    if ! rfkill unblock bluetooth; then
+      notify-send -a "BT" -u normal -t 5000 "Bluetooth" "Could not unblock the Bluetooth radio."
+      exit 1
+    fi
+    # Verify the actual state instead of reporting success after a failed request.
+    bluetoothctl --timeout 5 power on >/dev/null 2>&1
+    # Unblocking can already start a power transition (BlueZ reports Busy).
+    # Allow that transition to finish before checking whether it succeeded.
+    for ((attempt = 0; attempt < 25; attempt++)); do
+      powered=$(bluetoothctl show 2>/dev/null | awk '/Powered:/{print $2; exit}')
+      [ "$powered" = "yes" ] && break
+      sleep 0.2
+    done
+    if [ "$powered" = "yes" ]; then
+      notify-send -a "BT" -u low -t 2000 "Bluetooth" "Adapter powered on."
+    else
+      notify-send -a "BT" -u normal -t 5000 "Bluetooth" "Could not power on Bluetooth. Check the hardware radio switch or open Manage."
+      exit 1
+    fi
     ;;
   manage) exec kitty --class bluetui-float bluetui ;;
   esac

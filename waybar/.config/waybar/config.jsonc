@@ -47,10 +47,9 @@
     "cursor": true,
     "on-click": "activate",
     "sort-by-number": true,
-    "persistent-workspaces": {
-      "*": 4,
-      "HDMI-A-1": 3
-    }
+    // Hyprland owns the seven persistent workspaces; do not invent per-output IDs.
+    "persistent-only": true,
+    "show-special": false
   },
   "clock": {
     "format": "{:%A %I:%M %p}",
