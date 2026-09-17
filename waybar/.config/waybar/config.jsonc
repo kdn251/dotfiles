@@ -25,6 +25,7 @@
     // "custom/rclone",
     // "pulseaudio",
     // "temperature",
+    "custom/dnd",
     "custom/display",
     // Speaker icon: click opens pavucontrol (was Alt+Shift+V).
     "pulseaudio",
@@ -140,6 +141,17 @@
     "hide-empty-text": true,
     "cursor": true,
     "on-click": "~/scripts/twitch-dl-panel.sh",
+    "tooltip": true
+  },
+  "custom/dnd": {
+    "format": "{}",
+    "return-type": "json",
+    "exec": "~/.config/waybar/scripts/dnd-status.sh",
+    "restart-interval": 2,
+    "exec-on-event": false,
+    "cursor": true,
+    "on-click": "swaync-client --toggle-dnd --skip-wait",
+    "on-click-right": "swaync-client --toggle-panel --skip-wait",
     "tooltip": true
   },
   "custom/display": {

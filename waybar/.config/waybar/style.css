@@ -47,6 +47,14 @@
   100% { opacity: 1; }
 }
 
+#custom-dnd {
+  padding: 0 8px;
+}
+
+#custom-dnd.dnd {
+  color: #fab387;
+}
+
 #custom-display {
   padding: 0 8px;
 }
