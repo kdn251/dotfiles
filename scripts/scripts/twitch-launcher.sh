@@ -298,7 +298,7 @@ awk -v user="$STREAMER_USERNAME" '
     if [ -n "$BEST_URL" ]; then
       IPC_CMD=$(jq -cn --arg url "$BEST_URL" '{"command": ["loadfile", $url, "replace"]}')
       echo "$IPC_CMD" | socat - "$MPV_SOCKET" >/dev/null 2>&1
-      notify-send "MPV" "Quality upgraded ✓" -t 1500 -u low
+      notify-send -i /usr/share/icons/Papirus/48x48/apps/gnome-twitch.svg "MPV" "Quality upgraded ✓" -t 1500 -u low
     fi
   ) &
 

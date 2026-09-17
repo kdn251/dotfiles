@@ -2,6 +2,7 @@
 TWITCH_CONTEXT="/tmp/twitch-stream-context.conf"
 YT_CONTEXT="/tmp/youtube-stream-context.conf"
 QUALITY_FILE="/tmp/current-quality.txt"
+TWITCH_ICON="/usr/share/icons/Papirus/48x48/apps/gnome-twitch.svg"
 
 # Detect what's playing — check if streamlink is running (Twitch) or just mpv (YouTube)
 # Prioritize Twitch detection
@@ -32,7 +33,7 @@ if [[ "$MODE" == "twitch" ]]; then
   done
   NEXT=${NEXT:-"best"}
 
-  notify-send "Twitch Quality" "Switching to $NEXT..." -t 3000
+  notify-send -i "$TWITCH_ICON" "Twitch Quality" "Switching to $NEXT..." -t 3000
 
   MPV_SOCKET="/tmp/mpv-twitch-ipc"
 
@@ -57,7 +58,7 @@ if [[ "$MODE" == "twitch" ]]; then
 
   NEW_URL=$(streamlink "${SL_ARGS[@]}" --stream-url "$URL" "$SL_QUALITY" 2>/dev/null)
   if [ -z "$NEW_URL" ]; then
-    notify-send "Twitch Quality" "Failed to resolve $NEXT URL" -u critical
+    notify-send -i "$TWITCH_ICON" "Twitch Quality" "Failed to resolve $NEXT URL" -u critical
     exit 1
   fi
 
