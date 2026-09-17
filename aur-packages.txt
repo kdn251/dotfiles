@@ -9,6 +9,7 @@ cryptomator
 faugus-launcher
 google-chrome
 neofetch
+openai-codex-bin
 opencode-bin
 opencode-desktop-bin
 opendeck
