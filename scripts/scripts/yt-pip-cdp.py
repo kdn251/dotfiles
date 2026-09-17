@@ -10,13 +10,8 @@ Calls the actual API the context-menu item calls:
 with userGesture:true, which satisfies the user-activation requirement that
 synthetic keystrokes could not.
 
-Requires Brave started with --remote-debugging-port (set in
-~/.config/brave-flags.conf). The port is read only at process startup, so a
-full Brave restart is needed after adding it.
-
-NOTE on the tradeoff: that port is unauthenticated and grants any local
-process full control of the browser. It is open for the life of the browser,
-not just while this script runs.
+Requires the isolated profile launched by ~/scripts/yt-webapp.sh, which
+opens a loopback DevTools port. Never enable this on the main Brave profile.
 
 The WebSocket client is hand-rolled because python-websockets is not
 installed; CDP needs only a single text frame and one reply.
@@ -30,6 +25,8 @@ import socket
 import struct
 import subprocess
 import sys
+import time
+import urllib.parse
 import urllib.request
 
 PORT = int(os.environ.get("BRAVE_CDP_PORT", "9222"))
@@ -41,21 +38,50 @@ MATCH = os.environ.get("YT_PIP_MATCH", "youtube.com")
 # the change appears to take and then silently reverts. setPlaybackRate updates
 # the player's own state, so it sticks (and the speed menu reflects it).
 # Falls back to the raw element for any page without the YouTube player.
-RATE_JS = """
-(() => {
-  const rate = %s;
+VIDEO_JS = """
   const p = document.getElementById('movie_player');
-  if (p && typeof p.setPlaybackRate === 'function') {
-    p.setPlaybackRate(rate);
-    return String(typeof p.getPlaybackRate === 'function' ? p.getPlaybackRate() : rate);
-  }
   const vids = [...document.querySelectorAll('video')].filter(v => v.readyState > 0);
-  const v = vids.find(x => !x.paused) || vids[0];
+  const v = document.pictureInPictureElement ||
+    (p && p.querySelector('video')) || vids.find(v => !v.paused && !v.ended) || vids[0];
+"""
+
+RATE_JS = "(() => {" + VIDEO_JS + """
   if (!v) return 'no-video';
-  v.playbackRate = rate;
-  return String(v.playbackRate);
+  const rate = %s;
+  if (p && typeof p.setPlaybackRate === 'function') p.setPlaybackRate(rate);
+  // Verify the actual media element, including the one rendered in PiP.
+  if (v.playbackRate !== rate) v.playbackRate = rate;
+  return v.playbackRate;
 })()
 """
+
+STATE_JS = "(() => {" + VIDEO_JS + """
+  return {title: document.title, pip: !!document.pictureInPictureElement,
+          video: !!v, playing: !!v && !v.paused && !v.ended,
+          rate: v ? v.playbackRate : null};
+})()
+"""
+
+
+def set_rate(target, rate):
+    # Poll from Python: timers inside background pages can be throttled.
+    # A successful API call alone does not mean YouTube accepted the rate.
+    for attempt in range(3):
+        result = probe(target, RATE_JS % rate)
+        if result == 'no-video':
+            time.sleep(0.2)
+            continue
+        for _ in range(3):
+            time.sleep(0.15)
+            state = probe(target, STATE_JS) or {}
+            if state.get('rate') != rate:
+                break
+        else:
+            print('%gx' % rate)
+            return 0
+    print('YouTube did not accept the requested playback speed', file=sys.stderr)
+    return 1
+
 
 TOGGLE_JS = """
 (() => {
@@ -106,7 +132,7 @@ def webapp_title():
               and "music." not in (c.get("class") or "")]
         if not yt:
             return ""
-        best = min(yt, key=lambda c: c.get("focusHistoryID", 1 << 30))
+        best = min(yt, key=lambda c: (c.get("focusHistoryID", -1) if c.get("focusHistoryID", -1) >= 0 else 1 << 30))
         return (best.get("title") or "").strip()
     except Exception:
         pass
@@ -141,38 +167,32 @@ def probe(t, expr):
 
 
 def pick(ts):
-    pages = [t for t in ts if t.get("type") == "page" and MATCH in t.get("url", "")]
-    if not pages:
-        return None
-    # Prefer an actual watch page. YouTube can leave extra page targets around
-    # (prerendered next videos, a homepage tab), and picking one of those sets
-    # the rate on a video you are not watching -- which looks exactly like the
-    # hotkey doing nothing.
-    watch = [t for t in pages if "/watch" in t.get("url", "")]
-    if len(watch) == 1:
-        return watch[0]
-    if watch:
-        pages = watch
-    if len(pages) == 1:
-        return pages[0]
-
-    # A video in picture-in-picture is the one being watched even though its tab
-    # is neither focused nor the group's active tab -- that is the whole point of
-    # PiP. So it wins over the active tab; without this, hitting 2x while a PiP
-    # video played would change the speed of whatever tab happened to be active.
-    pip = [t for t in pages if probe(t, "!!document.pictureInPictureElement")]
-    if len(pip) == 1:
-        return pip[0]
-
-    want = webapp_title()
+    # Parse the host: substring matching also caught YouTube Music and URLs
+    # that merely mention youtube.com. Probe every page BEFORE URL ranking:
+    # Shorts, live pages and SPA navigation can all hold the PiP video.
+    hosts = {"youtube.com", "www.youtube.com", "m.youtube.com"}
+    pages = [t for t in ts if t.get("type") == "page"
+             and urllib.parse.urlparse(t.get("url", "")).hostname in hosts]
+    states = [(t, probe(t, STATE_JS)) for t in pages]
+    states = [(t, state) for t, state in states if isinstance(state, dict)]
+    for t, state in states:
+        if state.get("pip"):
+            return t
+    playing = [(t, state) for t, state in states if state.get("playing")]
+    if len(playing) == 1:
+        return playing[0][0]
+    want = webapp_title().rstrip("\u200b")
+    candidates = playing or states
     if want:
-        # CDP titles arrive HTML-escaped ("Q&amp;A"); the window title does not.
-        for t in pages:
-            title = html.unescape(t.get("title", "")).strip()
-            if title and (title == want or title.startswith(want[:40])
-                          or want.startswith(title[:40])):
+        for t, state in candidates:
+            # Live document titles avoid stale /json metadata during numbering.
+            title = html.unescape(state.get("title", "")).strip().rstrip("\u200b")
+            if title == want and state.get("video"):
                 return t
-    return pages[0]
+    for t, state in candidates:
+        if state.get("video"):
+            return t
+    return states[0][0] if states else None
 
 
 class WS:
@@ -280,7 +300,7 @@ def main():
 
     expr = TOGGLE_JS
     if len(sys.argv) > 2 and sys.argv[1] == "--rate":
-        expr = RATE_JS % float(sys.argv[2])
+        return set_rate(t, float(sys.argv[2]))
 
     ws = WS(t["webSocketDebuggerUrl"])
     try:
@@ -310,4 +330,14 @@ def main():
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    try:
+        status = main()
+    except Exception as exc:
+        print(str(exc), file=sys.stderr)
+        status = 1
+    if status and "--rate" in sys.argv:
+        subprocess.run(["notify-send", "-a", "YouTube", "-t", "4000",
+                        "YouTube speed",
+                        "Could not change speed. Open a video using Mod+Shift+Y and try again."],
+                       check=False)
+    sys.exit(status)

@@ -27,7 +27,7 @@ mkdir -p "$PROFILE"
 # starts its own group on whatever workspace happened to be active -- which is
 # how tabs ended up split across two workspaces during testing. Callers used to
 # do this themselves; doing it here covers every path.
-if [ "$1" != "--manage" ]; then
+if [ "${1:-}" != "--manage" ]; then
   _existing=$(hyprctl clients -j 2>/dev/null |
     jq -r '.[] | select(.class | test("brave.*youtube")) | .address' | head -1)
   if [ -n "$_existing" ]; then
@@ -44,10 +44,11 @@ fi
 # extension holding credentials (a password manager, say) would hand its
 # access to anything that connects to the debugging port, which is exactly
 # the exposure this separate profile exists to avoid.
-if [ "$1" = "--manage" ]; then
+if [ "${1:-}" = "--manage" ]; then
   exec brave \
     --user-data-dir="$PROFILE" \
     --ozone-platform=wayland \
+    --remote-debugging-port="$PORT" \
     --new-window "brave://extensions"
 fi
 
