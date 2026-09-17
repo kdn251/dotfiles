@@ -26,9 +26,11 @@ if [ -z "$dev" ]; then
   body="Not connected.\nWi-Fi radio is <b>${radio}</b>."
   icon="network-wireless-offline"
 else
+  # Read cached AP details immediately. The default query can block on a scan
+  # when results are over 30 seconds old; use the Rescan button for fresh scans.
   # Active AP row -> SSID / signal / bitrate / frequency
   IFS=$'\t' read -r ssid signal rate freq < <(
-    nmcli -t -f ACTIVE,SSID,SIGNAL,RATE,FREQ dev wifi |
+    nmcli -t -f ACTIVE,SSID,SIGNAL,RATE,FREQ dev wifi list ifname "$dev" --rescan no |
       awk -F: '$1=="yes"{printf "%s\t%s\t%s\t%s", $2, $3, $4, $5; exit}'
   )
   # GHz reads better than the raw "5180 MHz" nmcli reports
@@ -49,7 +51,9 @@ action=$(panel_notify -a "Network" -i "$icon" -u low -t "$TIMEOUT_MS" \
 case "$action" in
 tui) exec kitty --class "$TERM_CLASS" nmtui ;;
 rescan)
-  nmcli dev wifi rescan 2>/dev/null
   notify-send -a "Network" -u low -t 2000 "Wi-Fi" "Rescanning for networks..."
+  if ! nmcli dev wifi rescan 2>/dev/null; then
+    notify-send -a "Network" -u normal -t 3000 "Wi-Fi" "Could not rescan networks. Try again shortly."
+  fi
   ;;
 esac

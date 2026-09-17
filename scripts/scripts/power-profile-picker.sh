@@ -2,28 +2,31 @@
 
 CURRENT=$(powerprofilesctl get)
 PROFILES=(performance balanced power-saver)
-declare -A GLYPHS=(
-  [performance]=$'\xef\x83\xa7'
-  [balanced]=$'\xef\x89\x8e'
-  ["power-saver"]=$'\xef\x81\xac'
-)
-declare -A PADS=(
-  [performance]="  "
-  [balanced]="   "
-  ["power-saver"]="  "
+ICON_DIR="$(dirname "$(readlink -f "$0")")/assets/power-profiles"
+declare -A LABELS=(
+  [performance]="Performance"
+  [balanced]="Balanced"
+  [power-saver]="Power Saver"
 )
 
-LIST=""
-for p in "${PROFILES[@]}"; do
-  suffix=""
-  [ "$p" = "$CURRENT" ] && suffix="  ✓"
-  LIST+="${GLYPHS[$p]}${PADS[$p]}${p}${suffix}"$'\n'
-done
+# Fuzzel uses the same image metadata as the Twitch profile-picture menu.
+# Stream directly: shell variables cannot preserve the NUL before icon metadata.
+CHOICE=$(
+  for p in "${PROFILES[@]}"; do
+    suffix=""
+    [ "$p" = "$CURRENT" ] && suffix="  ✓"
+    printf '%s%s\0icon\x1f%s/%s.svg\n' "${LABELS[$p]}" "$suffix" "$ICON_DIR" "$p"
+  done | fuzzel --dmenu --prompt="Power ❯ " --lines=3 --width=24 --line-height=40 --text-color=ffffffff
+)
 
-CHOICE=$(printf "%s" "$LIST" | fuzzel --dmenu --prompt="❯ 󰂄 " --lines=3 --width=20 --text-color=ffffffff)
+case "$CHOICE" in
+  Performance*) PROFILE=performance ;;
+  Balanced*) PROFILE=balanced ;;
+  "Power Saver"*) PROFILE=power-saver ;;
+  *) exit 0 ;;
+esac
 
-if [ -n "$CHOICE" ]; then
-  PROFILE=$(echo "$CHOICE" | awk '{print $2}')
+if [ -n "$PROFILE" ]; then
   if [ "$PROFILE" != "$CURRENT" ]; then
     powerprofilesctl set "$PROFILE"
     # Workaround: PPD 0.30 leaves cores capped at 400 MHz after exiting
