@@ -54,11 +54,22 @@ is_streamer_live() {
 download_vods() {
   local streamer=$1
 
+  # Twitch avatar for EVERY notification about this streamer, not just the
+  # download one: the skip-because-live and skip-because-sponsored paths return
+  # early and the complete/failed ones come much later, so resolving it once
+  # here is what lets all of them carry the picture. Each call is only a cache
+  # lookup, but there is no reason to repeat it per notification. Empty when the
+  # picture cannot be had, which simply drops -i.
+  local icon
+  icon=$("$HOME/scripts/twitch-profile-pic.sh" "$streamer") || icon=""
+  local -a icon_arg=()
+  [ -n "$icon" ] && icon_arg=(-i "$icon")
+
   write_status "$streamer" "Checking if $streamer is live or has new VODs."
 
   if is_streamer_live "$streamer"; then
     echo "Skipping $streamer - currently live (will download VOD later)"
-    notify-send "Twitch VOD Downloader" "Skipping $streamer - currently live" -t 3000 -u low
+    notify-send "${icon_arg[@]}" "Twitch VOD Downloader" "Skipping $streamer - currently live" -t 3000 -u low
     return
   fi
 
@@ -82,21 +93,14 @@ download_vods() {
 
   if [[ "$VOD_TITLE" =~ \#[Aa]d ]]; then
     echo "Skipping $streamer VOD - contains #ad/#Ad in title"
-    notify-send "Twitch VOD Downloader" "Skipping $streamer - sponsored content" -t 3000 -u low
+    notify-send "${icon_arg[@]}" "Twitch VOD Downloader" "Skipping $streamer - sponsored content" -t 3000 -u low
     return
   fi
 
   DURATION=$(yt-dlp --get-duration "$VOD_URL" 2>/dev/null || echo "Unknown Duration")
   NOTIFY_ID=$(($(echo "$VOD_ID" | cksum | cut -f1 -d' ') % 2147483647))
 
-  # Show the streamer's Twitch avatar. The body carries only the VOD title,
-  # which usually does not name the streamer, so the picture is what identifies
-  # whose download just started. Falls back to no icon if the fetch fails --
-  # never block a download on a missing picture.
-  ICON=$("$HOME/scripts/twitch-profile-pic.sh" "$streamer") || ICON=""
-  notify_args=(-r "$NOTIFY_ID" -t 2000 -u normal)
-  [ -n "$ICON" ] && notify_args+=(-i "$ICON")
-  notify-send "${notify_args[@]}" "  Downloading" "$VOD_TITLE [$DURATION]"
+  notify-send "${icon_arg[@]}" -r "$NOTIFY_ID" -t 2000 -u normal "  Downloading" "$VOD_TITLE [$DURATION]"
   write_status "  $streamer (0MB)" "$VOD_TITLE [$DURATION]"
 
   SAFE_TITLE=$(echo "$VOD_TITLE" | tr '/\\:*?"<>|' '_' | tr -s ' ' | sed 's/^ *//;s/ *$//')
@@ -151,7 +155,7 @@ download_vods() {
       if [ -n "$OLD_FILE" ]; then
         echo "Deleting old VOD for $streamer: $OLD_FILE"
         rm -f "$OLD_FILE"
-        notify-send "Twitch VOD Downloader" "Deleted old VOD for $streamer" -t 3000 -u low
+        notify-send "${icon_arg[@]}" "Twitch VOD Downloader" "Deleted old VOD for $streamer" -t 3000 -u low
       fi
     fi
 
@@ -161,11 +165,11 @@ download_vods() {
 
     write_status "  $streamer" "$VOD_TITLE (Download Complete)"
     sleep 5
-    notify-send -r $NOTIFY_ID "✓ Download Complete" "$VOD_TITLE" -t 5000 -u normal
+    notify-send "${icon_arg[@]}" -r "$NOTIFY_ID" "✓ Download Complete" "$VOD_TITLE" -t 5000 -u normal
   else
     write_status "  $streamer" "$VOD_TITLE (Download Failed)"
     sleep 5
-    notify-send -r $NOTIFY_ID "✗ Download Failed" "$VOD_TITLE" -t 5000 -u critical
+    notify-send "${icon_arg[@]}" -r "$NOTIFY_ID" "✗ Download Failed" "$VOD_TITLE" -t 5000 -u critical
   fi
 }
 
