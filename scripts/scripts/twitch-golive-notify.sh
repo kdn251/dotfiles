@@ -21,6 +21,10 @@ NOTIFY_LIST="${NOTIFY_LIST:-$HOME/scripts/twitch_notify.txt}"
 STATE="${STATE:-$HOME/.cache/twitch_golive_seen}"
 LAST="${LAST:-$HOME/.cache/twitch_golive_last}"
 COOLDOWN="${COOLDOWN:-21600}"   # seconds; 6h
+# How long the notification waits for the Watch button. notify-send -A blocks
+# for this long, and once it returns the button is dead, so it is worth being
+# able to raise for a hands-on test.
+TIMEOUT_MS="${TIMEOUT_MS:-20000}"
 
 mkdir -p "$(dirname "$STATE")"
 touch "$STATE" "$LAST"
@@ -73,7 +77,7 @@ while read -r line; do
   [ $((now - prev)) -ge "$COOLDOWN" ] || continue
 
   icon=$("$HOME/scripts/twitch-profile-pic.sh" "$login") || icon=""
-  args=(-a "Twitch" -u normal -t 20000 -A "watch=Watch")
+  args=(-a "Twitch" -u normal -t "$TIMEOUT_MS" -A "watch=Watch")
   [ -n "$icon" ] && args+=(-i "$icon")
   # Detached: notify-send with -A blocks until the action is clicked or the
   # notification times out, and this runs from cron behind the list refresh.
