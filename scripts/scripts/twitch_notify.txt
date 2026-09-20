@@ -1,0 +1,10 @@
+# Streamers to get a "went live" notification for. One twitch login per line.
+# Lines starting with # are ignored. Seeded from the VOD downloader's list.
+zackrawrr
+xqc
+shroud
+jynxzi
+dantes
+ohnePixel
+Doublelift
+GreekgodX
