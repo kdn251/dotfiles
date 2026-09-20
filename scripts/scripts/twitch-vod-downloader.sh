@@ -89,7 +89,14 @@ download_vods() {
   DURATION=$(yt-dlp --get-duration "$VOD_URL" 2>/dev/null || echo "Unknown Duration")
   NOTIFY_ID=$(($(echo "$VOD_ID" | cksum | cut -f1 -d' ') % 2147483647))
 
-  notify-send -r $NOTIFY_ID "  Downloading" "$VOD_TITLE [$DURATION]" -t 2000 -u normal
+  # Show the streamer's Twitch avatar. The body carries only the VOD title,
+  # which usually does not name the streamer, so the picture is what identifies
+  # whose download just started. Falls back to no icon if the fetch fails --
+  # never block a download on a missing picture.
+  ICON=$("$HOME/scripts/twitch-profile-pic.sh" "$streamer") || ICON=""
+  notify_args=(-r "$NOTIFY_ID" -t 2000 -u normal)
+  [ -n "$ICON" ] && notify_args+=(-i "$ICON")
+  notify-send "${notify_args[@]}" "  Downloading" "$VOD_TITLE [$DURATION]"
   write_status "  $streamer (0MB)" "$VOD_TITLE [$DURATION]"
 
   SAFE_TITLE=$(echo "$VOD_TITLE" | tr '/\\:*?"<>|' '_' | tr -s ' ' | sed 's/^ *//;s/ *$//')
