@@ -173,6 +173,11 @@ awk -v stats="$STATS_FILE" '
 
 TOP5=$(sort -t"$(printf '\t')" -k1,1nr -k2,2 "$MENU_TMP" | awk -F'\t' '$1 + 0 > 0' | head -n 5)
 
+# An argument names a streamer to open directly, skipping the picker. Used by
+# the go-live notification's Watch button, which already knows who you want.
+if [ -n "${1:-}" ]; then
+  CHOICE="$1"
+else
 CHOICE=$(
   {
     [ -n "$TOP5" ] && printf '%s\n' "$TOP5"
@@ -186,9 +191,10 @@ CHOICE=$(
     fuzzel --dmenu \
       --prompt "󰕃  " \
       --line-height 35 \
-      --width 45 \
+      --width 50 \
       --lines 10
 )
+fi
 rm -f "$MENU_TMP"
 
 if [ -z "$CHOICE" ]; then
