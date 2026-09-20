@@ -166,6 +166,16 @@ def probe(t, expr):
     return None
 
 
+def is_watch(t):
+    """Is this target a real video page rather than a feed or the homepage?
+
+    /watch covers normal videos; Shorts and the /live/ permalink are the other
+    two shapes that play a single video.
+    """
+    url = t.get("url") or ""
+    return "/watch" in url or "/shorts/" in url or "/live/" in url
+
+
 def pick(ts):
     # Parse the host: substring matching also caught YouTube Music and URLs
     # that merely mention youtube.com. Probe every page BEFORE URL ranking:
@@ -178,6 +188,14 @@ def pick(ts):
     for t, state in states:
         if state.get("pip"):
             return t
+    # Confine everything below to real video pages. The YouTube homepage keeps
+    # preview <video> elements around, so it satisfies every "has a video" test
+    # here and wins the title match whenever it is the active tab -- the speed
+    # then changed on a hidden preview while the actual video, one tab over, was
+    # untouched. Observed with a paused /watch tab alongside the homepage.
+    real = [(t, state) for t, state in states if is_watch(t)]
+    if real:
+        states = real
     playing = [(t, state) for t, state in states if state.get("playing")]
     if len(playing) == 1:
         return playing[0][0]
