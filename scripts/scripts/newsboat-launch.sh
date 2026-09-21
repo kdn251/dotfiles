@@ -103,24 +103,60 @@ TOTAL_FRAMES=16
 
 printf '\e[?25l'
 if [ "${1:-}" = "--preview" ]; then
-  for pass in 1 2 3; do
-    for ((f = 0; f <= TOTAL_FRAMES; f++)); do draw "$f"; sleep 0.075; done
+  f=0
+  while [ "$f" -lt 60 ]; do
+    draw "$((f % (TOTAL_FRAMES + 1)))"
+    f=$((f + 1))
+    sleep 0.05
   done
   cleanup
   exit 0
 fi
 
-for ((f = 0; f <= TOTAL_FRAMES; f++)); do
-  draw "$f"
-  sleep 0.075
-done
-cleanup
-# -q suppresses newsboat's own startup chatter ("Starting Newsboat r2.44...",
-# "Loading articles from cache...done." and four more). Without it those lines
-# printed over the boat and were the last thing on screen before the interface
-# appeared. Verified in a pty: 6 lines before the TUI without it, 0 with it.
+# Start newsboat now and keep sailing while it opens the cache, rather than
+# finishing the animation first and leaving a frozen frame on screen for the
+# second or so that takes.
 #
-# Deliberately NOT clearing here. ncurses draws the interface on the terminal's
-# alternate screen, so leaving the last frame up means the boat stays visible
-# for the second or so the cache takes to open, rather than a blank screen.
-exec newsboat -q "$@"
+# -q suppresses its six startup lines ("Starting Newsboat r2.44...", "Loading
+# articles from cache...done." and the rest), which otherwise printed over the
+# boat. With those gone it loads in complete silence, so the animation has the
+# terminal to itself until the interface appears.
+#
+# This is a background job only in the sense of &: job control is off in a
+# script, so newsboat stays in this process group and can still read the
+# keyboard. Without that it would take SIGTTIN on its first keypress.
+# </dev/tty is essential: with job control off, bash points a background job's
+# stdin at /dev/null, so newsboat would come up looking perfectly normal and
+# then ignore every keypress -- including q.
+newsboat -q "$@" </dev/tty &
+NB_PID=$!
+
+# ncurses puts the terminal into raw mode at the very moment it paints the
+# interface -- measured at 1.22s, with the first byte of output in the same
+# poll. That is the cue to stop drawing: one frame later and this would be
+# scribbling over the interface, since escape sequences act on whichever screen
+# buffer is current.
+raw_yet() {
+  local lflags
+  lflags=$(stty -a </dev/tty 2>/dev/null) || return 1
+  case "$lflags" in
+  *-icanon*) return 0 ;;
+  *) return 1 ;;
+  esac
+}
+
+f=0
+while kill -0 "$NB_PID" 2>/dev/null; do
+  raw_yet && break
+  draw "$((f % (TOTAL_FRAMES + 1)))"
+  f=$((f + 1))
+  # Checked between frames as well: at 50ms a frame, waiting for the next one
+  # would leave up to a frame of drawing on top of the interface.
+  sleep 0.025
+  raw_yet && break
+  sleep 0.025
+done
+
+cleanup
+wait "$NB_PID"
+exit $?
