@@ -66,12 +66,17 @@ draw() {
   [ "$sea_w" -lt 24 ] && sea_w=24
   sea_left=$(((cols - sea_w) / 2))
 
-  # Travel from just inside the left of the sea to just short of the right.
+  # Drift: one column every other frame, about seven columns a second. Fast
+  # enough to read as sailing, slow enough to be calm -- it used to cross the
+  # whole sea in under a second, which looked frantic.
   local span=$((sea_w - BOAT_W - 2))
   [ "$span" -lt 1 ] && span=1
-  x=$((sea_left + 1 + frame * span / TOTAL_FRAMES))
-  # Bob every third frame so it is a swell, not a vibration.
-  bob=$(((frame / 3) % 2))
+  x=$((sea_left + 1 + (frame / 2) % (span + 1)))
+  # A terminal can only move in whole rows, so the bob is inherently a one-row
+  # step. Keeping it slow is what makes it read as a swell rather than a hop:
+  # every twelfth frame, near enough a second in each position, so a launch
+  # sees at most one gentle rise rather than a series of hops.
+  bob=$(((frame / 12) % 2))
 
   top=$(((rows - 16) / 2))
   [ "$top" -lt 1 ] && top=1
@@ -88,26 +93,28 @@ draw() {
   [ "$bob" -eq 0 ] && printf '\n'
 
   # Wake: a short trail of froth behind the hull, growing as speed builds.
-  wake_len=$((frame > 8 ? 8 : frame))
+  # Wake builds gradually with the drift rather than snapping to full length.
+  wake_len=$((frame / 3))
+  [ "$wake_len" -gt 6 ] && wake_len=6
   wake=''
   for ((i = 0; i < wake_len; i++)); do wake="${wake}·"; done
 
-  printf '%*s%s%s%s\n' "$sea_left" '' "$BLUE" "${SEA:$(((frame * 2) % WAVELEN)):$sea_w}" "$RESET"
+  printf '%*s%s%s%s\n' "$sea_left" '' "$BLUE" "${SEA:$(((frame / 2) % WAVELEN)):$sea_w}" "$RESET"
   printf '%*s%s%s%s\n' "$((x > wake_len ? x - wake_len : 0))" '' "$DIM" "$wake" "$RESET"
-  printf '%*s%s%s%s\n' "$sea_left" '' "$DIM" "${SEA:$(((frame * 3 + 9) % WAVELEN)):$sea_w}" "$RESET"
+  printf '%*s%s%s%s\n' "$sea_left" '' "$DIM" "${SEA:$(((frame / 3 + 9) % WAVELEN)):$sea_w}" "$RESET"
   printf '\n%*s%snewsboat%s %s· setting sail%s\n' \
     "$((sea_left + (sea_w - 22) / 2))" '' "$WHITE" "$RESET" "$DIM" "$RESET"
 }
 
-TOTAL_FRAMES=16
+TOTAL_FRAMES=120
 
 printf '\e[?25l'
 if [ "${1:-}" = "--preview" ]; then
   f=0
-  while [ "$f" -lt 60 ]; do
+  while [ "$f" -lt 140 ]; do
     draw "$((f % (TOTAL_FRAMES + 1)))"
     f=$((f + 1))
-    sleep 0.05
+    sleep 0.08
   done
   cleanup
   exit 0
@@ -150,11 +157,11 @@ while kill -0 "$NB_PID" 2>/dev/null; do
   raw_yet && break
   draw "$((f % (TOTAL_FRAMES + 1)))"
   f=$((f + 1))
-  # Checked between frames as well: at 50ms a frame, waiting for the next one
-  # would leave up to a frame of drawing on top of the interface.
-  sleep 0.025
+  # Checked between frames as well: waiting for the next frame boundary would
+  # leave up to a whole frame of drawing on top of the interface.
+  sleep 0.04
   raw_yet && break
-  sleep 0.025
+  sleep 0.04
 done
 
 cleanup
