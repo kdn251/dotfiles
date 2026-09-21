@@ -1,20 +1,20 @@
 #!/bin/bash
-# Launch newsboat behind a short sailing animation.
-#
-# newsboat prints its own startup lines ("Loading configuration...done." and
-# friends) while it opens the cache, which is what used to fill the screen.
-# This draws a boat instead and hands over with exec, so newsboat still owns
-# the terminal and behaves exactly as if it had been run directly, arguments
-# included.
-#
-#   newsboat-launch.sh --preview   play the animation only, do not start newsboat
+# Newsboat startup and refresh animation.
+# --preview plays the animation without launching Newsboat.
+# --render is an internal pipe protocol used by newsboat-session.py.
 
 set -u
 
 # Skip the animation when output is not a terminal, so cron and scripts that
 # call newsboat are completely unaffected.
-if [ ! -t 1 ]; then
+if [ "${1:-}" != "--render" ] && [ ! -t 1 ]; then
   exec newsboat "$@"
+fi
+
+# The session wrapper keeps Newsboat running on its own terminal while the
+# loading screen is visible, and observes actual refresh completion events.
+if [ "${1:-}" != "--preview" ] && [ "${1:-}" != "--render" ]; then
+  exec python3 "$(dirname "$(readlink -f "$0")")/newsboat-session.py" "$@"
 fi
 
 CYAN=$'\e[38;5;80m'
@@ -60,12 +60,12 @@ done
 
 # Bob the boat independently of the fixed waterline and caption.
 draw() {
-  local frame=$1
+  local frame=$1 label=${2:-setting sail}
   local cols rows sea_w sea_left top i x wake wake_len heave phase
-  local left visible surface
+  local left visible surface caption_left
 
-  cols=$(tput cols 2>/dev/null || echo 80)
-  rows=$(tput lines 2>/dev/null || echo 24)
+  cols=${3:-$(tput cols 2>/dev/null || echo 80)}
+  rows=${4:-$(tput lines 2>/dev/null || echo 24)}
   sea_w=$((cols - 8))
   [ "$sea_w" -gt 64 ] && sea_w=64
   [ "$sea_w" -lt 24 ] && sea_w=24
@@ -108,65 +108,26 @@ draw() {
     "$BLUE" "${surface:0:$left}" "$DIM" "$wake" \
     "$BLUE" "${surface:$visible}" "$RESET"
   printf '%*s%s%s%s\n' "$sea_left" '' "$DIM" "${SEA:$(((frame / 3 + 9) % WAVELEN)):$sea_w}" "$RESET"
-  printf '\n%*s%snewsboat%s %s· setting sail%s\n' \
-    "$((sea_left + (sea_w - 22) / 2))" '' "$WHITE" "$RESET" "$DIM" "$RESET"
+  caption_left=$(((cols - 10 - ${#label}) / 2))
+  [ "$caption_left" -lt 0 ] && caption_left=0
+  printf '\n%*s%snewsboat%s %s· %s%s\n' \
+    "$caption_left" '' "$WHITE" "$RESET" "$DIM" "$label" "$RESET"
+
 }
 
-printf '\e[?1049h\e[?25l'
-if [ "${1:-}" = "--preview" ]; then
-  f=0
-  while [ "$f" -lt 140 ]; do
-    draw "$f"
-    f=$((f + 1))
-    sleep 0.08
+if [ "${1:-}" = "--render" ]; then
+  trap - EXIT INT TERM
+  while IFS=$'\t' read -r frame label cols rows; do
+    draw "$frame" "$label" "$cols" "$rows"
+    printf '\0'
   done
   exit 0
 fi
 
-# Start newsboat now and keep sailing while it opens the cache, rather than
-# finishing the animation first and leaving a frozen frame on screen for the
-# second or so that takes.
-#
-# -q suppresses its six startup lines ("Starting Newsboat r2.44...", "Loading
-# articles from cache...done." and the rest), which otherwise printed over the
-# boat. With those gone it loads in complete silence, so the animation has the
-# terminal to itself until the interface appears.
-#
-# This is a background job only in the sense of &: job control is off in a
-# script, so newsboat stays in this process group and can still read the
-# keyboard. Without that it would take SIGTTIN on its first keypress.
-# </dev/tty is essential: with job control off, bash points a background job's
-# stdin at /dev/null, so newsboat would come up looking perfectly normal and
-# then ignore every keypress -- including q.
-newsboat -q "$@" </dev/tty &
-NB_PID=$!
-
-# ncurses puts the terminal into raw mode at the very moment it paints the
-# interface -- measured at 1.22s, with the first byte of output in the same
-# poll. That is the cue to stop drawing: one frame later and this would be
-# scribbling over the interface, since escape sequences act on whichever screen
-# buffer is current.
-raw_yet() {
-  local lflags
-  lflags=$(stty -a </dev/tty 2>/dev/null) || return 1
-  case "$lflags" in
-  *-icanon*) return 0 ;;
-  *) return 1 ;;
-  esac
-}
-
+printf '\e[?1049h\e[?25l'
 f=0
-while kill -0 "$NB_PID" 2>/dev/null; do
-  raw_yet && break
+while [ "$f" -lt 140 ]; do
   draw "$f"
   f=$((f + 1))
-  # Checked between frames as well: waiting for the next frame boundary would
-  # leave up to a whole frame of drawing on top of the interface.
-  sleep 0.04
-  raw_yet && break
-  sleep 0.04
+  sleep 0.08
 done
-
-printf '\e[?25h'
-wait "$NB_PID"
-exit $?
