@@ -52,6 +52,17 @@ macro B set browser "~/scripts/unbookmark-article.sh %u '%T'" ; open-in-browser 
 
 reload-threads 100
 
+# --- cache retention -------------------------------------------------------
+# Without these the cache only ever grows: it had reached 75,557 articles
+# (135MB, oldest from 2017) and cost 5.3s just to open, because cleanup-on-quit
+# defaults to "nudge", which only warns and never actually prunes.
+#
+# Miniflux is the source of truth, so nothing here is lost -- this only bounds
+# the LOCAL cache. 90 days and 250 per feed, whichever bites first.
+cleanup-on-quit yes
+keep-articles-days 90
+max-items 250
+
 show-read-articles no
 show-read-feeds no
 
