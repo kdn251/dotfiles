@@ -131,6 +131,17 @@ else
     args=(-a "MPV" -r "$NOTIFY_ID" -t 5000 -u low)
     [ -n "$icon" ] && args+=(-i "$icon")
     [ -n "${TITLE:-}" ] && notify-send "${args[@]}" "$TITLE" "${chan:-YouTube}"
+
+    # Record what is playing so twitch-cycle-quality.sh can name the video and
+    # show the channel avatar without repeating this ~1.8s lookup on every
+    # quality change. Quotes in a title would break the sourced file, so they
+    # are folded to apostrophes.
+    {
+      printf 'YT_URL="%s"\n' "$URL"
+      printf 'YT_TITLE="%s"\n' "$(printf '%s' "$TITLE" | tr '"' "'")"
+      printf 'YT_CHANNEL="%s"\n' "$(printf '%s' "$chan" | tr '"' "'")"
+      printf 'YT_ICON="%s"\n' "$icon"
+    } >/tmp/youtube-stream-context.conf 2>/dev/null
   ) >/dev/null 2>&1 &
   # Optimization:
   # 1. We remove the 0.5s readahead (let it buffer 10-30s for smooth seeking).

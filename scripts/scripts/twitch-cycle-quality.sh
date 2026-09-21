@@ -2,19 +2,35 @@
 TWITCH_CONTEXT="/tmp/twitch-stream-context.conf"
 YT_CONTEXT="/tmp/youtube-stream-context.conf"
 QUALITY_FILE="/tmp/current-quality.txt"
+# Separate file per service: the two cycles use different labels, and sharing
+# one file meant switching between Twitch and YouTube resumed mid-cycle on a
+# label the other service does not have.
+YT_QUALITY_FILE="/tmp/current-quality-youtube.txt"
+TWITCH_SOCKET="/tmp/mpv-twitch-ipc"
+YT_SOCKET="/tmp/mpv-yt-ipc"
 TWITCH_ICON="/usr/share/icons/Papirus/48x48/apps/gnome-twitch.svg"
 
-# Detect what's playing — check if streamlink is running (Twitch) or just mpv (YouTube)
-# Prioritize Twitch detection
-if [ -f "$TWITCH_CONTEXT" ]; then
+# Which player is actually running, decided by asking the IPC sockets rather
+# than by which context file exists. The context files are never cleaned up, so
+# /tmp/twitch-stream-context.conf survives long after the stream ended and made
+# this always pick Twitch -- pressing the key during a YouTube video either did
+# nothing or restarted a Twitch stream.
+alive() { [ -S "$1" ] && echo '{"command":["get_property","time-pos"]}' |
+  timeout 2 socat - "$1" 2>/dev/null | grep -q '"error":"success"'; }
+
+MODE=""
+if alive "$TWITCH_SOCKET"; then
   MODE="twitch"
-  source "$TWITCH_CONTEXT"
-# Fallback to YouTube detection
-elif [ -f "$YT_CONTEXT" ]; then
+  [ -f "$TWITCH_CONTEXT" ] && source "$TWITCH_CONTEXT"
+elif alive "$YT_SOCKET"; then
   MODE="youtube"
-  source "$YT_CONTEXT"
+  [ -f "$YT_CONTEXT" ] && source "$YT_CONTEXT"
 else
-  notify-send "Quality" "No context files found in /tmp/"
+  # Deliberately no fall back to "whichever context file exists". Those files
+  # are never removed, so with nothing playing the stale Twitch one made this
+  # key START a Twitch stream out of nowhere -- observed while testing, from a
+  # press meant for a YouTube video.
+  notify-send -a "Quality" "Quality" "Nothing is playing"
   exit 1
 fi
 
@@ -104,32 +120,65 @@ if [[ "$MODE" == "twitch" ]]; then
   echo "$NEXT" >"$QUALITY_FILE"
 
 elif [[ "$MODE" == "youtube" ]]; then
-  YT_QUALITIES=("1080" "720" "480")
-  YT_LABELS=("1080p" "720p" "480p")
-  # Default to 4k
-  # CURRENT=$(cat "$QUALITY_FILE" 2>/dev/null || echo "2160")
-  # Default to 1080p
-  CURRENT=$(cat "$QUALITY_FILE" 2>/dev/null || echo "1080")
-
+  # Same ladder as Twitch so one key behaves the same whatever is playing.
+  QUALITIES=("best" "720p60" "480p" "360p")
+  CURRENT=$(cat "$YT_QUALITY_FILE" 2>/dev/null || echo "best")
   NEXT=""
-  LABEL=""
-  for i in "${!YT_QUALITIES[@]}"; do
-    if [ "${YT_QUALITIES[$i]}" == "$CURRENT" ]; then
-      NEXT_INDEX=$(((i + 1) % ${#YT_QUALITIES[@]}))
-      NEXT="${YT_QUALITIES[$NEXT_INDEX]}"
-      LABEL="${YT_LABELS[$NEXT_INDEX]}"
+  for i in "${!QUALITIES[@]}"; do
+    if [ "${QUALITIES[$i]}" == "$CURRENT" ]; then
+      NEXT="${QUALITIES[$(((i + 1) % ${#QUALITIES[@]}))]}"
       break
     fi
   done
-  NEXT=${NEXT:-"1080"}
-  LABEL=${LABEL:-"1080p"}
-  echo "$NEXT" >"$QUALITY_FILE"
+  NEXT=${NEXT:-"best"}
 
-  notify-send "YouTube Quality" "Switching to $LABEL..." -t 3000
-  pkill mpv 2>/dev/null
-  sleep 0.5
-  mpv --ytdl-format="bestvideo[height<=$NEXT]+bestaudio/best" \
-    --ytdl-raw-options=cookies-from-browser=firefox \
-    "$YT_URL" &
-  disown
+  case "$NEXT" in
+  best)   FMT="bestvideo+bestaudio/best" ;;
+  720p60) FMT="bestvideo[height<=720]+bestaudio/best[height<=720]/best" ;;
+  480p)   FMT="bestvideo[height<=480]+bestaudio/best[height<=480]/best" ;;
+  360p)   FMT="bestvideo[height<=360]+bestaudio/best[height<=360]/best" ;;
+  esac
+
+  # Prefer the URL the player is actually on: mpv keeps the original watch URL
+  # in "path" even while playing the resolved streams, so it stays right if the
+  # video was changed without the context file being rewritten.
+  if alive "$YT_SOCKET"; then
+    LIVE_URL=$(echo '{"command":["get_property","path"]}' |
+      timeout 3 socat - "$YT_SOCKET" 2>/dev/null | jq -r '.data // empty')
+    POS=$(echo '{"command":["get_property","time-pos"]}' |
+      timeout 3 socat - "$YT_SOCKET" 2>/dev/null | jq -r '.data // empty')
+  fi
+  URL_TO_PLAY="${LIVE_URL:-${YT_URL:-}}"
+  if [ -z "$URL_TO_PLAY" ]; then
+    notify-send -a "Quality" -u critical "YouTube Quality" "Could not tell which video is playing"
+    exit 1
+  fi
+
+  NOTIFY_ARGS=(-a "Quality" -t 3000)
+  [ -n "${YT_ICON:-}" ] && [ -f "${YT_ICON:-}" ] && NOTIFY_ARGS+=(-i "$YT_ICON")
+
+  if alive "$YT_SOCKET"; then
+    # Reload the same URL with a new ytdl-format, resuming at the current
+    # position. The old version ran `pkill mpv` -- which also killed any other
+    # mpv, Twitch included -- and restarted the video from the beginning.
+    CMD=$(jq -cn --arg u "$URL_TO_PLAY" --arg s "${POS:-0}" --arg f "$FMT" \
+      '{"command":["loadfile",$u,"replace",0,{"start":$s,"ytdl-format":$f}]}')
+    if echo "$CMD" | timeout 6 socat - "$YT_SOCKET" 2>/dev/null | grep -q '"error":"success"'; then
+      echo "$NEXT" >"$YT_QUALITY_FILE"
+      notify-send "${NOTIFY_ARGS[@]}" "${YT_TITLE:-YouTube}" "Quality: $NEXT"
+      exit 0
+    fi
+  fi
+
+  # No player to talk to: start one at the requested quality. mpv-yt resolves
+  # yt-dlp itself, which matters because the pacman copy cannot play these.
+  notify-send "${NOTIFY_ARGS[@]}" "${YT_TITLE:-YouTube}" "Quality: $NEXT"
+  echo "$NEXT" >"$YT_QUALITY_FILE"
+  YTDL="$HOME/.local/bin/yt-dlp"
+  [ -x "$YTDL" ] || YTDL=$(command -v yt-dlp 2>/dev/null)
+  setsid -f mpv "--script-opts=ytdl_hook-ytdl_path=$YTDL" \
+    --ytdl-format="$FMT" \
+    --input-ipc-server="$YT_SOCKET" \
+    ${POS:+--start="$POS"} \
+    "$URL_TO_PLAY" >/dev/null 2>&1 &
 fi
