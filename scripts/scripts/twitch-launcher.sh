@@ -274,11 +274,15 @@ awk -v user="$STREAMER_USERNAME" '
     exit $STREAM_RC
   fi
 
+  # back-bytes feeds mpv-clip.sh, which dumps the last 30s out of this buffer;
+  # 30s of 1080p60 is roughly 25MB, so the previous 50MiB was marginal.
+  # force-media-title so the window and the clip filenames say who is streaming
+  # rather than showing the HLS playlist token.
   mpv \
     --cache=yes \
     --cache-secs=30 \
     --demuxer-max-bytes=150MiB \
-    --demuxer-max-back-bytes=50MiB \
+    --demuxer-max-back-bytes=100MiB \
     --demuxer-readahead-secs=20 \
     --force-window=immediate \
     --vo=gpu \
@@ -291,6 +295,7 @@ awk -v user="$STREAMER_USERNAME" '
     --cscale=spline36 \
     --dscale=mitchell \
     --input-ipc-server="$MPV_SOCKET" \
+    --force-media-title="$STREAMER" \
     "$LOW_URL" &
   MPV_PID=$!
 
