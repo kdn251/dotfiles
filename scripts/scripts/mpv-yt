@@ -14,6 +14,9 @@ echo "Arg count: $#" >>/tmp/mpv-yt-debug.log
 date >>/tmp/mpv-yt-debug.log
 
 URL="$1"
+# Optional second argument: the article title, passed by the newsboat macro as
+# %T. Used for the notification so it can appear before any network call.
+TITLE="${2:-}"
 
 # Check if it's a Twitch VOD
 if [[ "$URL" =~ twitch\.tv/videos/([0-9]+) ]]; then
@@ -97,8 +100,28 @@ if [[ "$URL" =~ twitch\.tv ]]; then
       "$URL" best >/dev/null 2>&1 &
   fi
 else
-  # YouTube and other videos
-  notify-send "MPV" "Streaming video..." -t 3000 -u low &
+  # YouTube and other videos.
+  #
+  # Two-stage notification. The first goes out immediately with the article
+  # title newsboat passed in, because resolving the channel costs about 1.8s
+  # and there should be feedback the instant the key is pressed. The second
+  # REPLACES it (same -r id) once the channel name and avatar are known.
+  NOTIFY_ID=$(($(printf '%s' "$URL" | cksum | cut -d' ' -f1) % 2147483647))
+  notify-send -a "MPV" -r "$NOTIFY_ID" -t 4000 -u low \
+    "${TITLE:-Streaming video...}" "${TITLE:+Loading...}" &
+  (
+    meta=$(yt-dlp -q --no-warnings --print "%(channel)s|%(channel_id)s|%(title)s" "$URL" 2>/dev/null | head -1)
+    chan=${meta%%|*}
+    rest=${meta#*|}
+    cid=${rest%%|*}
+    vtitle=${rest#*|}
+    [ -n "$TITLE" ] || TITLE="$vtitle"
+    icon=""
+    [ -n "$cid" ] && icon=$("$HOME/scripts/yt-channel-pic.sh" "$cid" 2>/dev/null)
+    args=(-a "MPV" -r "$NOTIFY_ID" -t 5000 -u low)
+    [ -n "$icon" ] && args+=(-i "$icon")
+    [ -n "${TITLE:-}" ] && notify-send "${args[@]}" "$TITLE" "${chan:-YouTube}"
+  ) >/dev/null 2>&1 &
   # Optimization:
   # 1. We remove the 0.5s readahead (let it buffer 10-30s for smooth seeking).
   # 2. We use --ytdl-raw-options to favor fast-starting streams.
