@@ -57,7 +57,7 @@ boat_line() {
 # rides the swell rather than sliding along a rail.
 draw() {
   local frame=$1
-  local cols rows sea_w sea_left top i x bob wake wake_len
+  local cols rows sea_w sea_left top i x wake wake_len
 
   cols=$(tput cols 2>/dev/null || echo 80)
   rows=$(tput lines 2>/dev/null || echo 24)
@@ -72,25 +72,22 @@ draw() {
   local span=$((sea_w - BOAT_W - 2))
   [ "$span" -lt 1 ] && span=1
   x=$((sea_left + 1 + (frame / 2) % (span + 1)))
-  # A terminal can only move in whole rows, so the bob is inherently a one-row
-  # step. Keeping it slow is what makes it read as a swell rather than a hop:
-  # every twelfth frame, near enough a second in each position, so a launch
-  # sees at most one gentle rise rather than a series of hops.
-  bob=$(((frame / 12) % 2))
+  # No vertical movement at all. A terminal can only shift text by whole rows,
+  # and even one row a second read as hopping rather than bobbing, so the boat
+  # holds a fixed waterline and the drift, wake and scrolling swell carry the
+  # motion instead.
 
   top=$(((rows - 16) / 2))
   [ "$top" -lt 1 ] && top=1
 
   printf '\e[2J\e[H'
   for ((i = 0; i < top; i++)); do printf '\n'; done
-  # A blank line above or below the boat is what makes the bob visible.
-  [ "$bob" -eq 1 ] && printf '\n'
   for ((i = 0; i < 10; i++)); do
     printf '%*s' "$x" ''
     boat_line "$i"
     printf '\n'
   done
-  [ "$bob" -eq 0 ] && printf '\n'
+  printf '\n'
 
   # Wake: a short trail of froth behind the hull, growing as speed builds.
   # Wake builds gradually with the drift rather than snapping to full length.
