@@ -67,6 +67,9 @@ max-items 250
 show-read-articles no
 show-read-feeds no
 
+# Ask before closing from the main feed list; q still goes back inside feeds.
+confirm-exit yes
+
 # Keybinds
 bind-key j down
 bind-key k up
