@@ -114,18 +114,33 @@ if [[ "$URL" =~ twitch\.tv ]]; then
 else
   # YouTube and other videos.
   #
-  # One notification, sent only once the channel and avatar are known -- about
-  # 1.8s in. An earlier version fired an immediate title-only notification and
-  # replaced it, which just meant seeing the same thing twice.
-  # -r keyed on the URL so replaying the same video replaces rather than stacks.
+  # One notification, once the video is actually playing.
+  #
+  # The title, uploader and channel url all come from mpv itself over IPC. They
+  # used to come from a second yt-dlp extraction, which meant running the same
+  # ~1.8s network extraction TWICE per keypress -- once for mpv to play the
+  # video and once more only to name it -- with the two competing for the
+  # connection. mpv already has this metadata the moment playback starts.
   NOTIFY_ID=$(($(printf '%s' "$URL" | cksum | cut -d' ' -f1) % 2147483647))
   (
-    meta=$("$YTDL" -q --no-warnings --print "%(channel)s|%(channel_id)s|%(title)s" "$URL" 2>/dev/null | head -1)
-    chan=${meta%%|*}
-    rest=${meta#*|}
-    cid=${rest%%|*}
-    vtitle=${rest#*|}
-    [ -n "$TITLE" ] || TITLE="$vtitle"
+    sock="/tmp/mpv-yt-ipc"
+    chan=""
+    curl_url=""
+    for _ in $(seq 1 80); do
+      md=$(printf '%s\n' '{"command":["get_property","metadata"]}' |
+        timeout 2 socat - "$sock" 2>/dev/null)
+      chan=$(jq -r '.data.uploader // empty' <<<"$md" 2>/dev/null)
+      curl_url=$(jq -r '.data.channel_url // empty' <<<"$md" 2>/dev/null)
+      [ -n "$chan" ] && break
+      sleep 0.25
+    done
+    # youtube pads some uploader names with trailing spaces
+    chan=$(printf '%s' "$chan" | sed 's/[[:space:]]*$//')
+    if [ -z "$TITLE" ]; then
+      TITLE=$(printf '%s\n' '{"command":["get_property","media-title"]}' |
+        timeout 2 socat - "$sock" 2>/dev/null | jq -r '.data // empty')
+    fi
+    cid="${curl_url##*/}"
     icon=""
     [ -n "$cid" ] && icon=$("$HOME/scripts/yt-channel-pic.sh" "$cid" 2>/dev/null)
     args=(-a "MPV" -r "$NOTIFY_ID" -t 5000 -u low)
@@ -133,9 +148,8 @@ else
     [ -n "${TITLE:-}" ] && notify-send "${args[@]}" "$TITLE" "${chan:-YouTube}"
 
     # Record what is playing so twitch-cycle-quality.sh can name the video and
-    # show the channel avatar without repeating this ~1.8s lookup on every
-    # quality change. Quotes in a title would break the sourced file, so they
-    # are folded to apostrophes.
+    # show the channel avatar without any lookup of its own. Quotes in a title
+    # would break the sourced file, so they are folded to apostrophes.
     {
       printf 'YT_URL="%s"\n' "$URL"
       printf 'YT_TITLE="%s"\n' "$(printf '%s' "$TITLE" | tr '"' "'")"
