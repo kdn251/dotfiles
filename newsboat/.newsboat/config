@@ -23,19 +23,19 @@ macro d set browser "~/scripts/newsboat-download-video.sh %u &" ; open-in-browse
 macro c set browser "python3 ~/scripts/newsboat-download.py --cancel-url %u" ; open-in-browser ; set browser "~/scripts/newsboat-brave-app.sh %u"
 
 # Delete downloaded video (,D)
-macro D set browser "~/scripts/delete-downloaded.sh %u" ; open-in-browser ; set browser "~/scripts/mpv-yt %u"
+macro D set browser "~/scripts/delete-downloaded.sh %u" ; open-in-browser ; set browser "~/scripts/newsboat-brave-app.sh %u"
 
 # Cancel in progress download
-macro S set browser "~/scripts/cancel-download.sh %u" ; open-in-browser ; set browser "~/scripts/mpv-yt %u"
+macro S set browser "~/scripts/cancel-download.sh %u" ; open-in-browser ; set browser "~/scripts/newsboat-brave-app.sh %u"
 
 # Open Twitch stream by username in MPV
 # to watch streamer that's currently live 
 # when RSS feed hasn't updated or RSS feed 
 # for that user hasn't been added
-macro w set browser "~/scripts/twitch-launcher.sh" ; open-in-browser ;
+macro w set browser "~/scripts/twitch-launcher.sh" ; open-in-browser ; set browser "~/scripts/newsboat-brave-app.sh %u"
 
 # Refresh downloaded videos feed (,R)
-macro R set browser "~/scripts/update-downloaded-query.sh" ; open-in-browser ; set browser "~/scripts/mpv-yt %u"
+macro R set browser "~/scripts/update-downloaded-query.sh" ; open-in-browser ; set browser "~/scripts/newsboat-brave-app.sh %u"
 
 # Stream YouTube video
 # macro v set browser "setsid -f mpv-yt %u" ; open-in-browser ; set browser "google-chrome-stable %u"
@@ -45,10 +45,10 @@ macro v set browser "setsid -f ~/scripts/mpv-yt %u '%T'" ; open-in-browser ; tog
 macro r set browser "w3m -o display_image=1 %u" ; open-in-browser ; toggle-article-read ; set browser "~/scripts/newsboat-brave-app.sh %u"
 
 # Bookmark article (,b)
-macro b set browser "~/scripts/bookmark-article.sh %u '%T'" ; open-in-browser ; set browser "~/scripts/mpv-yt %u"
+macro b set browser "~/scripts/bookmark-article.sh %u '%T'" ; open-in-browser ; set browser "~/scripts/newsboat-brave-app.sh %u"
 
 # Unbookmark article (,B) - removes from list
-macro B set browser "~/scripts/unbookmark-article.sh %u '%T'" ; open-in-browser ; set browser "~/scripts/mpv-yt %u"
+macro B set browser "~/scripts/unbookmark-article.sh %u '%T'" ; open-in-browser ; set browser "~/scripts/newsboat-brave-app.sh %u"
 
 reload-threads 100
 
@@ -74,8 +74,10 @@ bind-key G end
 # bind-key L pagedown
 # bind-key h pagedown
 
-# Opening in browser auto-marks the article read
-bind-key o open-in-browser-and-mark-read
+# Always restore Brave before opening a link, even after a media macro.
+# Lowercase o also marks the article read; uppercase O only opens it.
+bind o everywhere set browser "~/scripts/newsboat-brave-app.sh %u" ; open-in-browser-and-mark-read
+bind O everywhere set browser "~/scripts/newsboat-brave-app.sh %u" ; open-in-browser
 
 # Colors - clean and minimal
 color listfocus          black   cyan    bold
