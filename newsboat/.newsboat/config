@@ -19,37 +19,37 @@ browser "~/scripts/newsboat-brave-app.sh %u"
 
 # Download video (,d)
 # macro d set browser "~/scripts/download-video.sh %u &" ; open-in-browser ; set browser "~/scripts/mpv-yt %u"
-macro d set browser "~/scripts/newsboat-download-video.sh %u &" ; open-in-browser ; set browser "~/scripts/newsboat-brave-app.sh %u"
-macro c set browser "python3 ~/scripts/newsboat-download.py --cancel-url %u" ; open-in-browser ; set browser "~/scripts/newsboat-brave-app.sh %u"
+macro d set browser "~/scripts/newsboat-download-video.sh %u &" ; open-in-browser ; set browser "~/scripts/newsboat-brave-app.sh %u" -- "Download selected video"
+macro c set browser "python3 ~/scripts/newsboat-download.py --cancel-url %u" ; open-in-browser ; set browser "~/scripts/newsboat-brave-app.sh %u" -- "Cancel selected video download"
 
 # Delete downloaded video (,D)
-macro D set browser "~/scripts/delete-downloaded.sh %u" ; open-in-browser ; set browser "~/scripts/newsboat-brave-app.sh %u" ; reload-urls
+macro D set browser "~/scripts/delete-downloaded.sh %u" ; open-in-browser ; set browser "~/scripts/newsboat-brave-app.sh %u" ; reload-urls -- "Delete selected downloaded video"
 
 # Cancel in progress download
-macro S set browser "~/scripts/cancel-download.sh %u" ; open-in-browser ; set browser "~/scripts/newsboat-brave-app.sh %u"
+macro S set browser "~/scripts/cancel-download.sh %u" ; open-in-browser ; set browser "~/scripts/newsboat-brave-app.sh %u" -- "Cancel legacy video download"
 
 # Open Twitch stream by username in MPV
 # to watch streamer that's currently live 
 # when RSS feed hasn't updated or RSS feed 
 # for that user hasn't been added
-macro w set browser "~/scripts/twitch-launcher.sh" ; open-in-browser ; set browser "~/scripts/newsboat-brave-app.sh %u"
+macro w set browser "~/scripts/twitch-launcher.sh" ; open-in-browser ; set browser "~/scripts/newsboat-brave-app.sh %u" -- "Open Twitch live-channel picker"
 
 # Refresh downloaded videos feed (,R)
-macro R set browser "~/scripts/update-downloaded-query.sh" ; open-in-browser ; set browser "~/scripts/newsboat-brave-app.sh %u" ; reload-urls
+macro R set browser "~/scripts/update-downloaded-query.sh" ; open-in-browser ; set browser "~/scripts/newsboat-brave-app.sh %u" ; reload-urls -- "Rebuild and reload Downloaded view"
 
 # Keep Newsboat visible while waiting for playback, then mark the article read.
 # Stream YouTube video
 # macro v set browser "setsid -f mpv-yt %u" ; open-in-browser ; set browser "google-chrome-stable %u"
-macro v set browser "~/scripts/newsboat-play-video.sh %u" ; open-in-browser-noninteractively ; set browser "~/scripts/newsboat-brave-app.sh %u" ; toggle-article-read "read"
+macro v set browser "~/scripts/newsboat-play-video.sh %u" ; open-in-browser-noninteractively ; set browser "~/scripts/newsboat-brave-app.sh %u" ; toggle-article-read "read" -- "Play video; mark read after playback starts"
 
 # macro r set browser "w3m %u" ; open-in-browser ; set browser "google-chrome-stable %u"
-macro r set browser "w3m -o display_image=1 %u" ; open-in-browser ; toggle-article-read ; set browser "~/scripts/newsboat-brave-app.sh %u"
+macro r set browser "w3m -o display_image=1 %u" ; open-in-browser ; toggle-article-read ; set browser "~/scripts/newsboat-brave-app.sh %u" -- "Read in w3m; toggle read status"
 
 # Bookmark article (,b)
-macro b set browser "~/scripts/bookmark-article.sh %u '%T'" ; open-in-browser ; set browser "~/scripts/newsboat-brave-app.sh %u"
+macro b set browser "~/scripts/bookmark-article.sh %u '%T'" ; open-in-browser ; set browser "~/scripts/newsboat-brave-app.sh %u" -- "Bookmark article"
 
 # Unbookmark article (,B) - removes from list
-macro B set browser "~/scripts/unbookmark-article.sh %u '%T'" ; open-in-browser ; set browser "~/scripts/newsboat-brave-app.sh %u"
+macro B set browser "~/scripts/unbookmark-article.sh %u '%T'" ; open-in-browser ; set browser "~/scripts/newsboat-brave-app.sh %u" -- "Remove article bookmark"
 
 reload-threads 100
 
@@ -71,6 +71,8 @@ show-read-feeds no
 confirm-exit yes
 
 # Keybinds
+# Native help includes standard keys and descriptions of every custom macro.
+bind ? everywhere help -- "Show shortcuts (q to return)"
 bind-key j down
 bind-key k up
 bind-key g home
@@ -80,10 +82,10 @@ bind-key G end
 
 # Always restore Brave before opening a link, even after a media macro.
 # Keep the feed visible while opening Brave, then mark the article read.
-bind o everywhere set browser "~/scripts/newsboat-brave-app.sh %u" ; open-in-browser-noninteractively ; toggle-article-read "read"
-bind O everywhere set browser "~/scripts/newsboat-brave-app.sh %u" ; open-in-browser-noninteractively ; toggle-article-read "read"
+bind o everywhere set browser "~/scripts/newsboat-brave-app.sh %u" ; open-in-browser-noninteractively ; toggle-article-read "read" -- "Open in Brave and mark read"
+bind O everywhere set browser "~/scripts/newsboat-brave-app.sh %u" ; open-in-browser-noninteractively ; toggle-article-read "read" -- "Open in Brave and mark read"
 # Pick up automatically rebuilt Downloaded queries when refreshing feeds.
-bind R feedlist reload-urls ; reload-all
+bind R feedlist reload-urls ; reload-all -- "Refresh all feeds and reload views"
 
 # Colors - clean and minimal
 color listfocus          black   cyan    bold
