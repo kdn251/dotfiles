@@ -14,9 +14,20 @@ echo "Arg count: $#" >>/tmp/mpv-yt-debug.log
 date >>/tmp/mpv-yt-debug.log
 
 URL="$1"
-# Optional second argument: the article title, passed by the newsboat macro as
-# %T. Used for the notification so it can appear before any network call.
-TITLE="${2:-}"
+# Everything after the URL is the article title, passed by the newsboat macro as
+# %T. Taken as "the rest" rather than "$2": newsboat does not preserve the
+# quoting around the substitution, so a six-word title arrives as six arguments.
+TITLE="${*:2}"
+
+# newsboat runs as `kitty -e newsboat`, which never sources a login shell, so
+# its PATH is only /usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin -- no
+# ~/.local/bin. Without this, mpv picks up the pacman yt-dlp, which can only
+# extract through a client YouTube refuses to serve to ffmpeg, and playback
+# dies with HTTP 403.
+YTDL="$HOME/.local/bin/yt-dlp"
+[ -x "$YTDL" ] || YTDL=$(command -v yt-dlp 2>/dev/null)
+export PATH="$HOME/.local/bin:$PATH"
+YTDL_OPT="--script-opts=ytdl_hook-ytdl_path=$YTDL"
 
 # Check if it's a Twitch VOD
 if [[ "$URL" =~ twitch\.tv/videos/([0-9]+) ]]; then
@@ -63,6 +74,7 @@ if [[ "$URL" =~ twitch\.tv ]]; then
   # Check if it's a VOD (contains /videos/ in URL)
   if [[ "$URL" =~ /videos/ ]]; then
     exec mpv \
+      "$YTDL_OPT" \
       --save-position-on-quit \
       --ytdl-format='bestvideo[height<=?1080][ext=mp4]+bestaudio[ext=m4a]/best[height<=?1080][ext=mp4]/best[height<=?1080]' \
       --cache=yes \
@@ -102,15 +114,13 @@ if [[ "$URL" =~ twitch\.tv ]]; then
 else
   # YouTube and other videos.
   #
-  # Two-stage notification. The first goes out immediately with the article
-  # title newsboat passed in, because resolving the channel costs about 1.8s
-  # and there should be feedback the instant the key is pressed. The second
-  # REPLACES it (same -r id) once the channel name and avatar are known.
+  # One notification, sent only once the channel and avatar are known -- about
+  # 1.8s in. An earlier version fired an immediate title-only notification and
+  # replaced it, which just meant seeing the same thing twice.
+  # -r keyed on the URL so replaying the same video replaces rather than stacks.
   NOTIFY_ID=$(($(printf '%s' "$URL" | cksum | cut -d' ' -f1) % 2147483647))
-  notify-send -a "MPV" -r "$NOTIFY_ID" -t 4000 -u low \
-    "${TITLE:-Streaming video...}" "${TITLE:+Loading...}" &
   (
-    meta=$(yt-dlp -q --no-warnings --print "%(channel)s|%(channel_id)s|%(title)s" "$URL" 2>/dev/null | head -1)
+    meta=$("$YTDL" -q --no-warnings --print "%(channel)s|%(channel_id)s|%(title)s" "$URL" 2>/dev/null | head -1)
     chan=${meta%%|*}
     rest=${meta#*|}
     cid=${rest%%|*}
@@ -126,6 +136,7 @@ else
   # 1. We remove the 0.5s readahead (let it buffer 10-30s for smooth seeking).
   # 2. We use --ytdl-raw-options to favor fast-starting streams.
   exec mpv \
+    "$YTDL_OPT" \
     --save-position-on-quit \
     --ytdl-format="bestvideo[height<=?1080]+bestaudio/best[height<=?1080]/best" \
     --cache=yes \
