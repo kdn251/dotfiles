@@ -180,6 +180,19 @@ def run(args):
                             pending_log += chunk
                             while b"\n" in pending_log:
                                 line, pending_log = pending_log.split(b"\n", 1)
+                                # A dedicated binding signal avoids the browser operation,
+                                # which refuses query feeds before launching any command.
+                                if line.rstrip().endswith(b"ConfigContainer::set_configvalue(browser, newsboat-history://show) called"):
+                                    # Temporarily give this terminal to the native history list.
+                                    termios.tcsetattr(0, termios.TCSADRAIN, original)
+                                    try:
+                                        subprocess.run(
+                                            [sys.executable, str(Path(__file__).with_name("newsboat-history.py")), "show"],
+                                            check=False)
+                                    finally:
+                                        tty.setraw(0)
+                                        write_all(1, b"\x1b[?1049h\x1b[?25l")
+                                        write_all(master, b"\x0c")
                                 was_active = progress.active
                                 progress.log(line)
                                 if progress.active and not was_active:

@@ -21,6 +21,9 @@ def play(args):
             if ready.exists():
                 result = ready.read_text()
                 if result == 'playing':
+                    subprocess.run([sys.executable, str(Path(__file__).with_name('newsboat-history.py')),
+                                    'record', args[0], 'video'], stdout=subprocess.DEVNULL,
+                                   stderr=subprocess.DEVNULL)
                     return 0
                 if result == 'failed':
                     break

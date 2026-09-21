@@ -126,6 +126,7 @@ class MediaTests(unittest.TestCase):
         player.write_text('#!/bin/sh\ntouch "$HOME/called"\nexit "$RESULT"\n');player.chmod(0o755)
         shutil.copyfile(player,home/'scripts/newsboat-brave-app.sh')
         (home/'scripts/newsboat-brave-app.sh').chmod(0o755)
+        (home/'scripts/newsboat-history.py').write_text('from pathlib import Path\nPath.home().joinpath("called").touch()\n')
         feed=self.root/'feed.xml'
         feed.write_text('<rss version="2.0"><channel><title>Fixture feed</title><link>https://example.com</link>'
                         '<description>test</description><item><title>Fixture video: creator&apos;s &quot;best&quot; &amp; more</title><link>'+URL+'</link>'
@@ -136,7 +137,7 @@ class MediaTests(unittest.TestCase):
         config=self.root/'config';cache=self.root/'cache.db'
         source=(SCRIPTS.parents[1]/'newsboat/.newsboat/config').read_text()
         macro=next(line for line in source.splitlines() if line.startswith('macro v '))
-        config.write_text('show-read-articles yes\nshow-read-feeds yes\nprepopulate-query-feeds yes\n'+macro+'\n'+'\n'.join(line for line in source.splitlines() if line.startswith(('bind o ', 'bind O ')))+'\n')
+        config.write_text('show-read-articles yes\nshow-read-feeds yes\nprepopulate-query-feeds yes\n'+macro+'\n'+'\n'.join(line for line in source.splitlines() if line.startswith(('bind o ', 'bind O ', 'bind H ')))+'\n')
         command=['newsboat','-C',str(config),'-u',str(media.URLS),'-c',str(cache)]
         env=dict(os.environ,HOME=str(home),TERM='xterm-256color')
         subprocess.run(command+['-x','reload'],env=env,capture_output=True,check=True,timeout=10)

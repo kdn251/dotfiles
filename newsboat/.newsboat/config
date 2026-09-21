@@ -73,6 +73,8 @@ confirm-exit yes
 # Keybinds
 # Native help includes standard keys and descriptions of every custom macro.
 bind ? everywhere help -- "Show shortcuts (q to return)"
+# The session wrapper handles this request independently of the selected feed.
+bind H everywhere set browser "newsboat-history://show" ; set browser "~/scripts/newsboat-brave-app.sh %u" -- "History: recent browser links and videos (q to return)"
 bind-key j down
 bind-key k up
 bind-key g home
