@@ -76,9 +76,9 @@ bind-key G end
 # bind-key h pagedown
 
 # Always restore Brave before opening a link, even after a media macro.
-# Both browser-opening shortcuts also mark the article read.
-bind o everywhere set browser "~/scripts/newsboat-brave-app.sh %u" ; open-in-browser-and-mark-read
-bind O everywhere set browser "~/scripts/newsboat-brave-app.sh %u" ; open-in-browser-and-mark-read
+# Keep the feed visible while opening Brave, then mark the article read.
+bind o everywhere set browser "~/scripts/newsboat-brave-app.sh %u" ; open-in-browser-noninteractively ; toggle-article-read "read"
+bind O everywhere set browser "~/scripts/newsboat-brave-app.sh %u" ; open-in-browser-noninteractively ; toggle-article-read "read"
 # Pick up automatically rebuilt Downloaded queries when refreshing feeds.
 bind R feedlist reload-urls ; reload-all
 

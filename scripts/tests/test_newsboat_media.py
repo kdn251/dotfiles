@@ -140,7 +140,7 @@ class MediaTests(unittest.TestCase):
         command=['newsboat','-C',str(config),'-u',str(media.URLS),'-c',str(cache)]
         env=dict(os.environ,HOME=str(home),TERM='xterm-256color')
         subprocess.run(command+['-x','reload'],env=env,capture_output=True,check=True,timeout=10)
-        for initial,result,expected,key in [(1,'1',1,b',v'),(1,'0',0,b',v'),(0,'0',0,b',v'),(1,'0',0,b'O'),(1,'0',0,b'o')]:
+        for initial,result,expected,key in [(1,'1',1,b',v'),(1,'0',0,b',v'),(0,'0',0,b',v'),(1,'0',0,b'O'),(1,'0',0,b'o'),(0,'0',0,b'O'),(1,'1',1,b'O')]:
             with sqlite3.connect(cache) as db:db.execute('update rss_item set unread=?',(initial,))
             marker=home/'called';marker.unlink(missing_ok=True)
             pid,fd=pty.fork()
@@ -163,9 +163,8 @@ class MediaTests(unittest.TestCase):
                 time.sleep(.1)
                 while select.select([fd],[],[],0)[0]:
                     data.extend(os.read(fd,65536))
-                if key == b',v':
-                    self.assertNotIn(b'\x1b[?1049l',data[launch_offset:],
-                                     'Video launch must keep the Newsboat screen visible')
+                self.assertNotIn(b'\x1b[?1049l',data[launch_offset:],
+                                 'Browser and video launches must keep Newsboat visible')
                 os.write(fd,b'Q')
                 wait_for(lambda:b'\x1b[?1049l' in data[data.rfind(b'Fixture video'):])
                 os.waitpid(pid,0);pid=None

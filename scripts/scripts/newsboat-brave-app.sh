@@ -10,4 +10,13 @@ url="$1"
 # Matches reddit.com, www.reddit.com, np.reddit.com, new.reddit.com — but not old.reddit.com.
 url="$(printf '%s' "$url" | sed -E 's#^(https?://)(www\.|np\.|new\.)?reddit\.com#\1old.reddit.com#')"
 
-exec brave --app="$url"
+# Browser diagnostics must not overwrite Newsboat's terminal display.
+state_dir="${XDG_STATE_HOME:-$HOME/.local/state}/newsboat"
+umask 077
+mkdir -p "$state_dir" || exit 1
+log="$state_dir/browser.log"
+# Bound accumulated diagnostics while retaining the previous log for debugging.
+if [ -f "$log" ] && [ "$(stat -c %s "$log")" -gt 1048576 ]; then
+  mv -f "$log" "$log.1"
+fi
+exec brave --app="$url" >>"$log" 2>&1
