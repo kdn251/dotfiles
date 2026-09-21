@@ -43,6 +43,13 @@ if [ -n "${NEWSBOAT_PLAY_READY:-}" ]; then
   READY_OPTS=("--script=$(dirname "$(readlink -f "$0")")/newsboat-play-ready.lua")
 fi
 
+# The same creator portrait / app badge layout as YouTube, after playback starts.
+if [[ "$URL" =~ ^https?://(www\.)?twitch\.tv/videos/[0-9]+ ]]; then
+  export NEWSBOAT_TWITCH_URL="$URL"
+  export NEWSBOAT_TWITCH_NOTIFY="$(dirname "$(readlink -f "$0")")/newsboat-twitch-notify.py"
+  READY_OPTS+=("--script=$(dirname "$(readlink -f "$0")")/newsboat-twitch-notify.lua")
+fi
+
 # Only stop players, never downloads.
 pkill -f "mpv.*ytdl-format" 2>/dev/null
 pkill -f "streamlink.*--player" 2>/dev/null
@@ -53,7 +60,7 @@ if [ -n "$DOWNLOADED" ]; then
     # shellcheck disable=SC1090
     . "$META"
     cp -f "$META" /tmp/youtube-stream-context.conf 2>/dev/null
-    NARGS=(-a "YouTube" -i "$YOUTUBE_ICON" -t 5000 -u low)
+    NARGS=(-a "YouTube" --app-icon "$YOUTUBE_ICON" -t 5000 -u low)
     [ -n "${YT_ICON:-}" ] && [ -f "$YT_ICON" ] && NARGS+=(-h "string:image-path:$YT_ICON")
     notify-send "${NARGS[@]}" "${YT_TITLE:-Playing video}" "${YT_CHANNEL:-}" &
   fi
@@ -63,8 +70,6 @@ fi
 
 # Check if it's a Twitch stream
 if [[ "$URL" =~ twitch\.tv ]]; then
-  notify-send "MPV" "Loading Twitch stream..." -t 3000 -u low &
-
   # Read OAuth token from file
   TWITCH_TOKEN=$(cat ~/.newsboat/.twitch_oauth 2>/dev/null)
 
@@ -86,6 +91,7 @@ if [[ "$URL" =~ twitch\.tv ]]; then
       "$URL" >/dev/null 2>&1 &
     exit 0
   else
+    notify-send "MPV" "Loading Twitch stream..." -t 3000 -u low &
     # Live stream - use low latency settings
     PLAYER_ARGS="--cache=yes --force-window=immediate --vo=gpu --gpu-api=opengl"
     if [ "${#READY_OPTS[@]}" -gt 0 ]; then PLAYER_ARGS+=" ${READY_OPTS[0]}"; fi
@@ -141,7 +147,7 @@ else
     cid="${curl_url##*/}"
     icon=""
     [ -n "$cid" ] && icon=$("$HOME/scripts/yt-channel-pic.sh" "$cid" 2>/dev/null)
-    args=(-a "YouTube" -i "$YOUTUBE_ICON" -r "$NOTIFY_ID" -t 5000 -u low)
+    args=(-a "YouTube" --app-icon "$YOUTUBE_ICON" -r "$NOTIFY_ID" -t 5000 -u low)
     [ -n "$icon" ] && args+=(-h "string:image-path:$icon")
     [ -n "${TITLE:-}" ] && notify-send "${args[@]}" "$TITLE" "${chan:-YouTube}"
 
