@@ -4,11 +4,13 @@ import json
 import os
 from pathlib import Path
 import subprocess
+import sys
 import tempfile
 import time
 import unittest
 
 SCRIPTS = Path(__file__).resolve().parents[1] / 'scripts'
+sys.path.insert(0, str(SCRIPTS))
 spec = importlib.util.spec_from_file_location('downloads', SCRIPTS / 'newsboat-download.py')
 module = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(module)
@@ -21,6 +23,7 @@ from pathlib import Path
 args=sys.argv[1:]
 with open(os.environ['CALLS'],'a') as f:f.write(json.dumps(args)+'\n')
 mode=os.environ.get('FAIL','')
+if Path(os.environ['CALLS']+'.retried').exists():mode=''
 if '--dump-single-json' in args:
  if mode=='metadata':
   print('HTTP 403: deliberate metadata failure',file=sys.stderr);sys.exit(1)
@@ -45,6 +48,11 @@ FAKE_NOTIFY = r'''#!/usr/bin/python3
 import json,os,sys
 with open(os.environ['NOTICES'],'a') as f:f.write(json.dumps(sys.argv[1:])+'\n')
 print(73)
+if os.environ.get('AUTO_RETRY') and 'Download failed' in sys.argv:
+ from pathlib import Path
+ marker=Path(os.environ['CALLS']+'.retried')
+ if not marker.exists():
+  marker.touch();print('retry')
 '''
 
 
@@ -129,8 +137,14 @@ class DownloadTests(unittest.TestCase):
 
     def test_failed_and_missing_output_never_report_complete(self):
         for mode in ('metadata','download','missing'):
+            before = len(self.read_notices()) if (self.root/'notices').exists() else 0
             p = self.start(FAIL=mode)
             self.assertEqual(p.wait(timeout=5),1)
+            end = time.monotonic()+3
+            expected = before + (1 if mode == 'metadata' else 2)
+            while time.monotonic() < end:
+                if (self.root/'notices').exists() and len(self.read_notices()) >= expected:break
+                time.sleep(.02)
             job = self.state()
             self.assertEqual(job['status'],'failed')
             self.assertEqual(self.read_notices()[-1][1],'Download failed')
@@ -167,6 +181,20 @@ class DownloadTests(unittest.TestCase):
         self.assertEqual(self.state(twitch)['status'],'done')
         self.assertEqual(self.state(twitch)['icon'],str(self.root/'.cache/twitch-profiles/creator.png'))
         self.assertIn('twitch-vods/manual',self.state(twitch)['files'][0])
+
+    def test_retry_action_restarts_the_same_video(self):
+        p = self.start(FAIL='download', AUTO_RETRY='1')
+        self.assertEqual(p.wait(timeout=5), 1)
+        end = time.monotonic()+8
+        while time.monotonic() < end:
+            if self.state()['status'] == 'done':break
+            time.sleep(.03)
+        self.assertEqual(self.state()['status'], 'done')
+        calls=[json.loads(line) for line in (self.root/'calls').read_text().splitlines()]
+        urls=[args[-1] for args in calls if '--dump-single-json' in args]
+        self.assertEqual(urls, [URL, URL])
+        failed=next(n for n in self.read_notices() if n[1] == 'Download failed')
+        self.assertIn('retry=Retry', failed)
 
     def test_url_validation(self):
         self.assertEqual(module.canonical_url('https://youtu.be/abc123DEF45?list=ignore')[1],URL)

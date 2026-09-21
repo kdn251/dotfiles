@@ -23,7 +23,7 @@ macro d set browser "~/scripts/newsboat-download-video.sh %u &" ; open-in-browse
 macro c set browser "python3 ~/scripts/newsboat-download.py --cancel-url %u" ; open-in-browser ; set browser "~/scripts/newsboat-brave-app.sh %u"
 
 # Delete downloaded video (,D)
-macro D set browser "~/scripts/delete-downloaded.sh %u" ; open-in-browser ; set browser "~/scripts/newsboat-brave-app.sh %u"
+macro D set browser "~/scripts/delete-downloaded.sh %u" ; open-in-browser ; set browser "~/scripts/newsboat-brave-app.sh %u" ; reload-urls
 
 # Cancel in progress download
 macro S set browser "~/scripts/cancel-download.sh %u" ; open-in-browser ; set browser "~/scripts/newsboat-brave-app.sh %u"
@@ -35,11 +35,12 @@ macro S set browser "~/scripts/cancel-download.sh %u" ; open-in-browser ; set br
 macro w set browser "~/scripts/twitch-launcher.sh" ; open-in-browser ; set browser "~/scripts/newsboat-brave-app.sh %u"
 
 # Refresh downloaded videos feed (,R)
-macro R set browser "~/scripts/update-downloaded-query.sh" ; open-in-browser ; set browser "~/scripts/newsboat-brave-app.sh %u"
+macro R set browser "~/scripts/update-downloaded-query.sh" ; open-in-browser ; set browser "~/scripts/newsboat-brave-app.sh %u" ; reload-urls
 
+# Keep Newsboat visible while waiting for playback, then mark the article read.
 # Stream YouTube video
 # macro v set browser "setsid -f mpv-yt %u" ; open-in-browser ; set browser "google-chrome-stable %u"
-macro v set browser "setsid -f ~/scripts/mpv-yt %u '%T'" ; open-in-browser ; toggle-article-read ; set browser "~/scripts/newsboat-brave-app.sh %u"
+macro v set browser "~/scripts/newsboat-play-video.sh %u" ; open-in-browser-noninteractively ; set browser "~/scripts/newsboat-brave-app.sh %u" ; toggle-article-read "read"
 
 # macro r set browser "w3m %u" ; open-in-browser ; set browser "google-chrome-stable %u"
 macro r set browser "w3m -o display_image=1 %u" ; open-in-browser ; toggle-article-read ; set browser "~/scripts/newsboat-brave-app.sh %u"
@@ -75,9 +76,11 @@ bind-key G end
 # bind-key h pagedown
 
 # Always restore Brave before opening a link, even after a media macro.
-# Lowercase o also marks the article read; uppercase O only opens it.
+# Both browser-opening shortcuts also mark the article read.
 bind o everywhere set browser "~/scripts/newsboat-brave-app.sh %u" ; open-in-browser-and-mark-read
-bind O everywhere set browser "~/scripts/newsboat-brave-app.sh %u" ; open-in-browser
+bind O everywhere set browser "~/scripts/newsboat-brave-app.sh %u" ; open-in-browser-and-mark-read
+# Pick up automatically rebuilt Downloaded queries when refreshing feeds.
+bind R feedlist reload-urls ; reload-all
 
 # Colors - clean and minimal
 color listfocus          black   cyan    bold

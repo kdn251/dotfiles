@@ -13,6 +13,7 @@ import sys
 import tempfile
 import time
 from urllib.parse import parse_qs, urlparse
+from newsboat_media import rebuild
 
 SCRIPTS = Path(__file__).resolve().parent
 STATE = Path(os.environ.get('XDG_STATE_HOME', Path.home() / '.local/state')) / 'newsboat/downloads'
@@ -67,6 +68,14 @@ def save(job):
 
 
 def notify(job, phase):
+    if phase == 'Download failed':
+        # Waiting for a notification action must not hold the download lock
+        # or keep Waybar in an active state after the worker has finished.
+        subprocess.Popen([sys.executable, str(Path(__file__).resolve()),
+                          '--failure-notification', job['key']],
+                         stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
+                         stderr=subprocess.DEVNULL, start_new_session=True)
+        return
     # Critical popups never expire in this desktop's SwayNC configuration.
     # Use normal urgency for all download results and keep the real daemon ID
     # so completion/failure replaces the starting popup instead of stacking.
@@ -85,6 +94,28 @@ def notify(job, phase):
             save(job)
     except (OSError, subprocess.TimeoutExpired):
         pass  # A notification outage must never fail the download.
+
+
+def failure_notification(key):
+    if not re.fullmatch(r'[0-9a-f]{24}', key):
+        return 1
+    job = json.loads((STATE / f'{key}.json').read_text())
+    if job['status'] != 'failed':
+        return 0
+    args = ['notify-send', '-a', 'Download failed', '-p', '-r', str(job.get('notification_id', 0)),
+            '-t', '5000', '-u', 'normal', '--wait', '-A', 'retry=Retry']
+    if job.get('icon'):
+        args += ['-i', job['icon']]
+    args += ['--', f'Download failed: {job["title"]}']
+    try:
+        result = subprocess.run(args, capture_output=True, text=True, timeout=12)
+        if 'retry' in result.stdout.splitlines():
+            subprocess.Popen([sys.executable, str(Path(__file__).resolve()), job['url']],
+                             stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
+                             stderr=subprocess.DEVNULL, start_new_session=True)
+    except (OSError, subprocess.TimeoutExpired):
+        pass
+    return 0
 
 
 def creator_icon(platform, info):
@@ -202,6 +233,12 @@ def download(url, title=''):
                        files=[str(p) for p in paths])
             save(job)
             notify(job, 'Download complete')
+            try:
+                rebuild()
+            except (OSError, ValueError) as error:
+                # A library-update failure does not turn a saved video into
+                # a failed download. Preserve diagnostics for a manual retry.
+                log.write(f'Library update failed: {error}\n')
             return 0
     except Cancelled:
         stop(process)
@@ -249,6 +286,8 @@ def jobs():
     for path in STATE.glob('*.json'):
         try:
             job = json.loads(path.read_text())
+            if job.get('status') == 'deleted':
+                continue
             if job['status'] in ACTIVE and not alive(job):
                 job.update(status='failed', error='Download process stopped unexpectedly')
                 save(job)
@@ -339,6 +378,8 @@ def main(args):
         return 0
     if args == ['--panel']:
         return panel()
+    if len(args) == 2 and args[0] == '--failure-notification':
+        return failure_notification(args[1])
     if len(args) == 2 and args[0] == '--cancel':
         return cancel_job(args[1])
     if len(args) == 2 and args[0] == '--cancel-url':

@@ -29,57 +29,32 @@ YTDL="$HOME/.local/bin/yt-dlp"
 export PATH="$HOME/.local/bin:$PATH"
 YTDL_OPT="--script-opts=ytdl_hook-ytdl_path=$YTDL"
 
-# Check if it's a Twitch VOD
-if [[ "$URL" =~ twitch\.tv/videos/([0-9]+) ]]; then
-  TWITCH_VOD_ID="${BASH_REMATCH[1]}"
-  echo "Twitch VOD ID: $TWITCH_VOD_ID" >>/tmp/mpv-yt-debug.log
+# A completion-checked lookup shared with deletion and the Downloaded library.
+MEDIA_HELPER="$(dirname "$(readlink -f "$0")")/newsboat_media.py"
+VIDEO_ID=$(python3 "$MEDIA_HELPER" identity "$URL" 2>/dev/null) || VIDEO_ID=""
+DOWNLOADED=$(python3 "$MEDIA_HELPER" find "$URL" 2>/dev/null) || DOWNLOADED=""
 
-  DOWNLOADED=$(find "$VIDEO_DIR" -type f -name "*${TWITCH_VOD_ID}*" 2>/dev/null | head -n 1)
-  if [ -n "$DOWNLOADED" ]; then
-    notify-send "MPV" "Playing downloaded VOD" -t 3000 -u low &
-    exec mpv --really-quiet "$DOWNLOADED" 2>/dev/null &
-    exit 0
-  fi
+READY_OPTS=()
+if [ -n "${NEWSBOAT_PLAY_READY:-}" ]; then
+  READY_OPTS=("--script=$(dirname "$(readlink -f "$0")")/newsboat-play-ready.lua")
 fi
 
-# Extract any 11-character YouTube video ID from the URL
-VIDEO_ID=$(echo "$URL" | grep -oP '[a-zA-Z0-9_-]{11}' | head -n 1)
-
-# Kill any existing mpv instances first
+# Only stop players, never downloads.
 pkill -f "mpv.*ytdl-format" 2>/dev/null
-# pkill -f "streamlink" 2>/dev/null
-
-# Only kill streamlinks processes that are in a player currently
-# this will prevent download VOD script from being killed on accident
 pkill -f "streamlink.*--player" 2>/dev/null
 
-# Check for downloaded video
-if [ -n "$VIDEO_ID" ]; then
-  # The stream cache first: a video watched before is already on disk, so it
-  # starts instantly instead of streaming and swapping again.
-  DOWNLOADED=""
-  [ -s "$HOME/.cache/mpv-yt-videos/${VIDEO_ID}.mp4" ] &&
-    DOWNLOADED="$HOME/.cache/mpv-yt-videos/${VIDEO_ID}.mp4"
-  [ -n "$DOWNLOADED" ] ||
-    DOWNLOADED=$(find "$VIDEO_DIR" -type f -name "*${VIDEO_ID}*" 2>/dev/null | head -n 1)
-
-  if [ -n "$DOWNLOADED" ]; then
-    # Reuse the sidecar written when this was cached, so a replay looks the
-    # same as a first play and Mod+Q still knows what is on screen.
-    META="$HOME/.cache/mpv-yt-videos/${VIDEO_ID}.meta"
-    if [ -s "$META" ]; then
-      # shellcheck disable=SC1090
-      . "$META"
-      cp -f "$META" /tmp/youtube-stream-context.conf 2>/dev/null
-      NARGS=(-a "MPV" -t 5000 -u low)
-      [ -n "${YT_ICON:-}" ] && [ -f "${YT_ICON:-}" ] && NARGS+=(-i "$YT_ICON")
-      notify-send "${NARGS[@]}" "${YT_TITLE:-Playing video}" "${YT_CHANNEL:-YouTube}" &
-    else
-      notify-send "MPV" "Playing downloaded video" -t 3000 -u low &
-    fi
-    exec mpv --really-quiet "$DOWNLOADED" 2>/dev/null &
-    exit 0
+if [ -n "$DOWNLOADED" ]; then
+  META="$HOME/.cache/mpv-yt-videos/${VIDEO_ID}.meta"
+  if [ -s "$META" ]; then
+    # shellcheck disable=SC1090
+    . "$META"
+    cp -f "$META" /tmp/youtube-stream-context.conf 2>/dev/null
+    NARGS=(-a "MPV" -t 5000 -u low)
+    [ -n "${YT_ICON:-}" ] && [ -f "$YT_ICON" ] && NARGS+=(-i "$YT_ICON")
+    notify-send "${NARGS[@]}" "${YT_TITLE:-Playing video}" "${YT_CHANNEL:-}" &
   fi
+  mpv "${READY_OPTS[@]}" --save-position-on-quit --really-quiet "$DOWNLOADED" >/dev/null 2>&1 &
+  exit 0
 fi
 
 # Check if it's a Twitch stream
@@ -91,7 +66,7 @@ if [[ "$URL" =~ twitch\.tv ]]; then
 
   # Check if it's a VOD (contains /videos/ in URL)
   if [[ "$URL" =~ /videos/ ]]; then
-    exec mpv \
+    exec mpv "${READY_OPTS[@]}" \
       "$YTDL_OPT" \
       --save-position-on-quit \
       --ytdl-format='bestvideo[height<=?1080][ext=mp4]+bestaudio[ext=m4a]/best[height<=?1080][ext=mp4]/best[height<=?1080]' \
@@ -109,6 +84,7 @@ if [[ "$URL" =~ twitch\.tv ]]; then
   else
     # Live stream - use low latency settings
     PLAYER_ARGS="--cache=yes --force-window=immediate --vo=gpu --gpu-api=opengl"
+    if [ "${#READY_OPTS[@]}" -gt 0 ]; then PLAYER_ARGS+=" ${READY_OPTS[0]}"; fi
     STREAM_ARGS="--twitch-low-latency --stream-segment-threads 3 --stream-segment-attempts 3 --stream-segment-timeout 10 --retry-streams 2 --retry-open 2"
   fi
 
@@ -195,7 +171,7 @@ else
       cache="$HOME/.cache/mpv-yt-videos"
       mkdir -p "$cache"
       local_file="$cache/$vid.mp4"
-      if [ ! -s "$local_file" ]; then
+      if ! python3 "$MEDIA_HELPER" find "$URL" >/dev/null 2>&1; then
         "$YTDL" -q --no-warnings \
           -f "bestvideo[height<=?1080]+bestaudio/best[height<=?1080]/best" \
           --merge-output-format mp4 --max-filesize 3G \
@@ -205,7 +181,8 @@ else
       # mid-download must not resurrect it.
       # Sidecar so a replay from cache can show the same notification and feed
       # the quality key: a merged mp4 carries no uploader or channel id.
-      if [ -s "$local_file" ]; then
+      local_file=$(python3 "$MEDIA_HELPER" find "$URL" 2>/dev/null) || local_file=""
+      if [ "$local_file" = "$cache/$vid.mp4" ]; then
         {
           printf 'YT_URL="%s"\n' "$URL"
           printf 'YT_TITLE="%s"\n' "$(printf '%s' "$TITLE" | tr '"' "'")"
@@ -213,7 +190,7 @@ else
           printf 'YT_ICON="%s"\n' "$icon"
         } >"$cache/$vid.meta" 2>/dev/null
       fi
-      if [ -s "$local_file" ] &&
+      if [ -n "$local_file" ] &&
         printf '%s\n' '{"command":["get_property","time-pos"]}' |
         timeout 2 socat - "$sock" 2>/dev/null | grep -q '"error":"success"'; then
         pos=$(printf '%s\n' '{"command":["get_property","time-pos"]}' |
@@ -236,7 +213,7 @@ else
   # Optimization:
   # 1. We remove the 0.5s readahead (let it buffer 10-30s for smooth seeking).
   # 2. We use --ytdl-raw-options to favor fast-starting streams.
-  exec mpv \
+  exec mpv "${READY_OPTS[@]}" \
     "$YTDL_OPT" \
     --save-position-on-quit \
     --ytdl-format="bestvideo[height<=?1080]+bestaudio/best[height<=?1080]/best" \
