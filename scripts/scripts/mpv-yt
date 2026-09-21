@@ -55,10 +55,28 @@ pkill -f "streamlink.*--player" 2>/dev/null
 
 # Check for downloaded video
 if [ -n "$VIDEO_ID" ]; then
-  DOWNLOADED=$(find "$VIDEO_DIR" -type f -name "*${VIDEO_ID}*" 2>/dev/null | head -n 1)
+  # The stream cache first: a video watched before is already on disk, so it
+  # starts instantly instead of streaming and swapping again.
+  DOWNLOADED=""
+  [ -s "$HOME/.cache/mpv-yt-videos/${VIDEO_ID}.mp4" ] &&
+    DOWNLOADED="$HOME/.cache/mpv-yt-videos/${VIDEO_ID}.mp4"
+  [ -n "$DOWNLOADED" ] ||
+    DOWNLOADED=$(find "$VIDEO_DIR" -type f -name "*${VIDEO_ID}*" 2>/dev/null | head -n 1)
 
   if [ -n "$DOWNLOADED" ]; then
-    notify-send "MPV" "Playing downloaded video" -t 3000 -u low &
+    # Reuse the sidecar written when this was cached, so a replay looks the
+    # same as a first play and Mod+Q still knows what is on screen.
+    META="$HOME/.cache/mpv-yt-videos/${VIDEO_ID}.meta"
+    if [ -s "$META" ]; then
+      # shellcheck disable=SC1090
+      . "$META"
+      cp -f "$META" /tmp/youtube-stream-context.conf 2>/dev/null
+      NARGS=(-a "MPV" -t 5000 -u low)
+      [ -n "${YT_ICON:-}" ] && [ -f "${YT_ICON:-}" ] && NARGS+=(-i "$YT_ICON")
+      notify-send "${NARGS[@]}" "${YT_TITLE:-Playing video}" "${YT_CHANNEL:-YouTube}" &
+    else
+      notify-send "MPV" "Playing downloaded video" -t 3000 -u low &
+    fi
     exec mpv --really-quiet "$DOWNLOADED" 2>/dev/null &
     exit 0
   fi
@@ -156,6 +174,64 @@ else
       printf 'YT_CHANNEL="%s"\n' "$(printf '%s' "$chan" | tr '"' "'")"
       printf 'YT_ICON="%s"\n' "$icon"
     } >/tmp/youtube-stream-context.conf 2>/dev/null
+
+    # --- swap onto a local copy -------------------------------------------
+    # YouTube throttles a plain sequential read to roughly playback rate
+    # (measured ~160 KB/s), which is why seeking cost 6-7s: every seek outside
+    # the ~16s buffer had to fetch the gap at that rate, and no mpv setting
+    # changes it -- codec, hwdec, hr-seek, readahead, buffer size and DASH
+    # manifests were all measured and none helped.
+    #
+    # yt-dlp's downloader is NOT throttled, because it fetches bounded ranges
+    # rather than one open-ended read: 54-97 MB/s measured, a 26-minute 1080p
+    # video complete in 6.1s. So the file is fetched in the background and mpv
+    # is moved onto it, keeping its position. Streaming still starts playback
+    # immediately, so this costs nothing up front and seeking becomes local.
+    dur=$(printf '%s\n' '{"command":["get_property","duration"]}' |
+      timeout 2 socat - "$sock" 2>/dev/null | jq -r '.data // 0')
+    vid=$(printf '%s' "$URL" | grep -oP '(?:v=|youtu\.be/)\K[A-Za-z0-9_-]{11}' | head -1)
+    # A live stream has no duration and would never finish downloading.
+    if [ -n "$vid" ] && awk -v d="$dur" 'BEGIN{exit !(d>0)}'; then
+      cache="$HOME/.cache/mpv-yt-videos"
+      mkdir -p "$cache"
+      local_file="$cache/$vid.mp4"
+      if [ ! -s "$local_file" ]; then
+        "$YTDL" -q --no-warnings \
+          -f "bestvideo[height<=?1080]+bestaudio/best[height<=?1080]/best" \
+          --merge-output-format mp4 --max-filesize 3G \
+          -o "$cache/$vid.%(ext)s" "$URL" >/dev/null 2>&1
+      fi
+      # Only swap if it actually landed AND mpv is still up: closing the window
+      # mid-download must not resurrect it.
+      # Sidecar so a replay from cache can show the same notification and feed
+      # the quality key: a merged mp4 carries no uploader or channel id.
+      if [ -s "$local_file" ]; then
+        {
+          printf 'YT_URL="%s"\n' "$URL"
+          printf 'YT_TITLE="%s"\n' "$(printf '%s' "$TITLE" | tr '"' "'")"
+          printf 'YT_CHANNEL="%s"\n' "$(printf '%s' "$chan" | tr '"' "'")"
+          printf 'YT_ICON="%s"\n' "$icon"
+        } >"$cache/$vid.meta" 2>/dev/null
+      fi
+      if [ -s "$local_file" ] &&
+        printf '%s\n' '{"command":["get_property","time-pos"]}' |
+        timeout 2 socat - "$sock" 2>/dev/null | grep -q '"error":"success"'; then
+        pos=$(printf '%s\n' '{"command":["get_property","time-pos"]}' |
+          timeout 2 socat - "$sock" 2>/dev/null | jq -r '.data // 0')
+        jq -cn --arg f "$local_file" --arg s "$pos" \
+          '{"command":["loadfile",$f,"replace",0,{"start":$s}]}' |
+          timeout 5 socat - "$sock" >/dev/null 2>&1
+      fi
+      # Keep the cache under 6GB, oldest first.
+      total=$(du -sm "$cache" 2>/dev/null | cut -f1)
+      while [ "${total:-0}" -gt 6144 ]; do
+        oldest=$(find "$cache" -maxdepth 1 -type f -printf '%T@ %p\n' 2>/dev/null |
+          sort -n | head -1 | cut -d' ' -f2-)
+        [ -n "$oldest" ] || break
+        rm -f "$oldest"
+        total=$(du -sm "$cache" 2>/dev/null | cut -f1)
+      done
+    fi
   ) >/dev/null 2>&1 &
   # Optimization:
   # 1. We remove the 0.5s readahead (let it buffer 10-30s for smooth seeking).
