@@ -23,7 +23,9 @@ DIM=$'\e[38;5;244m'
 WHITE=$'\e[38;5;255m'
 RESET=$'\e[0m'
 
-cleanup() { printf '\e[?25h'; }
+# Keep the startup picture off the normal screen that ncurses reveals when
+# it suspends for a browser or other external command.
+cleanup() { printf '\e[?1049l\e[?25h'; }
 trap cleanup EXIT INT TERM
 
 # The sea is one long string sampled at a moving offset. Doubled so a slice
@@ -32,38 +34,35 @@ WAVES='~^~~-~~^-~~~^~-~~^~~-~^~~~-~^~~-~~^~-~~~^~-~~^~~-~^~~~-~^~~-~~^~-~~^~~-~^
 WAVELEN=${#WAVES}
 SEA="${WAVES}${WAVES}"
 
-BOAT_W=15
+BOAT_W=16
+BOAT_H=11
 
-# $1 = row, $2 = sail state (0 taut, 1 full). Only the middle of the leech
-# moves, by a single column: the masthead and the boom stay put, so the sail
-# flexes as if catching the wind rather than the whole boat shifting. Moving
-# the boat itself, even one row, was too abrupt to read as bobbing.
-boat_line() {
-  local row=$1 full=$2
-  case "$row" in
-  0) printf '%s      |\\%s'       "$WHITE" "$RESET" ;;
-  1) printf '%s      | \\%s'      "$WHITE" "$RESET" ;;
-  2) if [ "$full" -eq 1 ]; then printf '%s      |   \\%s' "$WHITE" "$RESET"
-     else printf '%s      |  \\%s' "$WHITE" "$RESET"; fi ;;
-  3) if [ "$full" -eq 1 ]; then printf '%s      |    \\%s' "$WHITE" "$RESET"
-     else printf '%s      |   \\%s' "$WHITE" "$RESET"; fi ;;
-  4) printf '%s      |    \\%s'   "$WHITE" "$RESET" ;;
-  5) printf '%s      |_____\\%s'  "$WHITE" "$RESET" ;;
-  6) printf '%s      |%s'         "$DIM"   "$RESET" ;;
-  7) printf '%s._____|______.%s'  "$CYAN"  "$RESET" ;;
-  8) printf '%s \\           /%s' "$CYAN"  "$RESET" ;;
-  9) printf '%s  \\_________/%s'  "$CYAN"  "$RESET" ;;
-  esac
-}
+# Keep one rigid silhouette; only its vertical position changes.
+BOAT_ROWS=(
+  '                '
+  '       |\       '
+  '       | \      '
+  '       |  \     '
+  '       |   \    '
+  '       |    \   '
+  '       |_____\  '
+  '       |        '
+  ' ._____|______. '
+  '  \          / '
+  '   \________/  '
+)
+for ((i = 0; i < BOAT_H; i++)); do
+  color=$WHITE
+  [ "$i" -eq 7 ] && color=$DIM
+  [ "$i" -ge 8 ] && color=$CYAN
+  BOAT_ROWS[i]="${color}${BOAT_ROWS[i]}${RESET}"
+done
 
-# frame -> a whole scene. The boat travels left to right across the sea while
-# the swell scrolls the other way, which is what sells forward motion; an
-# earlier version only jittered it one column back and forth on the spot, which
-# just looked like stuttering. The hull also rises a row every few frames so it
-# rides the swell rather than sliding along a rail.
+# Bob the boat independently of the fixed waterline and caption.
 draw() {
   local frame=$1
-  local cols rows sea_w sea_left top i x wake wake_len sail
+  local cols rows sea_w sea_left top i x wake wake_len heave phase
+  local left visible surface
 
   cols=$(tput cols 2>/dev/null || echo 80)
   rows=$(tput lines 2>/dev/null || echo 24)
@@ -72,54 +71,55 @@ draw() {
   [ "$sea_w" -lt 24 ] && sea_w=24
   sea_left=$(((cols - sea_w) / 2))
 
-  # Drift: one column every other frame, about seven columns a second. Fast
-  # enough to read as sailing, slow enough to be calm -- it used to cross the
-  # whole sea in under a second, which looked frantic.
-  local span=$((sea_w - BOAT_W - 2))
-  [ "$span" -lt 1 ] && span=1
-  x=$((sea_left + 1 + (frame / 2) % (span + 1)))
-  # No vertical movement: a terminal can only shift text by whole rows, and
-  # even one row read as hopping. The boat holds a fixed waterline and the sail
-  # breathes instead, every seventh frame -- about half a second each way.
-  sail=$(((frame / 7) % 2))
+  # Anchor the hull at the midpoint throughout the animation.
+  x=$(((sea_w - BOAT_W) / 2))
+  # Start just above the water, then lift the whole boat only one row.
+  phase=$((frame % 32))
+  heave=0
+  if [ "$phase" -ge 6 ] && [ "$phase" -lt 22 ]; then heave=1; fi
 
-  top=$(((rows - 16) / 2))
+  top=$(((rows - 18) / 2))
   [ "$top" -lt 1 ] && top=1
 
   printf '\e[2J\e[H'
-  for ((i = 0; i < top; i++)); do printf '\n'; done
-  for ((i = 0; i < 10; i++)); do
-    printf '%*s' "$x" ''
-    boat_line "$i" "$sail"
-    printf '\n'
+  for ((i = 0; i < top + 2 - heave; i++)); do printf '\n'; done
+  for ((i = 0; i < BOAT_H; i++)); do
+    printf '%*s%s\n' "$((sea_left + x))" '' "${BOAT_ROWS[i]}"
   done
-  printf '\n'
+
+  # Restore the fixed water row after shifting only the boat upward.
+  for ((i = 0; i < heave; i++)); do printf '\n'; done
 
   # Wake: a short trail of froth behind the hull, growing as speed builds.
-  # Wake builds gradually with the drift rather than snapping to full length.
+  # Let the wake build gradually rather than snapping to full length.
   wake_len=$((frame / 3))
   [ "$wake_len" -gt 6 ] && wake_len=6
   wake=''
-  for ((i = 0; i < wake_len; i++)); do wake="${wake}·"; done
+  # Keep the foam immediately behind the stern and within the water.
+  left=$((x + 1 - wake_len))
+  [ "$left" -lt 0 ] && left=0
+  visible=$((x + 1))
+  [ "$visible" -gt "$sea_w" ] && visible=$sea_w
+  for ((i = left; i < visible; i++)); do wake="${wake}·"; done
 
-  printf '%*s%s%s%s\n' "$sea_left" '' "$BLUE" "${SEA:$(((frame / 2) % WAVELEN)):$sea_w}" "$RESET"
-  printf '%*s%s%s%s\n' "$((x > wake_len ? x - wake_len : 0))" '' "$DIM" "$wake" "$RESET"
+  # Put the wake on the water itself, leaving no extra gap under the hull.
+  surface=${SEA:$(((frame / 2) % WAVELEN)):$sea_w}
+  printf '%*s%s%s%s%s%s%s%s\n' "$sea_left" '' \
+    "$BLUE" "${surface:0:$left}" "$DIM" "$wake" \
+    "$BLUE" "${surface:$visible}" "$RESET"
   printf '%*s%s%s%s\n' "$sea_left" '' "$DIM" "${SEA:$(((frame / 3 + 9) % WAVELEN)):$sea_w}" "$RESET"
   printf '\n%*s%snewsboat%s %s· setting sail%s\n' \
     "$((sea_left + (sea_w - 22) / 2))" '' "$WHITE" "$RESET" "$DIM" "$RESET"
 }
 
-TOTAL_FRAMES=120
-
-printf '\e[?25l'
+printf '\e[?1049h\e[?25l'
 if [ "${1:-}" = "--preview" ]; then
   f=0
   while [ "$f" -lt 140 ]; do
-    draw "$((f % (TOTAL_FRAMES + 1)))"
+    draw "$f"
     f=$((f + 1))
     sleep 0.08
   done
-  cleanup
   exit 0
 fi
 
@@ -158,7 +158,7 @@ raw_yet() {
 f=0
 while kill -0 "$NB_PID" 2>/dev/null; do
   raw_yet && break
-  draw "$((f % (TOTAL_FRAMES + 1)))"
+  draw "$f"
   f=$((f + 1))
   # Checked between frames as well: waiting for the next frame boundary would
   # leave up to a whole frame of drawing on top of the interface.
@@ -167,6 +167,6 @@ while kill -0 "$NB_PID" 2>/dev/null; do
   sleep 0.04
 done
 
-cleanup
+printf '\e[?25h'
 wait "$NB_PID"
 exit $?
