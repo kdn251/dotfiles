@@ -16,7 +16,10 @@ SOCKETS=(/tmp/mpv-twitch-ipc /tmp/mpv-yt-ipc)
 
 mkdir -p "$CLIP_DIR" || exit 1
 
-note() { notify-send -a "Clip" "${@}"; }
+# Filled in once the streamer is known; empty until then, which is fine since
+# notify-send simply gets no -i.
+NOTE_ICON=()
+note() { notify-send -a "Clip" "${NOTE_ICON[@]}" "${@}"; }
 ipc() { printf '%s\n' "$2" | timeout 3 socat - "$1" 2>/dev/null; }
 
 # Pick a socket that actually ANSWERS, rather than one that merely exists.
@@ -65,6 +68,15 @@ if [ -z "$name" ] || { [ "${#name}" -gt 24 ] && [[ "$name" != *" "* ]]; }; then
 fi
 
 out="$CLIP_DIR/${name}_$(date +%Y%m%d_%H%M%S).mp4"
+
+# The streamer's Twitch avatar on the notification, so a clip saved while you
+# are looking at something else still says who it was of. Only for the Twitch
+# socket: a YouTube media-title is not a twitch login and looking it up would
+# be a pointless request that can only fail.
+if [ "$SOCKET" = /tmp/mpv-twitch-ipc ] && [ "$name" != stream ]; then
+  icon=$("$HOME/scripts/twitch-profile-pic.sh" "$name") || icon=""
+  [ -n "$icon" ] && NOTE_ICON=(-i "$icon")
+fi
 
 # dump-cache picks the container from the extension. Twitch streams are h264 +
 # aac, which MP4 takes as-is, so this is a straight remux with no re-encode and
