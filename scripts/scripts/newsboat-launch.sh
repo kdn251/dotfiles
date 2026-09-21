@@ -115,5 +115,12 @@ for ((f = 0; f <= TOTAL_FRAMES; f++)); do
   sleep 0.075
 done
 cleanup
-printf '\e[2J\e[H'
-exec newsboat "$@"
+# -q suppresses newsboat's own startup chatter ("Starting Newsboat r2.44...",
+# "Loading articles from cache...done." and four more). Without it those lines
+# printed over the boat and were the last thing on screen before the interface
+# appeared. Verified in a pty: 6 lines before the TUI without it, 0 with it.
+#
+# Deliberately NOT clearing here. ncurses draws the interface on the terminal's
+# alternate screen, so leaving the last frame up means the boat stays visible
+# for the second or so the cache takes to open, rather than a blank screen.
+exec newsboat -q "$@"
