@@ -34,13 +34,19 @@ SEA="${WAVES}${WAVES}"
 
 BOAT_W=15
 
-# $1 = row, $2 = colour prefix applied to the hull rows
+# $1 = row, $2 = sail state (0 taut, 1 full). Only the middle of the leech
+# moves, by a single column: the masthead and the boom stay put, so the sail
+# flexes as if catching the wind rather than the whole boat shifting. Moving
+# the boat itself, even one row, was too abrupt to read as bobbing.
 boat_line() {
-  case "$1" in
+  local row=$1 full=$2
+  case "$row" in
   0) printf '%s      |\\%s'       "$WHITE" "$RESET" ;;
   1) printf '%s      | \\%s'      "$WHITE" "$RESET" ;;
-  2) printf '%s      |  \\%s'     "$WHITE" "$RESET" ;;
-  3) printf '%s      |   \\%s'    "$WHITE" "$RESET" ;;
+  2) if [ "$full" -eq 1 ]; then printf '%s      |   \\%s' "$WHITE" "$RESET"
+     else printf '%s      |  \\%s' "$WHITE" "$RESET"; fi ;;
+  3) if [ "$full" -eq 1 ]; then printf '%s      |    \\%s' "$WHITE" "$RESET"
+     else printf '%s      |   \\%s' "$WHITE" "$RESET"; fi ;;
   4) printf '%s      |    \\%s'   "$WHITE" "$RESET" ;;
   5) printf '%s      |_____\\%s'  "$WHITE" "$RESET" ;;
   6) printf '%s      |%s'         "$DIM"   "$RESET" ;;
@@ -57,7 +63,7 @@ boat_line() {
 # rides the swell rather than sliding along a rail.
 draw() {
   local frame=$1
-  local cols rows sea_w sea_left top i x wake wake_len
+  local cols rows sea_w sea_left top i x wake wake_len sail
 
   cols=$(tput cols 2>/dev/null || echo 80)
   rows=$(tput lines 2>/dev/null || echo 24)
@@ -72,10 +78,10 @@ draw() {
   local span=$((sea_w - BOAT_W - 2))
   [ "$span" -lt 1 ] && span=1
   x=$((sea_left + 1 + (frame / 2) % (span + 1)))
-  # No vertical movement at all. A terminal can only shift text by whole rows,
-  # and even one row a second read as hopping rather than bobbing, so the boat
-  # holds a fixed waterline and the drift, wake and scrolling swell carry the
-  # motion instead.
+  # No vertical movement: a terminal can only shift text by whole rows, and
+  # even one row read as hopping. The boat holds a fixed waterline and the sail
+  # breathes instead, every seventh frame -- about half a second each way.
+  sail=$(((frame / 7) % 2))
 
   top=$(((rows - 16) / 2))
   [ "$top" -lt 1 ] && top=1
@@ -84,7 +90,7 @@ draw() {
   for ((i = 0; i < top; i++)); do printf '\n'; done
   for ((i = 0; i < 10; i++)); do
     printf '%*s' "$x" ''
-    boat_line "$i"
+    boat_line "$i" "$sail"
     printf '\n'
   done
   printf '\n'
