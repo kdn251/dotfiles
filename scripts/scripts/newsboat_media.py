@@ -205,7 +205,11 @@ def rebuild_unlocked():
     query = json.dumps('query:Downloaded:(' + expression + ') and feedtitle !~ "Starred"', ensure_ascii=False) + ' downloaded'
     current = URLS.read_text() if URLS.exists() else ''
     rest = [line for line in current.splitlines() if not line.startswith('"query:Downloaded:')]
-    content = query + '\n' + '\n'.join(rest) + ('\n' if rest else '')
+    # Keep the unified unread inbox first when rebuilding the download library.
+    position = next((i + 1 for i, line in enumerate(rest)
+                     if line.startswith('"query:All New Items:')), 0)
+    rest.insert(position, query)
+    content = '\n'.join(rest) + '\n'
     if content != current:
         atomic_write(URLS, content)
     atomic_write(index_path, json.dumps(index))
