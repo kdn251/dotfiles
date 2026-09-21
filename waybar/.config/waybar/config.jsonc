@@ -130,9 +130,9 @@
     "tooltip-format-wifi": "<b>{essid}</b>\n{signalStrength}% ({signaldBm} dBm)  ·  {frequency} GHz\n↓ {bandwidthDownBits}   ↑ {bandwidthUpBits}"
 },
   "custom/twitch_dl": {
-    // Only visible while a VOD download is running (cron fires the downloader
-    // at 18/20/22). Click for a panel with the streamer's profile picture,
-    // VOD title, progress and a per-download cancel button.
+    // Scheduled Twitch VODs and Newsboat YouTube/Twitch downloads.
+    // Click for titles, progress, and cancel buttons. Completed and failed
+    // downloads both hide after five seconds.
     "format": "{}",
     "return-type": "json",
     "exec": "~/scripts/twitch-dl-panel.sh --waybar",

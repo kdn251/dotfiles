@@ -19,8 +19,8 @@ browser "~/scripts/newsboat-brave-app.sh %u"
 
 # Download video (,d)
 # macro d set browser "~/scripts/download-video.sh %u &" ; open-in-browser ; set browser "~/scripts/mpv-yt %u"
-macro d set browser "~/scripts/newsboat-download-video.sh %u %T &" ; open-in-browser ; set browser "~/scripts/mpv-yt %u"
-macro c set browser "~/scripts/cancel-download.sh %u" ; open-in-browser ; set browser "~/scripts/mpv-yt %u"
+macro d set browser "~/scripts/newsboat-download-video.sh %u &" ; open-in-browser ; set browser "~/scripts/newsboat-brave-app.sh %u"
+macro c set browser "python3 ~/scripts/newsboat-download.py --cancel-url %u" ; open-in-browser ; set browser "~/scripts/newsboat-brave-app.sh %u"
 
 # Delete downloaded video (,D)
 macro D set browser "~/scripts/delete-downloaded.sh %u" ; open-in-browser ; set browser "~/scripts/mpv-yt %u"
