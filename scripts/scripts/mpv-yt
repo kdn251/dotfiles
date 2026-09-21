@@ -29,6 +29,10 @@ YTDL="$HOME/.local/bin/yt-dlp"
 export PATH="$HOME/.local/bin:$PATH"
 YTDL_OPT="--script-opts=ytdl_hook-ytdl_path=$YTDL"
 
+# Separate the YouTube app badge from the creator portrait.
+YOUTUBE_ICON="/usr/share/icons/Papirus/48x48/apps/youtube.svg"
+[ -f "$YOUTUBE_ICON" ] || YOUTUBE_ICON="youtube"
+
 # A completion-checked lookup shared with deletion and the Downloaded library.
 MEDIA_HELPER="$(dirname "$(readlink -f "$0")")/newsboat_media.py"
 VIDEO_ID=$(python3 "$MEDIA_HELPER" identity "$URL" 2>/dev/null) || VIDEO_ID=""
@@ -49,8 +53,8 @@ if [ -n "$DOWNLOADED" ]; then
     # shellcheck disable=SC1090
     . "$META"
     cp -f "$META" /tmp/youtube-stream-context.conf 2>/dev/null
-    NARGS=(-a "MPV" -t 5000 -u low)
-    [ -n "${YT_ICON:-}" ] && [ -f "$YT_ICON" ] && NARGS+=(-i "$YT_ICON")
+    NARGS=(-a "YouTube" -i "$YOUTUBE_ICON" -t 5000 -u low)
+    [ -n "${YT_ICON:-}" ] && [ -f "$YT_ICON" ] && NARGS+=(-h "string:image-path:$YT_ICON")
     notify-send "${NARGS[@]}" "${YT_TITLE:-Playing video}" "${YT_CHANNEL:-}" &
   fi
   mpv "${READY_OPTS[@]}" --save-position-on-quit --really-quiet "$DOWNLOADED" >/dev/null 2>&1 &
@@ -137,8 +141,8 @@ else
     cid="${curl_url##*/}"
     icon=""
     [ -n "$cid" ] && icon=$("$HOME/scripts/yt-channel-pic.sh" "$cid" 2>/dev/null)
-    args=(-a "MPV" -r "$NOTIFY_ID" -t 5000 -u low)
-    [ -n "$icon" ] && args+=(-i "$icon")
+    args=(-a "YouTube" -i "$YOUTUBE_ICON" -r "$NOTIFY_ID" -t 5000 -u low)
+    [ -n "$icon" ] && args+=(-h "string:image-path:$icon")
     [ -n "${TITLE:-}" ] && notify-send "${args[@]}" "$TITLE" "${chan:-YouTube}"
 
     # Record what is playing so twitch-cycle-quality.sh can name the video and
