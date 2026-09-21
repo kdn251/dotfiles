@@ -85,7 +85,7 @@
 },
   "battery": {
     // omarchy's battery presentation: a 10-step ramp with a separate charging
-    // ramp, icon-only in the bar, and the detail moved into the tooltip.
+    // ramp, with the percentage always visible beside the icon.
     // Omitted from omarchy's version: on-click "omarchy-menu power" and
     // on-click-right "omarchy-battery-status" -- neither command exists here.
     "states": {
@@ -93,14 +93,14 @@
       "critical": 10
     },
     "format": "{capacity}% {icon}",
-    "format-discharging": "{icon}",
-    "format-charging": "{icon}",
+    "format-discharging": "{capacity}% {icon}",
+    "format-charging": "{capacity}% {icon}",
     // omarchy leaves this empty, which makes the module vanish whenever the
     // battery is plugged in but not charging -- exactly what a Framework
     // does once it hits its charge threshold ("Not charging" maps to the
     // plugged state). Show the level icon like every other state.
-    "format-plugged": "{icon}",
-    "format-full": "󰂅",
+    "format-plugged": "{capacity}% {icon}",
+    "format-full": "{capacity}% 󰂅",
     "format-icons": {
       "charging": ["󰢜", "󰂆", "󰂇", "󰂈", "󰢝", "󰂉", "󰢞", "󰂊", "󰂋", "󰂅"],
       "default": ["󰁺", "󰁻", "󰁼", "󰁽", "󰁾", "󰁿", "󰂀", "󰂁", "󰂂", "󰁹"]
