@@ -72,7 +72,9 @@ keep-articles-days 90
 max-items 250
 
 show-read-articles no
-show-read-feeds no
+show-read-feeds yes
+# Keep the Shelf navigation entry visible even when empty.
+run-on-startup set-filter "unread_count > 0 or feedtitle = \"Shelf\""
 
 # Ask before closing from the main feed list; q still goes back inside feeds.
 confirm-exit yes
@@ -82,7 +84,7 @@ confirm-exit yes
 bind ? everywhere help -- "Show shortcuts (q to return)"
 # The session wrapper handles this request independently of the selected feed.
 bind H everywhere set browser "newsboat-history://show" ; set browser "~/scripts/newsboat-brave-app.sh %u" -- "History: recent browser links and videos (q to return)"
-bind S everywhere set browser "newsboat-shelf://show" ; set browser "~/scripts/newsboat-brave-app.sh %u" -- "Open Shelf (saved for later)"
+bind S articlelist,article,searchresultslist set browser "python3 ~/scripts/newsboat-shelf.py remove %u" ; open-in-browser-noninteractively ; set browser "~/scripts/newsboat-brave-app.sh %u" -- "Remove item from Shelf"
 bind s articlelist,article,searchresultslist set browser "python3 ~/scripts/newsboat-shelf.py save %u" ; open-in-browser-noninteractively ; set browser "~/scripts/newsboat-brave-app.sh %u" -- "Save item to Shelf"
 bind-key j down
 bind-key k up

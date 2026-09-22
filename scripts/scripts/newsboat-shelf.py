@@ -4,6 +4,7 @@ from contextlib import closing, contextmanager
 from email.utils import formatdate
 import hashlib
 import importlib.util
+import json
 import os
 from pathlib import Path
 import sqlite3
@@ -17,6 +18,7 @@ import xml.etree.ElementTree as ET
 
 SCRIPTS = Path(__file__).resolve().parent
 STATE = Path(os.environ.get('XDG_STATE_HOME', Path.home()/'.local/state'))/'newsboat'
+URLS = Path(os.environ.get('NEWSBOAT_URLS_FILE', Path.home()/'.newsboat/urls'))
 CACHE = Path(os.environ.get('NEWSBOAT_CACHE', Path.home()/'.newsboat/cache.db'))
 
 
@@ -46,16 +48,44 @@ def save(url):
         db.execute('INSERT INTO shelf VALUES (?,?,?,?,?) ON CONFLICT(url) DO UPDATE SET saved=excluded.saved',
                    (url, title, source, content, time.time()))
 
+    rebuild_query()
+
 
 def consume(url):
     with database() as db:
         db.execute('DELETE FROM shelf WHERE url=? AND saved<=?',
                    (url, float(os.environ.get('NEWSBOAT_SHELF_SNAPSHOT', time.time()))))
 
+    rebuild_query()
+
 
 def entries():
     with database() as db:
         return db.execute('SELECT url,title,source,content,saved FROM shelf ORDER BY saved ASC').fetchall()
+
+
+def rebuild_query():
+    # Native query counts now reflect the saved articles, instead of a dummy link.
+    if not URLS.exists():
+        return
+    current = URLS.read_text()
+    lines = current.splitlines()
+    position = next((i for i, line in enumerate(lines)
+                     if line.startswith('"query:Shelf:')), None)
+    if position is None:
+        return
+    expression = ' or '.join('link = ' + json.dumps(row[0]) for row in entries())
+    expression = expression or 'link = "newsboat-shelf://navigation"'
+    lines[position] = json.dumps('query:Shelf:(' + expression + ') and feedtitle !~ "Starred"')
+    content = '\n'.join(lines) + '\n'
+    if content != current:
+        # Follow the stow symlink, and replace only after the full file is written.
+        target = URLS.resolve()
+        with tempfile.NamedTemporaryFile(mode='w', dir=target.parent, delete=False) as output:
+            output.write(content)
+            temporary = Path(output.name)
+        os.chmod(temporary, target.stat().st_mode & 0o777)
+        temporary.replace(target)
 
 
 def prepare_view(directory):
@@ -92,7 +122,9 @@ def prepare_view(directory):
     lines += ['show-read-articles no',
               'confirm-delete-all-articles yes',
               'bind C articlelist clear-filter ; delete-all-articles ; purge-deleted -- "Clear Shelf (asks for confirmation)"',
-              'bind ENTER articlelist open ; ' + consume_action + ' -- "Read and remove from Shelf"', 'bind S articlelist hard-quit -- "Return from Shelf"']
+              'bind ENTER articlelist open ; ' + consume_action + ' -- "Read and remove from Shelf"',
+              'bind S article ' + consume_action + ' -- "Remove item from Shelf"',
+              'bind S articlelist ' + consume_action + ' ; delete-article ; purge-deleted -- "Remove item from Shelf"']
     config.write_text('\n'.join(lines)+'\n')
     return command, config
 
@@ -104,6 +136,8 @@ def sync_consumed(cache, saved_before):
         with database() as db:
             db.executemany('DELETE FROM shelf WHERE url=? AND saved<=?',
                            [(url, saved_before) for (url,) in consumed])
+
+        rebuild_query()
 
 
 def show():
@@ -128,8 +162,13 @@ def show():
 if __name__ == '__main__':
     if sys.argv[1:2] == ['save']:
         save(sys.argv[2])
-        subprocess.run(['notify-send', '-a', 'Newsboat', '-t', '2000', 'Saved to Shelf', 'Press S to open Shelf.'])
+        subprocess.run(['notify-send', '-a', 'Newsboat', '-t', '2000', 'Saved to Shelf', 'Open Shelf from the main feed list.'])
+    elif sys.argv[1:2] == ['remove']:
+        consume(sys.argv[2])
+        subprocess.run(['notify-send', '-a', 'Newsboat', '-t', '2000', 'Removed from Shelf'])
     elif sys.argv[1:2] == ['consume']:
         consume(sys.argv[2])
+    elif sys.argv[1:2] == ['rebuild']:
+        rebuild_query()
     elif sys.argv[1:2] == ['show']:
         show()

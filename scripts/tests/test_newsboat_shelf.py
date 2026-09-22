@@ -16,7 +16,7 @@ class ShelfTests(unittest.TestCase):
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()
         self.root = Path(self.temp.name)
-        self.patch = patch.multiple(shelf, STATE=self.root/'state', CACHE=self.root/'main.db')
+        self.patch = patch.multiple(shelf, STATE=self.root/'state', CACHE=self.root/'main.db', URLS=self.root/'urls')
         self.patch.start()
         with closing(sqlite3.connect(shelf.CACHE)) as db:
             db.executescript('CREATE TABLE rss_item(url TEXT,title TEXT,content TEXT,feedurl TEXT,pubDate INTEGER,unread INTEGER); CREATE TABLE rss_feed(rssurl TEXT,title TEXT);')
@@ -35,6 +35,13 @@ class ShelfTests(unittest.TestCase):
         self.assertEqual(rows[0][1:4], ('Title','Creator','<p>Full article</p>'))
         with closing(sqlite3.connect(shelf.CACHE)) as db:
             self.assertEqual(db.execute('SELECT unread FROM rss_item').fetchone()[0],1)
+
+    def test_manual_remove_leaves_original_article_unread(self):
+        shelf.save('https://example.com/one')
+        shelf.consume('https://example.com/one')
+        self.assertEqual(shelf.entries(), [])
+        with closing(sqlite3.connect(shelf.CACHE)) as db:
+            self.assertEqual(db.execute('SELECT unread FROM rss_item').fetchall(), [(1,)])
 
     def test_consumed_removed_but_failed_unread_kept(self):
         shelf.save('https://example.com/one');shelf.save('https://example.com/two')
