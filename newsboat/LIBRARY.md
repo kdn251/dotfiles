@@ -1,5 +1,10 @@
 # Starred and downloads
 
+Newsboat starts on **⛵ Newsboat**, showing New, Starred, Downloads, and **📚 All**.
+Open All to browse every individual feed source, including feeds with no unread
+items. Press `q` from a source's article list to return to All, then `q` again
+to return Home. All feeds continue to refresh and contribute to New as before.
+
 The article list displays download status beside each matching video: `↓ 42%`,
 `…` while preparing/processing, `📥` when downloaded, and `✕` after a failure.
 Starred items also display the yellow five-point star (`󰓎`); both badges appear when a video is starred and
@@ -12,7 +17,7 @@ installing this setup on another machine. Restart Newsboat after upgrading.
 ## Starred on desktop and phone
 
 Open **⭐ Starred** from the main Newsboat screen. `s` stars an item and `S`
-unstars it. Capy Reader's **Starred** section uses the same Miniflux collection.
+unstars it. The row badge confirms success without a desktop notification. Capy Reader's **Starred** section uses the same Miniflux collection.
 Reading, opening or watching something does not unstar it on either device.
 Both read and unread stars appear in the desktop view. `C` asks for confirmation
 before unstarring all displayed items.

@@ -144,7 +144,6 @@ def main():
         action=sys.argv[1]
         if action in {'save','remove'}:
             set_star(sys.argv[2],action=='save')
-            subprocess.run(['notify-send','-a','Newsboat','-t','2000','Starred' if action=='save' else 'Unstarred'])
         elif action=='rebuild':rebuild_query(entries())
         elif action=='show':show()
         return 0

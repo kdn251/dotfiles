@@ -1,0 +1,50 @@
+--- a/include/feedlistformaction.h
++++ b/include/feedlistformaction.h
+@@ -89,6 +89,10 @@
+ 		unsigned int pos,
+ 		unsigned int width) const;
+ 
++	bool all_sources = false;
++	std::string all_parent_filter;
++	std::string all_parent_title;
++	unsigned int all_parent_pos = 0;
+ 	bool zero_feedpos;
+ 	std::vector<FeedPtrPosPair> visible_feeds;
+ 	std::string tag;
+--- a/src/feedlistformaction.cpp
++++ b/src/feedlistformaction.cpp
+@@ -120,6 +120,17 @@
+ 			LOG(Level::INFO,
+ 				"FeedListFormAction: opening feed at position `%d'", pos);
+ 			if (visible_feeds.size() > 0) {
++				const auto selected = v.get_ctrl().get_feedcontainer()->get_feed(pos);
++				if (selected && selected->rssurl().find("query:📚 All:") == 0) {
++					all_parent_filter = filter_active ? matcher.get_expression() : "";
++					all_parent_title = cfg->get_configvalue("feedlist-title-format");
++					all_parent_pos = pos;
++					all_sources = true;
++					tag.clear();
++					apply_filter("rssurl !~ \"^query:\"");
++					cfg->set_configvalue("feedlist-title-format", " 📚 All — q: Home");
++					break;
++				}
+ 				v.push_itemlist(pos);
+ 			} else {
+ 				// should not happen
+@@ -525,6 +536,16 @@
+ 			op = OP_CLEARTAG;
+ 			goto REDO;
+ 		}
++		if (all_sources) {
++			all_sources = false;
++			if (all_parent_filter.empty()) { filter_active = false; }
++			else { apply_filter(all_parent_filter); }
++			cfg->set_configvalue("feedlist-title-format", all_parent_title);
++			filterpos = all_parent_pos;
++			set_filterpos = true;
++			do_redraw = true;
++			break;
++		}
+ 		LOG(Level::INFO, "FeedListFormAction: quitting");
+ 		if (bindingType == BindingType::Macro ||
+ 			!cfg->get_configvalue_as_bool("confirm-exit") ||

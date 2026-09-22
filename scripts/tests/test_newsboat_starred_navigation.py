@@ -44,8 +44,7 @@ class NavigationTests(unittest.TestCase):
      data.clear();os.write(fd,b'q');until(lambda:b'saved-article' in data);self.assertTrue(row['starred'])
      os.write(fd,b'S');until(lambda:not row['starred']);time.sleep(.2)
      data.clear();os.write(fd,b'q');until(lambda:b'Starred | 0 unread' in data)
-     time.sleep(.2);data.clear();os.write(fd,b'\n');until(lambda:b'Source' in data)
-     os.write(fd,b'q');time.sleep(.2);data.clear();os.write(fd,b':1\n\n')
+     time.sleep(.2);data.clear();os.write(fd,b'\n')
      until(lambda:b'No starred items' in data)
      data.clear();os.write(fd,b'q');until(lambda:b'Starred | 0 unread' in data)
     finally:

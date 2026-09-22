@@ -14,6 +14,7 @@ patch -p1 < "$repo/newsboat/patches/download-status.patch"
 patch -p1 < "$repo/newsboat/patches/live-queries.patch"
 patch -p1 < "$repo/newsboat/patches/starred-badges.patch"
 patch -p1 < "$repo/newsboat/patches/highlight-selection.patch"
+patch -p1 < "$repo/newsboat/patches/all-sources.patch"
 make -j"${NEWSBOAT_BUILD_JOBS:-4}" WARNFLAGS="-Werror -Wall -Wextra -Wunreachable-code -Wno-error=unused-function" newsboat
 install -m 755 newsboat "$install_dir/newsboat.new"
 mv "$install_dir/newsboat.new" "$install_dir/newsboat"

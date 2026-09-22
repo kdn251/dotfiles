@@ -281,8 +281,7 @@ def run(args):
                                     starred_return = True
                                     counting_starred = True
                                     starred_has_items = False
-                                    restore_feed = last_regular_feed
-                                    selected_feed = last_regular_feed
+                                    restore_feed = selected_feed
                                 if b"FeedListFormAction::prepare: doing redraw" in line:
                                     current_urls = urls.read_bytes() if urls.exists() else b''
                                     if current_urls != urls_version and not live_queries:
