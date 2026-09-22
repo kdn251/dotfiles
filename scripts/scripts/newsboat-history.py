@@ -88,7 +88,9 @@ def prepare_view(directory):
     lines = [line for line in source.read_text().splitlines()
              if line.split() and line.split()[0] in allowed and not line.startswith('bind H ')]
     lines += ['show-read-feeds yes', 'show-read-articles yes', 'article-sort-order date-asc',
-              'confirm-exit no', 'bind q articlelist hard-quit',
+              'confirm-exit no', 'confirm-delete-all-articles yes',
+              'bind C articlelist clear-filter ; delete-all-articles ; purge-deleted -- "Clear history (asks for confirmation)"',
+              'bind q articlelist hard-quit',
               'bind H articlelist hard-quit -- "Return from history"']
     config = directory/'config'
     config.write_text('\n'.join(lines) + '\n')
@@ -96,14 +98,33 @@ def prepare_view(directory):
     return command, config
 
 
+def sync_deleted(cache, opened_before):
+    # Only mirror deletion from this isolated History cache, never the feed cache.
+    with closing(sqlite3.connect(Path(cache).as_uri()+'?mode=ro', uri=True, timeout=1)) as view:
+        deleted = view.execute('SELECT url FROM rss_item WHERE deleted=1').fetchall()
+    if deleted:
+        with database() as db:
+            db.executemany('DELETE FROM history WHERE url=? AND opened<=?',
+                           [(url, opened_before) for (url,) in deleted])
+
+
 def show():
     with tempfile.TemporaryDirectory(prefix='newsboat-history-') as directory:
+        opened_before = time.time()
         command, config = prepare_view(directory)
         subprocess.run(command + ['-x', 'reload'], check=True, stdout=subprocess.DEVNULL,
                        stderr=subprocess.DEVNULL, timeout=15)
         with config.open('a') as output:
             output.write('run-on-startup open\n')
-        subprocess.run(command, check=False)
+        process = subprocess.Popen(command)
+        while True:
+            try:
+                process.wait(timeout=0.2)
+            except subprocess.TimeoutExpired:
+                pass
+            sync_deleted(Path(directory)/'cache.db', opened_before)
+            if process.poll() is not None:
+                break
 
 
 if __name__ == '__main__':

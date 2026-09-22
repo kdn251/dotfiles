@@ -45,6 +45,22 @@ class HistoryTests(unittest.TestCase):
         history.record('file:///private', 'browser')
         self.assertEqual(len(history.entries()), 500)
 
+    def test_clear_only_deletes_history_in_view_snapshot(self):
+        history.record('https://example.com/1', 'browser')
+        history.record('https://example.com/2', 'video')
+        cutoff = history.time.time()
+        history.record('https://example.com/2', 'video')
+        view = Path(self.temp.name)/'view.db'
+        with closing(sqlite3.connect(view)) as db:
+            db.execute('CREATE TABLE rss_item(url TEXT,deleted INTEGER)')
+            db.executemany('INSERT INTO rss_item VALUES (?,1)',
+                           [('https://example.com/1',), ('https://example.com/2',)])
+            db.commit()
+        history.sync_deleted(view, cutoff)
+        self.assertEqual([row[0] for row in history.entries()], ['https://example.com/2'])
+        with closing(sqlite3.connect(history.CACHE)) as db:
+            self.assertEqual(db.execute('SELECT COUNT(*) FROM rss_item').fetchone()[0], 1)
+
     def test_native_feed_preserves_urls_titles_and_open_times(self):
         import xml.etree.ElementTree as ET
         history.record('https://example.com/1', 'browser')
