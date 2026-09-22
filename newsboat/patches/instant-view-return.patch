@@ -1,0 +1,25 @@
+--- a/src/formaction.cpp
++++ b/src/formaction.cpp
+@@ -1,6 +1,8 @@
+ #include "formaction.h"
+ 
+ #include <cassert>
++#include <cstdio>
++#include <cstdlib>
+ #include <cinttypes>
+ #include <ncurses.h>
+ 
+@@ -148,7 +150,12 @@
+ 	switch (op) {
+ 	case OP_REDRAW:
+ 		LOG(Level::DEBUG, "FormAction::process_op: redrawing screen");
+-		Stfl::reset();
++        Stfl::reset();
++        if (std::getenv("NEWSBOAT_NESTED_VIEWS")) {
++            v.force_redraw();
++            std::fputs("\033]777;newsboat-frame-ready\007", stdout);
++            std::fflush(stdout);
++        }
+ 		break;
+ 	case OP_CMDLINE:
+ 		switch (args.size()) {

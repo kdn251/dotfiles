@@ -1,0 +1,30 @@
+--- a/src/feedlistformaction.cpp
++++ b/src/feedlistformaction.cpp
+@@ -121,6 +121,11 @@
+ 				"FeedListFormAction: opening feed at position `%d'", pos);
+ 			if (visible_feeds.size() > 0) {
+ 				const auto selected = v.get_ctrl().get_feedcontainer()->get_feed(pos);
++				if (std::getenv("NEWSBOAT_NESTED_VIEWS") && selected &&
++                    selected->rssurl().find("query:⭐ Starred:") == 0) {
++                    LOG(Level::INFO, "FeedListFormAction: opening Starred view");
++                    break;
++                }
+ 				if (selected && selected->rssurl().find("query:📚 All:") == 0) {
+ 					all_parent_filter = filter_active ? matcher.get_expression() : "";
+ 					all_parent_title = cfg->get_configvalue("feedlist-title-format");
+--- a/src/view.cpp
++++ b/src/view.cpp
+@@ -168,6 +168,13 @@
+ 	 * This is the main "event" loop of newsboat.
+ 	 */
+ 
++    if (std::getenv("NEWSBOAT_SYNC_VIEW")) {
++        auto initial_form = get_current_formaction();
++        initial_form->prepare();
++        initial_form->draw_form();
++        std::cout << "\033[?2026l" << std::flush;
++    }
++
+ 	std::vector<KeyCombination> key_sequence;
+ 	while (formaction_stack_size() > 0) {
+ 		// first, we take the current formaction.

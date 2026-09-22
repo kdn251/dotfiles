@@ -85,7 +85,8 @@ bind ? everywhere help -- "Show shortcuts (q to return)"
 # The session wrapper handles this request independently of the selected feed.
 bind H everywhere set browser "newsboat-history://show" ; set browser "~/scripts/newsboat-brave-app.sh %u" -- "History: recent browser links and videos (q to return)"
 bind S articlelist,article,searchresultslist set browser "python3 ~/scripts/newsboat-starred.py remove %u" ; open-in-browser-noninteractively ; set browser "~/scripts/newsboat-brave-app.sh %u" -- "Unstar item"
-bind s articlelist,article,searchresultslist set browser "python3 ~/scripts/newsboat-starred.py save %u" ; open-in-browser-noninteractively ; set browser "~/scripts/newsboat-brave-app.sh %u" -- "Star item"
+bind s articlelist,article,searchresultslist set browser "python3 ~/scripts/newsboat-starred.py save %u" ; open-in-browser-noninteractively ; set browser "~/scripts/newsboat-brave-app.sh %u" ; toggle-article-read "read" "stay" -- "Star item and mark read"
+bind n articlelist,article,searchresultslist toggle-article-read -- "Toggle read/unread (same as N)"
 bind-key j down
 bind-key k up
 bind-key g home
@@ -109,7 +110,8 @@ color info               black   cyan    bold
 color article            default default
 
 # Color status glyphs without changing the surrounding text or column widths.
-highlight articlelist "󰓎" yellow default bold
+# Style the adjacent cell too so Kitty sizes stars equally on read/unread rows.
+highlight articlelist "󰓎 " yellow default bold
 
 # Show query feeds
 prepopulate-query-feeds yes

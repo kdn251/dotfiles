@@ -1,0 +1,100 @@
+--- a/include/feedlistformaction.h
++++ b/include/feedlistformaction.h
+@@ -89,6 +89,7 @@
+ 		unsigned int pos,
+ 		unsigned int width) const;
+ 
++	unsigned int displayed_unread_count(const std::shared_ptr<RssFeed>& feed) const;
+ 	bool all_sources = false;
+ 	std::string all_parent_filter;
+ 	std::string all_parent_title;
+--- a/src/feedlistformaction.cpp
++++ b/src/feedlistformaction.cpp
+@@ -659,7 +659,7 @@
+ 	for (const auto& feed : feeds) {
+ 		feed->set_index(i + 1);
+ 		if ((tag == "" || feed->matches_tag(tag)) &&
+-			(show_read || feed->unread_item_count() > 0) &&
++			(show_read || displayed_unread_count(feed) > 0) &&
+ 			(!filter_active || matcher.matches(feed.get())) &&
+ 			!feed->hidden()) {
+ 			visible_feeds.push_back(FeedPtrPosPair(feed, i));
+@@ -723,7 +723,7 @@
+ 		"FeedListFormAction::jump_to_previous_unread_feed: searching for unread feed");
+ 
+ 	for (int i = curpos - 1; i >= 0; --i) {
+-		const auto unread = visible_feeds[i].first->unread_item_count();
++		const auto unread = displayed_unread_count(visible_feeds[i].first);
+ 		LOG(Level::DEBUG,
+ 			"FeedListFormAction::jump_to_previous_unread_feed: visible_feeds[%u] unread items: %u",
+ 			i,
+@@ -736,7 +736,7 @@
+ 		}
+ 	}
+ 	for (int i = visible_feeds.size() - 1; i >= static_cast<int>(curpos); --i) {
+-		const auto unread = visible_feeds[i].first->unread_item_count();
++		const auto unread = displayed_unread_count(visible_feeds[i].first);
+ 		LOG(Level::DEBUG,
+ 			"FeedListFormAction::jump_to_previous_unread_feed: visible_feeds[%u] unread items: %u",
+ 			i,
+@@ -782,7 +782,7 @@
+ {
+ 	std::vector<unsigned int> unread_indexes;
+ 	for (unsigned int i = 0; i < visible_feeds.size(); ++i) {
+-		if (visible_feeds[i].first->unread_item_count() > 0) {
++		if (displayed_unread_count(visible_feeds[i].first) > 0) {
+ 			unread_indexes.push_back(i);
+ 		}
+ 	}
+@@ -803,7 +803,7 @@
+ 		"FeedListFormAction::jump_to_next_unread_feed: searching for unread feed");
+ 
+ 	for (unsigned int i = curpos + 1; i < visible_feeds.size(); ++i) {
+-		const auto unread = visible_feeds[i].first->unread_item_count();
++		const auto unread = displayed_unread_count(visible_feeds[i].first);
+ 		LOG(Level::DEBUG,
+ 			"FeedListFormAction::jump_to_next_unread_feed: visible_feeds[%u] unread items: %u",
+ 			i,
+@@ -816,7 +816,7 @@
+ 		}
+ 	}
+ 	for (unsigned int i = 0; i <= curpos && i < visible_feeds.size(); ++i) {
+-		const auto unread = visible_feeds[i].first->unread_item_count();
++		const auto unread = displayed_unread_count(visible_feeds[i].first);
+ 		LOG(Level::DEBUG,
+ 			"FeedListFormAction::jump_to_next_unread_feed: visible_feeds[%u] unread items: %u",
+ 			i,
+@@ -1126,12 +1126,9 @@
+ 	return title;
+ }
+ 
+-StflRichText FeedListFormAction::format_line(const std::string& feedlist_format,
+-	std::shared_ptr<RssFeed> feed,
+-	unsigned int pos,
+-	unsigned int width) const
+-{
+-	FmtStrFormatter fmt;
++unsigned int FeedListFormAction::displayed_unread_count(
++    const std::shared_ptr<RssFeed>& feed) const
++{
+ 	unsigned int unread_count = feed->unread_item_count();
+     if (feed->rssurl().find("query:📚 All:") == 0) {
+         unread_count = 0;
+@@ -1142,6 +1139,17 @@
+             }
+         }
+     }
++
++    return unread_count;
++}
++
++StflRichText FeedListFormAction::format_line(const std::string& feedlist_format,
++	std::shared_ptr<RssFeed> feed,
++	unsigned int pos,
++	unsigned int width) const
++{
++	FmtStrFormatter fmt;
++	const auto unread_count = displayed_unread_count(feed);
+ 
+ 	fmt.register_fmt('i', strprintf::fmt("%u", pos + 1));
+ 	fmt.register_fmt('u',

@@ -1,0 +1,18 @@
+--- a/src/feedlistformaction.cpp
++++ b/src/feedlistformaction.cpp
+@@ -1133,6 +1133,15 @@
+ {
+ 	FmtStrFormatter fmt;
+ 	unsigned int unread_count = feed->unread_item_count();
++    if (feed->rssurl().find("query:📚 All:") == 0) {
++        unread_count = 0;
++        for (const auto& source : v.get_ctrl().get_feedcontainer()->get_all_feeds()) {
++            // Match the All sources view, excluding other aggregate queries.
++            if (source->rssurl().find("query:") != 0) {
++                unread_count += source->unread_item_count();
++            }
++        }
++    }
+ 
+ 	fmt.register_fmt('i', strprintf::fmt("%u", pos + 1));
+ 	fmt.register_fmt('u',

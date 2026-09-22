@@ -13,7 +13,7 @@ class HomeTests(unittest.TestCase):
  def test_four_views_all_sources_and_back(self):
   with tempfile.TemporaryDirectory() as directory:
    root=Path(directory);config=root/'config';urls=root/'urls'
-   selected=[line for line in CONFIG.read_text().splitlines() if line.startswith(('run-on-startup ','feedlist-title-format ','show-read-feeds ','confirm-exit '))]
+   selected=[line for line in CONFIG.read_text().splitlines() if line.startswith(('run-on-startup ','feedlist-title-format ','show-read-feeds ','confirm-exit ','bind n '))]
    config.write_text('\n'.join(selected)+'\nprepopulate-query-feeds yes\nfeedlist-format "%t | %U unread"\nbind-key j down\nbind-key k up\n')
    lines=[json.dumps('query:'+name+':link = "none"',ensure_ascii=False) for name in ['📰 New','⭐ Starred','📥 Downloads','📚 All']]
    for name in ['Source A','Source B']:
@@ -33,14 +33,20 @@ class HomeTests(unittest.TestCase):
     self.fail('\n'.join(screen.display))
    try:
     wait(lambda s:'⛵ Newsboat' in s and s.count(' unread')==4)
+    self.assertIn('📚 All | 1 unread', '\n'.join(screen.display))
+    os.write(fd,b'l');wait(lambda s:'📚 All | 1 unread' in screen.display[1])
+    self.assertIn('📚 All | 1 unread','\n'.join(screen.display))
+    os.write(fd,b'l');wait(lambda s:'📰 New' in screen.display[1])
     os.write(fd,b':4\n\n');wait(lambda s:'📚 All — q: Home' in s and s.count(' unread')==2)
     self.assertIn('Source B | 0 unread','\n'.join(screen.display))
     self.assertNotIn('📰 New','\n'.join(screen.display))
     urls.write_text(urls.read_text()+'\n')
     os.write(fd,b'\n');wait(lambda s:"Articles in feed 'Source A'" in s)
+    os.write(fd,b'n');wait(lambda s:'Articles in feed' in s)
     os.write(fd,b'q');wait(lambda s:'📚 All — q: Home' in s and s.count(' unread')==2)
     os.write(fd,b'q');wait(lambda s:'⛵ Newsboat' in s and s.count(' unread')==4)
     self.assertEqual(screen.cursor.y,4)
+    self.assertIn('📚 All | 0 unread', '\n'.join(screen.display))
     os.write(fd,b'q');wait(lambda s:'Do you really want to quit' in s)
     os.write(fd,b'n')
    finally:

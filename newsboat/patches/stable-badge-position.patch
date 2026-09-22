@@ -1,0 +1,43 @@
+--- a/src/formaction.cpp
++++ b/src/formaction.cpp
+@@ -176,7 +176,10 @@
+ 				const std::string key = args.at(0);
+ 				const std::string value = args.at(1);
+ 				cfg->set_configvalue(key, value);
+-				set_redraw(true);
++				// Browser commands do not change the visible layout.
++				if (key != "browser") {
++					set_redraw(true);
++				}
+ 				return true;
+ 			}
+ 			if (args.size() == 1) {
+--- a/src/itemlistformaction.cpp
++++ b/src/itemlistformaction.cpp
+@@ -1133,7 +1133,8 @@
+     const auto status_version = download_revision();
+     if (status_version != download_status_version) {
+         download_status_version = status_version;
+-        invalidate_list();
++        // Badges must not refilter read items or move the current page.
++        invalidate(list.get_position());
+     }
+ 	const auto sort_strategy = cfg->get_article_sort_strategy();
+ 	if (!old_sort_strategy || sort_strategy != *old_sort_strategy) {
+--- a/src/itemlistformaction.cpp
++++ b/src/itemlistformaction.cpp
+@@ -303,11 +303,12 @@
+ 						_("Error while toggling read flag: %s"),
+ 						e.what()));
+ 			}
+-			if (cfg->get_configvalue_as_bool(
++			const bool keep_position = args.size() > 1 && args[1] == "stay";
++			if (!keep_position && cfg->get_configvalue_as_bool(
+ 					"toggleitemread-jumps-to-next-unread")) {
+ 				std::vector<std::string> args;
+ 				process_operation(OP_NEXTUNREAD, args);
+-			} else if (cfg->get_configvalue_as_bool(
++			} else if (!keep_position && cfg->get_configvalue_as_bool(
+ 					"toggleitemread-jumps-to-next")) {
+ 				if (itempos < visible_items.size() - 1) {
+ 					list.set_position(itempos + 1);

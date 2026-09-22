@@ -54,3 +54,29 @@ class StarredTests(unittest.TestCase):
             self.assertNotIn('consume',text)
             self.assertIn('Unstar all displayed items (asks for confirmation)',text)
             self.assertIn('⭐ Starred',(Path(d)/'history.xml').read_text())
+
+    def test_generated_view_preserves_server_read_and_unread_states(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            with closing(sqlite3.connect(root/'cache.db')) as db, db:
+                db.execute('CREATE TABLE rss_item(guid TEXT, unread INTEGER)')
+                db.executemany('INSERT INTO rss_item VALUES (?, 1)', [('1',), ('2',)])
+            starred.sync_read_status(root, [dict(id=1, status='read'), dict(id=2, status='unread')])
+            with closing(sqlite3.connect(root/'cache.db')) as db:
+                self.assertEqual(db.execute('SELECT guid, unread FROM rss_item ORDER BY guid').fetchall(),
+                                 [('1', 0), ('2', 1)])
+
+    def test_open_uses_synced_snapshot_without_network_and_keeps_local_reads(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root=Path(directory)
+            rows=[dict(id=1,url='https://example.com/one',status='unread')]
+            with patch.multiple(starred, CACHE=root/'cache', URLS=root/'urls', STARRED_STATUS=root/'stars'):
+                with closing(sqlite3.connect(starred.CACHE)) as db, db:
+                    db.execute('CREATE TABLE rss_item(guid TEXT, unread INTEGER)')
+                    db.execute("INSERT INTO rss_item VALUES ('1', 0)")
+                starred.rebuild_query(rows)
+                with patch.object(starred, 'entries', side_effect=AssertionError('Network on open')):
+                    self.assertEqual(starred.view_entries()[0]['status'], 'read')
+                starred.rebuild_query([])
+                with patch.object(starred, 'entries', side_effect=AssertionError('Network on open')):
+                    self.assertEqual(starred.view_entries(), [])

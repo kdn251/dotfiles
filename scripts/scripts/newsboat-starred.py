@@ -10,6 +10,7 @@ import sqlite3
 import subprocess
 import sys
 import tempfile
+import threading
 import time
 import xml.etree.ElementTree as ET
 from urllib.error import HTTPError
@@ -29,6 +30,8 @@ def entries(client=None):
 def rebuild_query(rows):
     # This is a disposable display index, never a second saved-item collection.
     from newsboat_media import atomic_write
+    STARRED_STATUS.parent.mkdir(parents=True,exist_ok=True)
+    atomic_write(STARRED_STATUS.with_name('starred-items.json'), json.dumps(rows))
     content = ''.join(url+'\n' for url in sorted({row['url'] for row in rows}) if not any(c in url for c in '\r\n'))
     if not STARRED_STATUS.exists() or STARRED_STATUS.read_text() != content:
         STARRED_STATUS.parent.mkdir(parents=True,exist_ok=True)
@@ -108,21 +111,55 @@ def prepare_view(directory, rows):
     return command,config
 
 
+
+def sync_read_status(directory, rows):
+    # The generated RSS has no read-state field; restore Miniflux's state after
+    # importing it, before opening the local view. Keep both states visible.
+    with closing(sqlite3.connect(Path(directory)/'cache.db')) as db, db:
+        db.executemany('UPDATE rss_item SET unread=? WHERE guid=?',
+                       [(int(row.get('status') == 'unread'), str(row['id'])) for row in rows])
+
+
+def view_entries():
+    # Refreshed at session startup, by maintenance, and after each star change.
+    # Keep opening the list independent of server latency when a snapshot exists.
+    try:
+        rows = json.loads(STARRED_STATUS.with_name('starred-items.json').read_text())
+        if not isinstance(rows, list):
+            raise ValueError('Invalid starred snapshot')
+    except (OSError, ValueError):
+        rows = entries()
+        rebuild_query(rows)
+    # A local read can happen after the snapshot (including s's mark-read step).
+    try:
+        with closing(sqlite3.connect(CACHE.as_uri()+'?mode=ro', uri=True, timeout=.1)) as db:
+            read_ids = {str(row[0]) for row in db.execute('SELECT guid FROM rss_item WHERE unread=0')}
+        for row in rows:
+            if str(row['id']) in read_ids:
+                row['status'] = 'read'
+    except sqlite3.Error:
+        pass
+    return rows
+
+
 def show():
-    rows=entries()
-    rebuild_query(rows)
+    rows=view_entries()
     with tempfile.TemporaryDirectory(prefix='newsboat-starred-') as directory:
         command,config=prepare_view(directory,rows)
         subprocess.run(command+['-x','reload'],check=True,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL,timeout=15)
+        sync_read_status(directory, rows)
         with config.open('a') as out:out.write('run-on-startup open\n')
         process = subprocess.Popen(command)
+        finished = threading.Event()
+        def wait_for_exit():
+            process.wait()
+            finished.set()
+        waiter = threading.Thread(target=wait_for_exit, daemon=True)
+        waiter.start()
         handled = set()
         visible_ids = {str(row['id']) for row in rows}
         while True:
-            try:
-                process.wait(timeout=.2)
-            except subprocess.TimeoutExpired:
-                pass
+            finished.wait(timeout=.2)
             # Only explicit deletion (C), never read status, removes stars.
             with closing(sqlite3.connect(Path(directory)/'cache.db')) as db:
                 removed = {str(row[0]) for row in db.execute('SELECT guid FROM rss_item WHERE deleted=1')}

@@ -5,7 +5,15 @@ SCRIPTS=Path(__file__).resolve().parents[1]/'scripts'
 
 @unittest.skipUnless(shutil.which('newsboat'),'requires Newsboat')
 class NavigationTests(unittest.TestCase):
+ def test_native_starred_entry(self):
+  binary=Path.home()/'.local/lib/newsboat-paged/newsboat'
+  if not binary.exists():self.skipTest('requires native build')
+  self.exercise_navigation(binary)
+
  def test_reading_keeps_star_and_explicit_unstar_removes_it(self):
+  self.exercise_navigation()
+
+ def exercise_navigation(self, binary=None):
   row=dict(id=1,url='https://example.com/saved',title='saved-article',content='Full article body',feed={'title':'Source'},starred=True,status='read')
   class Handler(http.server.BaseHTTPRequestHandler):
    def log_message(self,*args):pass
@@ -20,6 +28,8 @@ class NavigationTests(unittest.TestCase):
   try:
    with tempfile.TemporaryDirectory() as tmp:
     p=Path(tmp);(p/'.newsboat').mkdir();(p/'scripts').symlink_to(SCRIPTS,target_is_directory=True)
+    if binary:
+     target=p/'.local/lib/newsboat-paged/newsboat';target.parent.mkdir(parents=True);target.symlink_to(binary)
     creds=p/'creds';creds.write_text(f'miniflux-url "http://127.0.0.1:{server.server_port}"\nminiflux-login test\nminiflux-password test\n')
     config=p/'.newsboat/config';config.write_text('prepopulate-query-feeds yes\nshow-read-feeds yes\narticlelist-title-format "%T"\nfeedlist-format "%t | %U unread"\nrun-on-startup set-filter "unread_count > 0 or feedtitle = \\"⭐ Starred\\""\n')
     urls=p/'urls';urls.write_text('"query:⭐ Starred:link = \\"https://example.com/saved\\""\n')
@@ -40,13 +50,20 @@ class NavigationTests(unittest.TestCase):
     try:
      until(lambda:b'Starred | 1 unread' in data);data.clear();os.write(fd,b'\n')
      until(lambda:b'saved-article' in data);self.assertTrue(row['starred'])
+     if binary:
+      self.assertIn(b'\x1b[?2026h',data)
+      self.assertNotIn(b'Updating query feed',data)
      data.clear();os.write(fd,b'\n');until(lambda:b'Full article body' in data)
      data.clear();os.write(fd,b'q');until(lambda:b'saved-article' in data);self.assertTrue(row['starred'])
      os.write(fd,b'S');until(lambda:not row['starred']);time.sleep(.2)
      data.clear();os.write(fd,b'q');until(lambda:b'Starred | 0 unread' in data)
+     self.assertNotIn(b'\x1b[?1049l',data)
+     self.assertNotIn(b'\x1b[?1049h',data)
      time.sleep(.2);data.clear();os.write(fd,b'\n')
      until(lambda:b'No starred items' in data)
      data.clear();os.write(fd,b'q');until(lambda:b'Starred | 0 unread' in data)
+     self.assertNotIn(b'\x1b[?1049l',data)
+     self.assertNotIn(b'\x1b[?1049h',data)
     finally:
      os.kill(pid,signal.SIGTERM);os.waitpid(pid,0);os.close(fd)
   finally:server.shutdown();server.server_close();thread.join()

@@ -25,6 +25,7 @@ import time
 import tty
 
 
+FRAME_READY = b"\x1b]777;newsboat-frame-ready\x07"
 CSI = re.compile(rb"\x1b\[[0-?]*[ -/]*[@-~]")
 # Match the localized loading status, not unrelated (unread/total) counts.
 loading_text = gettext.translation("newsboat", fallback=True).gettext("%sLoading %s...")
@@ -115,6 +116,22 @@ def write_all(fd, data):
         data = data[os.write(fd, data):]
 
 
+
+def nested_view_environment(directory):
+    """Nested views share the wrapper's alternate screen instead of leaving it."""
+    env = os.environ.copy()
+    term = env.get('TERM', 'xterm-256color')
+    result = subprocess.run(['infocmp', '-1', term], capture_output=True, text=True, check=True)
+    description = re.sub(r'^\s*(?:smcup|rmcup)=.*\n', '', result.stdout, flags=re.MULTILINE)
+    terminfo = Path(directory)/'terminfo'
+    terminfo.mkdir(exist_ok=True)
+    source = Path(directory)/'nested.terminfo'
+    source.write_text(description)
+    subprocess.run(['tic', '-x', '-o', str(terminfo), str(source)], check=True, capture_output=True)
+    env['TERMINFO'] = str(terminfo)
+    return env
+
+
 def run(args):
     # Use the optional local build for page-at-a-time list navigation. Child
     # History/Starred views inherit both the executable path and this setting.
@@ -162,6 +179,9 @@ def run(args):
     status = None
     startup_error = b""
     with tempfile.TemporaryDirectory(prefix="newsboat-progress-") as directory:
+        view_env = nested_view_environment(directory)
+        if live_queries:
+            view_env["NEWSBOAT_SYNC_VIEW"] = "1"
         fifo = Path(directory) / "events"
         os.mkfifo(fifo, 0o600)
         log_fd = os.open(fifo, os.O_RDWR | os.O_NONBLOCK)
@@ -170,6 +190,7 @@ def run(args):
             if pid == 0:
                 if live_queries:
                     os.environ["NEWSBOAT_LIVE_QUERIES"] = str(urls)
+                    os.environ["NEWSBOAT_NESTED_VIEWS"] = "1"
                 # pty.fork gives Newsboat a controlling terminal, including
                 # normal browser, keyboard, and job-control behavior.
                 os.execvp("newsboat", ["newsboat", "-q", "-d", str(fifo), "-l", "6", *args])
@@ -192,6 +213,8 @@ def run(args):
             pending_log = b""
             pending_terminal = b""
             startup_output = bytearray()
+            return_output = bytearray()
+            return_deadline = None
             finish_at = None
             next_frame = 0.0
             frame = 0
@@ -294,16 +317,21 @@ def run(args):
                                         refresh_config = Path(directory)/'refresh-starred'
                                         refresh_config.write_text(f'bind <F12> feedlist open "{starred_index}"\n')
                                         write_all(master, f":exec reload-urls\n:source {refresh_config}\n".encode() + b"\x1b[24~")
+                                if b"FeedListFormAction: opening Starred view" in line:
+                                    view_script = "newsboat-starred.py"
                                 if view_script:
                                     # Temporarily give this terminal to the native history list.
                                     termios.tcsetattr(0, termios.TCSADRAIN, original)
                                     try:
+                                        if live_queries:
+                                            write_all(1, b"\x1b[?2026h")
                                         subprocess.run(
                                             [sys.executable, str(Path(__file__).with_name(view_script)), "show"],
-                                            check=False)
+                                            check=False, env=view_env)
                                     finally:
+                                        write_all(1, b"\x1b[?2026l")
                                         tty.setraw(0)
-                                        write_all(1, b"\x1b[?1049h\x1b[?25l")
+                                        return_deadline = time.monotonic() + 0.12
                                         # Dismiss the empty navigation query status before repaint.
                                         write_all(master, b":\x1b\x0c" if starred_entry else b"\x0c")
                                 was_active = progress.active
@@ -342,7 +370,10 @@ def run(args):
                                         write_all(1, bytes(startup_output))
                                     startup_output.clear()
                             elif not progress.active:
-                                write_all(1, data)
+                                if return_deadline is not None:
+                                    return_output.extend(data)
+                                else:
+                                    write_all(1, data.replace(FRAME_READY, b""))
                             if progress.active:
                                 pending_terminal = (pending_terminal + data)[-8192:]
                                 match = TOTAL.search(CSI.sub(b"", pending_terminal))
@@ -352,6 +383,11 @@ def run(args):
                     now = time.monotonic()
                     if not running:
                         break
+                    if return_deadline is not None and (FRAME_READY in return_output or now >= return_deadline):
+                        frame_output = re.sub(rb"\x1b\[\?(?:1049|1047|47)[hl]", b"", bytes(return_output).replace(FRAME_READY, b""))
+                        write_all(1, b"\x1b[?2026h" + frame_output + b"\x1b[?2026l")
+                        return_output.clear()
+                        return_deadline = None
                     if progress.finished and finish_at is None:
                         finish_at = now + 0.5
                     if finish_at is not None and now >= finish_at:
@@ -373,8 +409,13 @@ def run(args):
             if startup_output:
                 startup_error = bytes(startup_output)
         finally:
-            termios.tcsetattr(0, termios.TCSADRAIN, original)
-            write_all(1, b"\x1b[0m\x1b[?1049l\x1b[?25h")
+            # A closed terminal must not prevent stopping the child and
+            # releasing its database lock.
+            try:
+                termios.tcsetattr(0, termios.TCSADRAIN, original)
+                write_all(1, b"\x1b[0m\x1b[?1049l\x1b[?25h")
+            except (OSError, termios.error):
+                pass
             if master is not None:
                 os.close(master)
             if pid:
