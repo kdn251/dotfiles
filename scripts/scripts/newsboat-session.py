@@ -119,10 +119,12 @@ def run(args):
     # Use the optional local build for page-at-a-time list navigation. Child
     # History/Starred views inherit both the executable path and this setting.
     paged_binary = Path.home()/'.local/lib/newsboat-paged/newsboat'
-    if paged_binary.is_file():
+    live_queries = paged_binary.is_file()
+    if live_queries:
         os.environ['PATH'] = str(paged_binary.parent) + os.pathsep + os.environ.get('PATH', '')
         os.environ['NEWSBOAT_PAGE_SCROLL'] = '1'
         os.environ['NEWSBOAT_DOWNLOAD_STATUS'] = str(Path(os.environ.get('XDG_STATE_HOME', Path.home()/'.local/state'))/'newsboat/download-status.tsv')
+        os.environ['NEWSBOAT_STARRED_STATUS'] = str(Path(os.environ.get('XDG_STATE_HOME', Path.home()/'.local/state'))/'newsboat/starred-urls.txt')
     # Preserve CLI/debug modes, which do not run the interactive feed list.
     passthrough = {"-h", "--help", "-v", "-vv", "--version", "-x", "--execute",
                    "-e", "--export-to-opml", "-i", "--import-from-opml",
@@ -166,6 +168,8 @@ def run(args):
         try:
             pid, master = pty.fork()
             if pid == 0:
+                if live_queries:
+                    os.environ["NEWSBOAT_LIVE_QUERIES"] = str(urls)
                 # pty.fork gives Newsboat a controlling terminal, including
                 # normal browser, keyboard, and job-control behavior.
                 os.execvp("newsboat", ["newsboat", "-q", "-d", str(fifo), "-l", "6", *args])
@@ -281,7 +285,7 @@ def run(args):
                                     selected_feed = last_regular_feed
                                 if b"FeedListFormAction::prepare: doing redraw" in line:
                                     current_urls = urls.read_bytes() if urls.exists() else b''
-                                    if current_urls != urls_version:
+                                    if current_urls != urls_version and not live_queries:
                                         urls_version = current_urls
                                         count_refresh = True
                                         restore_feed = selected_feed

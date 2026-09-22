@@ -1,0 +1,74 @@
+--- a/src/itemlistformaction.cpp
++++ b/src/itemlistformaction.cpp
+@@ -6,6 +6,7 @@
+ #include <cstdlib>
+ #include <fstream>
+ #include <map>
++#include <set>
+ #include <langinfo.h>
+ #include <optional>
+ #include <sstream>
+@@ -30,27 +31,39 @@
+ 
+ namespace newsboat {
+ 
+-// An external worker publishes download status; rendering never runs commands.
++// External workers publish status; rendering never runs commands or API calls.
+ static std::map<std::string, std::string> download_status;
++static std::set<std::string> starred_urls;
+ static std::string download_revision()
+ {
+     const char* path = std::getenv("NEWSBOAT_DOWNLOAD_STATUS");
+-    struct stat info {};
+-    if (!path || stat(path, &info) != 0) { return ""; }
+-    const auto version = std::to_string(info.st_mtim.tv_sec) + ":" +
+-        std::to_string(info.st_mtim.tv_nsec) + ":" + std::to_string(info.st_size);
++    const char* stars = std::getenv("NEWSBOAT_STARRED_STATUS");
++    const auto revision = [](const char* filename) {
++        struct stat info {};
++        if (!filename || stat(filename, &info) != 0) { return std::string(); }
++        return std::to_string(info.st_mtim.tv_sec) + ":" +
++            std::to_string(info.st_mtim.tv_nsec) + ":" + std::to_string(info.st_size);
++    };
++    const auto version = revision(path) + "|" + revision(stars);
+     static std::string loaded;
+     if (loaded != version) {
+-        std::ifstream input(path);
+         std::map<std::string, std::string> updated;
+         std::string line;
+-        while (std::getline(input, line)) {
+-            const auto split = line.find('\t');
+-            if (split != std::string::npos) {
+-                updated[line.substr(0, split)] = line.substr(split + 1);
++        if (path) {
++            std::ifstream input(path);
++            while (std::getline(input, line)) {
++                const auto split = line.find('\t');
++                if (split != std::string::npos) {
++                    updated[line.substr(0, split)] = line.substr(split + 1);
++                }
+             }
+         }
+         download_status = std::move(updated);
++        starred_urls.clear();
++        if (stars) {
++            std::ifstream input(stars);
++            while (std::getline(input, line)) { starred_urls.insert(line); }
++        }
+         loaded = version;
+     }
+     return version;
+@@ -1185,7 +1198,12 @@
+ 	fmt.register_fmt('F', item.first->flags());
+ 	fmt.register_fmt('e', item.first->enclosure_url());
+     const auto status = download_status.find(item.first->link());
+-    fmt.register_fmt('p', status == download_status.end() ? "" : status->second);
++    std::string badges = starred_urls.count(item.first->link()) ? "󰓎" : "";
++    if (status != download_status.end()) {
++        if (!badges.empty()) { badges += " "; }
++        badges += status->second;
++    }
++    fmt.register_fmt('p', badges);
+ 
+ 	using namespace std::chrono;
+ 	const auto article_time_point = system_clock::from_time_t(

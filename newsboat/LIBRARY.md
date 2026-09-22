@@ -1,8 +1,11 @@
 # Starred and downloads
 
 The article list displays download status beside each matching video: `↓ 42%`,
-`…` while preparing/processing, `✓` when downloaded, and `✕` after a failure.
-Updates appear once per second while the article list is open. This uses the
+`…` while preparing/processing, `📥` when downloaded, and `✕` after a failure.
+Starred items also display the yellow five-point star (`󰓎`); both badges appear when a video is starred and
+downloaded. Updates appear once per second while the article list is open.
+Downloads counts refresh automatically when the library changes, including
+while the main feed list is idle, without moving the selection. This uses the
 local native build; rebuild with `~/scripts/newsboat-build-paged.sh` after
 installing this setup on another machine. Restart Newsboat after upgrading.
 
@@ -36,3 +39,11 @@ Check it with `systemctl --user status newsboat-maintenance.timer` or
 `journalctl --user -u newsboat-maintenance.service`. Disable all automatic
 maintenance with `systemctl --user disable --now newsboat-maintenance.timer`.
 Disable deletion alone by setting `enabled` to false in the JSON config.
+
+## YouTube sign-in challenges
+
+If anonymous extraction receives YouTube's “not a bot” sign-in challenge, the
+downloader retries once using Brave's existing session with GNOME Keyring and
+uses the same session for the download. Cookies are not exported to a file.
+`NEWSBOAT_YOUTUBE_BROWSER` can override `brave+gnomekeyring`. Other failures and
+Twitch downloads do not trigger this authentication fallback.

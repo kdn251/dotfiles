@@ -25,6 +25,8 @@ with open(os.environ['CALLS'],'a') as f:f.write(json.dumps(args)+'\n')
 mode=os.environ.get('FAIL','')
 if Path(os.environ['CALLS']+'.retried').exists():mode=''
 if '--dump-single-json' in args:
+ if mode in ('bot','bot_always') and (mode=='bot_always' or '--cookies-from-browser' not in args):
+  print('Sign in to confirm you are not a bot',file=sys.stderr);sys.exit(1)
  if mode=='metadata':
   print('HTTP 403: deliberate metadata failure',file=sys.stderr);sys.exit(1)
  twitch='twitch.tv' in args[-1]
@@ -195,6 +197,25 @@ class DownloadTests(unittest.TestCase):
         self.assertEqual(urls, [URL, URL])
         failed=next(n for n in self.read_notices() if n[1] == 'Download failed')
         self.assertIn('retry=Retry', failed)
+
+    def test_youtube_challenge_retries_once_and_download_uses_same_session(self):
+        p=self.start(FAIL='bot')
+        self.assertEqual(p.wait(timeout=5),0)
+        self.assertEqual(self.state()['status'],'done')
+        calls=[json.loads(line) for line in (self.root/'calls').read_text().splitlines()]
+        self.assertEqual(len(calls),3)
+        self.assertNotIn('--cookies-from-browser',calls[0])
+        for args in calls[1:]:
+            self.assertEqual(args[args.index('--cookies-from-browser')+1],'brave+gnomekeyring')
+        self.assertEqual(module.cookie_retry_options('twitch','not a bot'),[])
+        self.assertEqual(module.cookie_retry_options('youtube','Private video'),[])
+
+    def test_failed_authentication_does_not_retry_indefinitely(self):
+        p=self.start(FAIL='bot_always')
+        self.assertEqual(p.wait(timeout=5),1)
+        calls=[json.loads(line) for line in (self.root/'calls').read_text().splitlines()]
+        self.assertEqual(len(calls),2)
+        self.assertIn('sign-in retry failed',self.state()['error'])
 
     def test_url_validation(self):
         self.assertEqual(module.canonical_url('https://youtu.be/abc123DEF45?list=ignore')[1],URL)

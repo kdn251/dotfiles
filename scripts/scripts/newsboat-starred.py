@@ -18,6 +18,7 @@ SCRIPTS = Path(__file__).resolve().parent
 sys.path.insert(0, str(SCRIPTS))
 from newsboat_miniflux import Client
 URLS = Path(os.environ.get('NEWSBOAT_URLS_FILE', Path.home()/'.newsboat/urls'))
+STARRED_STATUS = Path(os.environ.get('XDG_STATE_HOME', Path.home()/'.local/state'))/'newsboat/starred-urls.txt'
 CACHE = Path(os.environ.get('NEWSBOAT_CACHE', Path.home()/'.newsboat/cache.db'))
 
 
@@ -26,6 +27,12 @@ def entries(client=None):
 
 
 def rebuild_query(rows):
+    # This is a disposable display index, never a second saved-item collection.
+    from newsboat_media import atomic_write
+    content = ''.join(url+'\n' for url in sorted({row['url'] for row in rows}) if not any(c in url for c in '\r\n'))
+    if not STARRED_STATUS.exists() or STARRED_STATUS.read_text() != content:
+        STARRED_STATUS.parent.mkdir(parents=True,exist_ok=True)
+        atomic_write(STARRED_STATUS,content)
     if not URLS.exists():
         return
     current = URLS.read_text()

@@ -1,0 +1,57 @@
+--- a/include/regexmanager.h
++++ b/include/regexmanager.h
+@@ -27,7 +27,8 @@
+ 	void remove_last_regex(Dialog location);
+ 	int article_matches(Matchable* item) const;
+ 	int feed_matches(Matchable* feed) const;
+-	std::string get_attrs_stfl_string(Dialog location, bool hasFocus) const;
++	std::string get_attrs_stfl_string(Dialog location, bool hasFocus,
++		const std::string& focus_background = "") const;
+ 
+ private:
+ 	using RegexStyleVector = std::vector<std::pair<std::shared_ptr<Regex>, TextStyle>>;
+--- a/src/regexmanager.cpp
++++ b/src/regexmanager.cpp
+@@ -204,7 +204,7 @@
+ }
+ 
+ std::string RegexManager::get_attrs_stfl_string(Dialog location,
+-	bool hasFocus) const
++	bool hasFocus, const std::string& focus_background) const
+ {
+ 	const auto location_regexes = locations.find(location);
+ 	if (location_regexes == locations.end()) {
+@@ -217,7 +217,12 @@
+ 		const std::string text_style = text_styles[i].second.get_stfl_style_string();
+ 		attrstr.append(strprintf::fmt("@style_%u_normal:%s ", i, text_style));
+ 		if (hasFocus) {
+-			attrstr.append(strprintf::fmt("@style_%u_focus:%s ", i, text_style));
++			auto focused_style = text_style;
++			if (text_styles[i].second.get_bgcolor() == "default" && !focus_background.empty()) {
++				if (!focused_style.empty()) { focused_style += ","; }
++				focused_style += focus_background;
++			}
++			attrstr.append(strprintf::fmt("@style_%u_focus:%s ", i, focused_style));
+ 		}
+ 	}
+ 	LOG(Level::DEBUG, "RegexManager::get_attrs_stfl_string(%s, %s): %s", dialog_name(location),
+--- a/src/itemlistformaction.cpp
++++ b/src/itemlistformaction.cpp
+@@ -1566,7 +1566,16 @@
+ 
+ void ItemListFormAction::register_format_styles()
+ {
+-	const std::string attrstr = rxman.get_attrs_stfl_string(Dialog::ArticleList, true);
++	std::string focus_background;
++	v.get_ctrl().get_colormanager().apply_colors([&](const std::string& name, const std::string& style) {
++		if (name == "listfocus") {
++			const auto begin = style.find("bg=");
++			if (begin != std::string::npos) {
++				focus_background = style.substr(begin, style.find(',', begin) - begin);
++			}
++		}
++	});
++	const std::string attrstr = rxman.get_attrs_stfl_string(Dialog::ArticleList, true, focus_background);
+ 	const std::string textview = strprintf::fmt(
+ 			"{!list[items] .expand:vh style_normal[listnormal]: "
+ 			"style_focus[listfocus]: "

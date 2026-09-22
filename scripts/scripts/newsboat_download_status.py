@@ -31,7 +31,7 @@ def publish(state):
                 elif status in {'failed','cancelled'}:
                     value = '✕'
                 elif status == 'done' and any(Path(p).is_file() for p in job.get('files', [])):
-                    value = '✓'
+                    value = '📥'
                 else:
                     continue
                 statuses[key] = value
@@ -44,7 +44,7 @@ def publish(state):
                     from newsboat_media import filename_identity
                     key = filename_identity(Path(path))
                     if key:
-                        statuses.setdefault(key, '✓')
+                        statuses.setdefault(key, '📥')
         except (OSError, ValueError):
             pass
         cache = Path(os.environ.get('NEWSBOAT_CACHE', Path.home()/'.newsboat/cache.db'))

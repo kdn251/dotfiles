@@ -14,7 +14,7 @@ miniflux-show-special-feeds no
 # Compact metadata columns leave more space for names and titles.
 feedlist-title-format " Feeds%?T? — %T&?"
 feedlist-format " %3i  %n %S  %4U unread  %t"
-articlelist-format " %f  %D  %-7p %?T?%-18T │ ?%t"
+articlelist-format " %f  %D  %-9p %?T?%-18T │ ?%t"
 datetime-format "%b %d %H:%M"
 text-width 90
 # Keep list headers focused on the view name (History, Starred, Downloaded, etc.).
@@ -107,6 +107,9 @@ color listnormal         default default
 color listnormal_unread  default default bold
 color info               black   cyan    bold
 color article            default default
+
+# Color status glyphs without changing the surrounding text or column widths.
+highlight articlelist "󰓎" yellow default bold
 
 # Show query feeds
 prepopulate-query-feeds yes

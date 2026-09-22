@@ -150,6 +150,15 @@ class Cancelled(Exception):
     pass
 
 
+def cookie_retry_options(platform, diagnostics):
+    if platform != 'youtube' or 'not a bot' not in diagnostics.lower():
+        return []
+    # Hyprland's automatic keyring detection chooses basic, but Brave uses
+    # GNOME Keyring here. Read the browser session in memory; never export it.
+    browser = os.environ.get('NEWSBOAT_YOUTUBE_BROWSER', 'brave+gnomekeyring')
+    return ['--cookies-from-browser', browser]
+
+
 def download(url, title=''):
     platform, url = canonical_url(url)
     STATE.mkdir(parents=True, exist_ok=True, mode=0o700)
@@ -185,8 +194,21 @@ def download(url, title=''):
                                         '--', url], stdout=subprocess.PIPE, stderr=log,
                                        env=env, start_new_session=True)
             raw, _ = process.communicate()
+            session_options = []
             if process.returncode:
-                raise RuntimeError('Could not fetch video details; see the download log')
+                log.flush()
+                session_options = cookie_retry_options(platform, Path(job['log']).read_text(errors='replace'))
+                if session_options:
+                    log.write('Retrying YouTube with the existing Brave session.\n')
+                    log.flush()
+                    process = subprocess.Popen([ytdlp, *session_options, '--no-playlist',
+                                                '--dump-single-json', '-f', FORMAT, '--', url],
+                                               stdout=subprocess.PIPE, stderr=log, env=env,
+                                               start_new_session=True)
+                    raw, _ = process.communicate()
+            if process.returncode:
+                raise RuntimeError('YouTube sign-in retry failed; open the video in Brave and try again'
+                                   if session_options else 'Could not fetch video details; see the download log')
             info = json.loads(raw)
             if not isinstance(info, dict) or not info.get('id'):
                 raise RuntimeError('The URL did not resolve to a video')
@@ -203,7 +225,7 @@ def download(url, title=''):
             job.update(status='downloading', folder=str(folder))
             save(job)
             notify(job, 'Downloading')
-            command = [ytdlp, '--no-playlist', '--load-info-json', str(metadata),
+            command = [ytdlp, *session_options, '--no-playlist', '--load-info-json', str(metadata),
                        '--no-simulate', '-f', FORMAT, '--merge-output-format', 'mp4',
                        '--restrict-filenames', '--no-overwrites', '--newline', '--progress',
                        '--progress-delta', '1',

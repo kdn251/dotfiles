@@ -1,0 +1,70 @@
+--- a/src/controller.cpp
++++ b/src/controller.cpp
+@@ -862,6 +862,9 @@
+ 	v->set_tags(urlcfg->get_alltags());
+ 
+ 	feedcontainer.set_feeds(new_feeds);
++	if (cfg.get_configvalue_as_bool("prepopulate-query-feeds")) {
++		feedcontainer.populate_query_feeds();
++	}
+ 	feedcontainer.sort_feeds(cfg.get_feed_sort_strategy());
+ 	update_feedlist();
+ }
+--- a/src/feedlistformaction.cpp
++++ b/src/feedlistformaction.cpp
+@@ -3,6 +3,8 @@
+ #include <algorithm>
+ #include <cassert>
+ #include <cstdint>
++#include <cstdlib>
++#include <sys/stat.h>
+ #include <cstring>
+ #include <langinfo.h>
+ #include <string>
+@@ -65,6 +67,22 @@
+ 
+ void FeedListFormAction::prepare()
+ {
++	// Refresh generated library queries in place, without opening another feed.
++	if (const char* path = std::getenv("NEWSBOAT_LIVE_QUERIES")) {
++		struct stat info {};
++		if (stat(path, &info) == 0) {
++			const auto version = std::to_string(info.st_mtim.tv_sec) + ":" +
++				std::to_string(info.st_mtim.tv_nsec) + ":" + std::to_string(info.st_size);
++			static std::string previous;
++			const bool changed = !previous.empty() && previous != version;
++			previous = version;
++			if (changed) {
++				v.get_ctrl().reload_urls_file();
++				do_redraw = true;
++			}
++		}
++	}
++
+ 	set_keymap_hints();
+ 
+ 	const auto sort_strategy = cfg->get_feed_sort_strategy();
+--- a/src/view.cpp
++++ b/src/view.cpp
+@@ -179,7 +179,9 @@
+ 		// we then receive the event and ignore timeouts.
+ 		const std::string event = fa->draw_form_wait_for_event(
+ 			std::getenv("NEWSBOAT_DOWNLOAD_STATUS") &&
+-			std::dynamic_pointer_cast<ItemListFormAction>(fa) ? 1000 : INT_MAX);
++			std::dynamic_pointer_cast<ItemListFormAction>(fa) ? 1000 :
++			(std::getenv("NEWSBOAT_LIVE_QUERIES") &&
++			std::dynamic_pointer_cast<FeedListFormAction>(fa) ? 500 : INT_MAX));
+ 
+ 		if (ctrl_c_hit) {
+ 			ctrl_c_hit = false;
+@@ -271,7 +273,9 @@
+ 
+ 		const std::string event = fa->draw_form_wait_for_event(
+ 			std::getenv("NEWSBOAT_DOWNLOAD_STATUS") &&
+-			std::dynamic_pointer_cast<ItemListFormAction>(fa) ? 1000 : INT_MAX);
++			std::dynamic_pointer_cast<ItemListFormAction>(fa) ? 1000 :
++			(std::getenv("NEWSBOAT_LIVE_QUERIES") &&
++			std::dynamic_pointer_cast<FeedListFormAction>(fa) ? 500 : INT_MAX));
+ 		LOG(Level::DEBUG, "View::run: event = %s", event);
+ 		if (event.empty() || event == "TIMEOUT") {
+ 			continue;
