@@ -82,6 +82,44 @@ class FeedServer(http.server.BaseHTTPRequestHandler):
 
 @unittest.skipUnless(shutil.which('newsboat'), 'requires Newsboat')
 class TerminalIntegrationTests(unittest.TestCase):
+    def test_closed_terminal_releases_newsboat(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            config = root / 'config'
+            config.write_text('show-read-feeds yes\n')
+            urls = root / 'urls'
+            urls.write_text('https://example.com/feed\n')
+            pid, fd = pty.fork()
+            if pid == 0:
+                os.environ.update(HOME=directory, TERM='xterm-256color')
+                os.execv('/bin/bash', ['bash', str(SCRIPT.with_name('newsboat-launch.sh')),
+                                      '-C', str(config), '-u', str(urls), '-c', str(root/'cache.db')])
+            try:
+                captured = b''
+                deadline = time.monotonic() + 10
+                while time.monotonic() < deadline and b'example.com' not in captured:
+                    if select.select([fd], [], [], .1)[0]:
+                        captured += os.read(fd, 65536)
+                self.assertIn(b'example.com', captured)
+                children = Path(f'/proc/{pid}/task/{pid}/children').read_text().split()
+                os.close(fd)
+                fd = None
+                deadline = time.monotonic() + 5
+                while time.monotonic() < deadline:
+                    done, _ = os.waitpid(pid, os.WNOHANG)
+                    if done:
+                        pid = None
+                        break
+                    time.sleep(.05)
+                self.assertIsNone(pid, 'launcher remained alive after terminal closed')
+                self.assertFalse(any(Path(f'/proc/{child}').exists() for child in children))
+            finally:
+                if fd is not None:
+                    os.close(fd)
+                if pid:
+                    os.kill(pid, signal.SIGTERM)
+                    os.waitpid(pid, 0)
+
     def test_real_refresh_counter_repeat_and_browser(self):
         server = http.server.ThreadingHTTPServer(('127.0.0.1', 0), FeedServer)
         worker = threading.Thread(target=server.serve_forever, daemon=True)

@@ -60,6 +60,7 @@ class DownloadCountsTests(unittest.TestCase):
                     if 'Video1' not in '\n'.join(screen.display):break
                 self.assertNotIn('Video1','\n'.join(screen.display))
                 self.assertIn('Video2','\n'.join(screen.display))
+                self.assertTrue(screen.display[1].lstrip().startswith('1 '))
                 update('title = "none"')
                 os.write(fd,b':exec reload-urls\n')
                 deadline=time.monotonic()+4

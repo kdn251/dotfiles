@@ -179,6 +179,9 @@ def run(args):
     status = None
     startup_error = b""
     with tempfile.TemporaryDirectory(prefix="newsboat-progress-") as directory:
+        if live_queries:
+            os.environ['NEWSBOAT_UNDO_FILE'] = str(Path(directory)/'undo')
+            os.environ['NEWSBOAT_UNDO_HELPER'] = str(Path(__file__).with_name('newsboat-starred.py'))
         view_env = nested_view_environment(directory)
         if live_queries:
             view_env["NEWSBOAT_SYNC_VIEW"] = "1"
@@ -200,7 +203,12 @@ def run(args):
                 fcntl.ioctl(master, termios.TIOCSWINSZ, size)
 
             def forward_signal(signum, _):
-                os.kill(pid, signum)
+                # Avoid Newsboat's terminal-reset SIGHUP handler after the
+                # terminal disappears: it can deadlock inside STFL.
+                try:
+                    os.kill(pid, signal.SIGTERM if signum == signal.SIGHUP else signum)
+                except ProcessLookupError:
+                    pass
 
             resize()
             signal.signal(signal.SIGWINCH, resize)
@@ -345,6 +353,10 @@ def run(args):
                         elif key.data == "input":
                             data = os.read(0, 4096)
                             if not data:
+                                try:
+                                    os.kill(pid, signal.SIGTERM)
+                                except ProcessLookupError:
+                                    pass
                                 running = False
                                 break
                             # Avoid navigating invisibly while covered. Ctrl-C
@@ -420,7 +432,7 @@ def run(args):
                 os.close(master)
             if pid:
                 try:
-                    os.kill(pid, signal.SIGHUP)
+                    os.kill(pid, signal.SIGTERM)
                     os.waitpid(pid, 0)
                 except ProcessLookupError:
                     pass

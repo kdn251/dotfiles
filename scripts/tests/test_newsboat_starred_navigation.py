@@ -25,7 +25,7 @@ class NavigationTests(unittest.TestCase):
     data={'total':int(row['starred']),'entries':[row] if row['starred'] else []} if self.path.startswith('/v1/entries?') else row
     self.send_response(200);self.end_headers();self.wfile.write(json.dumps(data).encode())
    def do_PUT(self):
-    data=json.loads(self.rfile.read(int(self.headers['Content-Length'])));row['starred']=data['starred']
+    data=json.loads(self.rfile.read(int(self.headers['Content-Length'])));row.update({key:data[key] for key in ('starred','status') if key in data})
     self.send_response(204);self.end_headers()
   server=http.server.ThreadingHTTPServer(('127.0.0.1',0),Handler)
   thread=threading.Thread(target=server.serve_forever,daemon=True);thread.start()
@@ -36,12 +36,14 @@ class NavigationTests(unittest.TestCase):
      target=p/'.local/lib/newsboat-paged/newsboat';target.parent.mkdir(parents=True);target.symlink_to(binary)
     creds=p/'creds';creds.write_text(f'miniflux-url "http://127.0.0.1:{server.server_port}"\nminiflux-login test\nminiflux-password test\n')
     config=p/'.newsboat/config';config.write_text('prepopulate-query-feeds yes\nshow-read-feeds yes\narticlelist-title-format "%T"\nfeedlist-format "%t | %U unread"\nrun-on-startup set-filter "unread_count > 0 or feedtitle = \\"⭐ Starred\\""\n')
+    if binary:
+     with config.open('a') as output:output.write('bind U everywhere undo-action\n')
     urls=p/'urls';urls.write_text('"query:⭐ Starred:link = \\"https://example.com/saved\\""\n')
     feed=p/'feed.xml';feed.write_text('<rss version="2.0"><channel><title>Source</title><link>https://example.com</link><description>test</description><item><title>saved-article</title><link>https://example.com/saved</link><guid>1</guid></item></channel></rss>')
     with urls.open('a') as out:out.write(feed.as_uri()+'\n')
     env=dict(os.environ,HOME=tmp,TERM='xterm-256color',NEWSBOAT_URLS_FILE=str(urls),NEWSBOAT_CACHE=str(p/'cache'),NEWSBOAT_MINIFLUX_CONFIG=str(creds),XDG_STATE_HOME=str(p/'state'))
     args=['-C',str(config),'-u',str(urls),'-c',str(p/'cache')]
-    subprocess.run(['newsboat','-q',*args,'-x','reload'],env=env,check=True,capture_output=True)
+    subprocess.run([str(binary) if binary else 'newsboat','-q',*args,'-x','reload'],env=env,check=True,capture_output=True)
     pid,fd=pty.fork()
     if not pid:os.execvpe('python3',['python3',str(SCRIPTS/'newsboat-session.py'),*args],env)
     fcntl.ioctl(fd,termios.TIOCSWINSZ,struct.pack('HHHH',30,120,0,0));data=bytearray()
@@ -65,6 +67,14 @@ class NavigationTests(unittest.TestCase):
      data.clear();os.write(fd,b'q');until(lambda:b'saved-article' in data);self.assertTrue(row['starred'])
      os.write(fd,b'S');until(lambda:not row['starred']);time.sleep(.2)
      if binary and screen:until(lambda:'saved-article' not in '\n'.join(screen.display))
+     if binary:
+      os.write(fd,b'U');until(lambda:row['starred'])
+      if screen:until(lambda:'saved-article' in '\n'.join(screen.display))
+      time.sleep(.3)
+      self.assertTrue(row['starred'])
+      os.write(fd,b'S');until(lambda:not row['starred'])
+      if screen:until(lambda:'saved-article' not in '\n'.join(screen.display))
+
      data.clear();os.write(fd,b'q');until(lambda:b'Starred | 0 unread' in data)
      self.assertNotIn(b'\x1b[?1049l',data)
      self.assertNotIn(b'\x1b[?1049h',data)

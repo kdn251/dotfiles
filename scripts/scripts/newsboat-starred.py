@@ -4,6 +4,7 @@ from contextlib import closing
 from email.utils import formatdate
 import importlib.util
 import fcntl
+import hashlib
 import json
 import os
 from pathlib import Path
@@ -58,8 +59,7 @@ def rebuild_query(rows):
         temporary.replace(target)
 
 
-def set_star(url, desired, client=None):
-    client = client or Client()
+def resolve_ids(url, client):
     ids = {row['id'] for row in client.starred() if row['url'] == url}
     try:
         with closing(sqlite3.connect(CACHE.as_uri()+'?mode=ro',uri=True,timeout=3)) as db:
@@ -74,21 +74,29 @@ def set_star(url, desired, client=None):
                     raise
     except sqlite3.Error:
         pass
+    return ids
+
+
+def set_star(url, desired, client=None, mark_read=False):
+    client = client or Client()
+    ids = resolve_ids(url, client)
     if not ids and desired:
         raise ValueError('This item is no longer available in Miniflux')
     if ids:
         client.request('entries',{'entry_ids':sorted(ids),'starred':desired},method='PUT')
+        if mark_read:
+            client.request('entries',{'entry_ids':sorted(ids),'status':'read'},method='PUT')
     rebuild_query(client.starred())
 
 
 
-def enqueue_star(url, desired):
+def enqueue_star(url, desired, restore_unread=None):
     """Hand the request to a detached worker; the keyboard never waits on HTTP."""
     from newsboat_media import atomic_write
     queue = STARRED_STATUS.parent/'star-actions'
     queue.mkdir(parents=True, exist_ok=True)
     job = queue/f'{time.time_ns():020d}-{os.getpid()}.json'
-    atomic_write(job, json.dumps({'url': url, 'desired': desired, 'cache': str(CACHE)}))
+    atomic_write(job, json.dumps({'url': url, 'desired': desired, 'cache': str(CACHE), 'restore_unread': restore_unread}))
     try:
         subprocess.Popen([sys.executable, str(Path(__file__).resolve()), 'work'],
                          stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
@@ -96,6 +104,10 @@ def enqueue_star(url, desired):
     except Exception:
         job.unlink(missing_ok=True)
         raise
+    if desired is False and restore_unread is None and os.environ.get('NEWSBOAT_STARRED_REMOVALS'):
+        markers = Path(os.environ['NEWSBOAT_STARRED_REMOVALS'])
+        if markers.is_dir():
+            atomic_write(markers/hashlib.sha256(url.encode()).hexdigest(), url)
 
 
 def drain_star_actions():
@@ -110,7 +122,21 @@ def drain_star_actions():
                 try:
                     action = json.loads(job.read_text())
                     CACHE = Path(action['cache'])
-                    set_star(action['url'], action['desired'])
+                    if action.get('restore_unread') is None:
+                        set_star(action['url'], action['desired'], mark_read=bool(action['desired']))
+                    else:
+                        client = Client()
+                        ids = resolve_ids(action['url'], client)
+                        if not ids:
+                            raise ValueError('Item no longer available in Miniflux')
+                        if action['desired'] is not None:
+                            client.request('entries', {'entry_ids': sorted(ids), 'starred': action['desired']}, method='PUT')
+                        client.request('entries', {'entry_ids': sorted(ids),
+                            'status': 'unread' if action['restore_unread'] else 'read'}, method='PUT')
+                        with closing(sqlite3.connect(CACHE, timeout=3)) as db, db:
+                            db.executemany('UPDATE rss_item SET unread=? WHERE guid=?',
+                                [(int(action['restore_unread']), str(i)) for i in ids])
+                        rebuild_query(client.starred())
                 except Exception:
                     subprocess.run(['notify-send', '-a', 'Newsboat', '-t', '5000',
                                     'Star change failed',
@@ -144,9 +170,11 @@ def prepare_view(directory, rows):
     write_feed(directory,rows)
     lines=[line for line in config.read_text().splitlines() if not line.startswith(('bind C ','bind S ','bind H ','show-read-articles ','article-sort-order '))]
     lines += ['show-read-articles yes','article-sort-order date-desc',
-              'bind S articlelist set browser "python3 ~/scripts/newsboat-starred.py remove %u" ; open-in-browser-noninteractively ; set browser "~/scripts/newsboat-brave-app.sh %u" ; delete-article ; purge-deleted -- "Unstar item"',
-              'bind S article,searchresultslist set browser "python3 ~/scripts/newsboat-starred.py remove %u" ; open-in-browser-noninteractively ; set browser "~/scripts/newsboat-brave-app.sh %u" -- "Unstar item"',
+              'bind S articlelist undo-checkpoint unstar ; set browser "python3 ~/scripts/newsboat-starred.py remove %u" ; open-in-browser-noninteractively ; set browser "~/scripts/newsboat-brave-app.sh %u" ; delete-article ; purge-deleted -- "Unstar item"',
+              'bind S article,searchresultslist undo-checkpoint unstar ; set browser "python3 ~/scripts/newsboat-starred.py remove %u" ; open-in-browser-noninteractively ; set browser "~/scripts/newsboat-brave-app.sh %u" -- "Unstar item"',
               'bind C articlelist clear-filter ; delete-all-articles -- "Unstar all displayed items (asks for confirmation)"']
+    if not os.environ.get('NEWSBOAT_UNDO_HELPER'):
+        lines = [line.replace('undo-checkpoint unstar ; ', '') for line in lines]
     config.write_text('\n'.join(lines)+'\n')
     return command,config
 
@@ -189,7 +217,9 @@ def show():
         subprocess.run(command+['-x','reload'],check=True,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL,timeout=15)
         sync_read_status(directory, rows)
         with config.open('a') as out:out.write('run-on-startup open\n')
-        process = subprocess.Popen(command)
+        markers = Path(directory)/'managed-removals'
+        markers.mkdir()
+        process = subprocess.Popen(command, env=dict(os.environ, NEWSBOAT_STARRED_REMOVALS=str(markers)))
         finished = threading.Event()
         def wait_for_exit():
             process.wait()
@@ -203,6 +233,14 @@ def show():
             # Only explicit deletion (C), never read status, removes stars.
             with closing(sqlite3.connect(Path(directory)/'cache.db')) as db:
                 removed = {str(row[0]) for row in db.execute('SELECT guid FROM rss_item WHERE deleted=1')}
+            handled.intersection_update(removed)
+            # S already queued its own request. Only C's deletions need the
+            # watcher; sending a second S request could race a subsequent undo.
+            for marker in markers.iterdir():
+                managed = {str(row['id']) for row in rows if row['url'] == marker.read_text()}
+                if managed & removed:
+                    handled.update(managed & removed)
+                    marker.unlink(missing_ok=True)
             pending = (removed & visible_ids) - handled
             if pending:
                 handled.update(pending)
@@ -221,6 +259,8 @@ def main():
         action=sys.argv[1]
         if action in {'save','remove'}:
             enqueue_star(sys.argv[2],action=='save')
+        elif action=='restore':
+            enqueue_star(sys.argv[2], {'star':True, 'unstar':False, 'keep':None}[sys.argv[3]], sys.argv[4]=='unread')
         elif action=='work':drain_star_actions()
         elif action=='rebuild':rebuild_query(entries())
         elif action=='show':show()

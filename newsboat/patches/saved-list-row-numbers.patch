@@ -1,0 +1,27 @@
+--- a/src/itemlistformaction.cpp
++++ b/src/itemlistformaction.cpp
+@@ -1138,7 +1138,10 @@
+ 			return StflRichText::from_plaintext("ERROR");
+ 		}
+ 		auto& item = visible_items[line];
+-		return item2formatted_line(item, width, itemlist_format, datetime_format);
++        const bool numbered = feed->title() == "⭐ Starred" ||
++            feed->rssurl().find("query:📥 Downloads:") == 0;
++        const auto format = numbered ? strprintf::fmt("%4u ", line + 1) + itemlist_format : itemlist_format;
++        return item2formatted_line(item, width, format, datetime_format);
+ 	};
+ 	list.invalidate_list_content(visible_items.size(), render_line);
+ 
+@@ -1482,6 +1485,12 @@
+ 
+ void ItemListFormAction::handle_cmdline_num(unsigned int idx)
+ {
++    if (feed->title() == "⭐ Starred" || feed->rssurl().find("query:📥 Downloads:") == 0) {
++        if (idx > 0 && idx <= visible_items.size()) { list.set_position(idx - 1); }
++        else { v.get_statusline().show_error(_("Invalid position!")); }
++        return;
++    }
++    if (visible_items.empty()) { return; }
+ 	if (idx > 0 &&
+ 		idx <= visible_items[visible_items.size() - 1].second + 1) {
+ 		int i = get_pos(idx - 1);

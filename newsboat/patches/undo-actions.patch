@@ -1,0 +1,309 @@
+--- a/include/keymap.h
++++ b/include/keymap.h
+@@ -74,6 +74,8 @@
+ 	OP_HELP,
+ 	OP_TOGGLESOURCEVIEW,
+ 	OP_TOGGLEITEMREAD,
++	OP_UNDO_ACTION,
++	OP_UNDO_CHECKPOINT,
+ 	OP_TOGGLESHOWREAD,
+ 	OP_SHOWURLS,
+ 	OP_CLEARTAG,
+--- a/src/keymap.cpp
++++ b/src/keymap.cpp
+@@ -226,6 +226,10 @@
+ 		translatable("Toggle source view"),
+ 		KM_ARTICLE
+ 	},
++    { OP_UNDO_ACTION, "undo-action", {},
++      translatable("Undo last read or star change"), KM_NEWSBOAT },
++    { OP_UNDO_CHECKPOINT, "undo-checkpoint", {},
++      translatable("Remember item state for undo"), KM_ARTICLELIST | KM_SEARCHRESULTSLIST | KM_ARTICLE },
+ 	{
+ 		OP_TOGGLEITEMREAD,
+ 		"toggle-article-read",
+--- a/include/view.h
++++ b/include/view.h
+@@ -3,6 +3,7 @@
+ 
+ #include <cstdint>
+ #include <mutex>
++#include <map>
+ #include <optional>
+ #include <string>
+ #include <vector>
+@@ -28,11 +29,25 @@
+ struct MacroCmd;
+ class RegexManager;
+ class RssFeed;
++class RssItem;
+ 
+ class View : public IStatus {
+ public:
+ 	explicit View(Controller&);
+ 	~View();
++    void remember_action(std::shared_ptr<RssItem> item, std::shared_ptr<RssFeed> feed,
++        std::optional<bool> target_star = std::nullopt);
++    void undo_action();
++    void sync_undoable_read(std::shared_ptr<RssItem> item, bool read);
++    struct UndoState {
++        std::string token, guid, url;
++        bool unread = false, deleted = false, has_star = false, star = false, target_star = false;
++        std::shared_ptr<RssItem> item;
++        std::shared_ptr<RssFeed> feed;
++        size_t index = 0;
++    };
++    std::optional<UndoState> last_action;
++    std::map<std::string, bool> star_intents;
+ 	int run();
+ 	std::string run_modal(std::shared_ptr<FormAction> f,
+ 		const std::string& value = "");
+--- a/include/itemlistformaction.h
++++ b/include/itemlistformaction.h
+@@ -33,6 +33,10 @@
+ 	void init() override;
+ 
+ 	void set_feed(std::shared_ptr<RssFeed> fd);
++    void select_undo_item(const std::string& guid) {
++        restore_selection_guid = guid;
++        invalidate_list();
++    }
+ 
+ 	Dialog id() const override
+ 	{
+--- a/src/formaction.cpp
++++ b/src/formaction.cpp
+@@ -148,6 +148,9 @@
+ 	BindingType bindingType)
+ {
+ 	switch (op) {
++	case OP_UNDO_ACTION:
++        v.undo_action();
++        return true;
+ 	case OP_REDRAW:
+ 		LOG(Level::DEBUG, "FormAction::process_op: redrawing screen");
+         Stfl::reset();
+--- a/src/itemlistformaction.cpp
++++ b/src/itemlistformaction.cpp
+@@ -277,8 +277,17 @@
+ 		}
+ 	}
+ 	break;
++    case OP_UNDO_CHECKPOINT:
++        if (!visible_items.empty()) {
++            v.remember_action(visible_items[itempos].first, feed,
++                !args.empty() && args[0] == "star");
++        }
++        break;
+ 	case OP_TOGGLEITEMREAD: {
+ 		LOG(Level::INFO, "ItemListFormAction: toggling item read at pos `%u'", itempos);
++        if (!visible_items.empty() && !(args.size() > 1 && args[1] == "group")) {
++            v.remember_action(visible_items[itempos].first, feed);
++        }
+ 		if (!visible_items.empty()) {
+ 			try {
+ 				const auto message_lifetime = v.get_statusline().show_message_until_finished(
+@@ -288,18 +297,12 @@
+ 						visible_items[itempos]
+ 						.first->set_unread(
+ 							false);
+-						v.get_ctrl().mark_article_read(
+-							visible_items[itempos]
+-							.first->guid(),
+-							true);
++						if (!(args.size() > 1 && args[1] == "group")) v.sync_undoable_read(visible_items[itempos].first, true);
+ 					} else if (args.front() == "unread") {
+ 						visible_items[itempos]
+ 						.first->set_unread(
+ 							true);
+-						v.get_ctrl().mark_article_read(
+-							visible_items[itempos]
+-							.first->guid(),
+-							false);
++						if (!(args.size() > 1 && args[1] == "group")) v.sync_undoable_read(visible_items[itempos].first, false);
+ 					}
+ 				} else {
+ 					// mark as undeleted
+@@ -314,10 +317,7 @@
+ 						.first->unread();
+ 					visible_items[itempos]
+ 					.first->set_unread(!unread);
+-					v.get_ctrl().mark_article_read(
+-						visible_items[itempos]
+-						.first->guid(),
+-						unread);
++					if (!(args.size() > 1 && args[1] == "group")) v.sync_undoable_read(visible_items[itempos].first, unread);
+ 				}
+ 			} catch (const DbException& e) {
+ 				v.get_statusline().show_error(strprintf::fmt(
+--- a/src/itemviewformaction.cpp
++++ b/src/itemviewformaction.cpp
+@@ -429,7 +429,13 @@
+ 			v.get_statusline().show_error(_("No unread items."));
+ 		}
+ 		break;
++    case OP_UNDO_CHECKPOINT:
++        v.remember_action(item, feed, !args.empty() && args[0] == "star");
++        break;
+ 	case OP_TOGGLEITEMREAD: {
++        if (!(args.size() > 1 && args[1] == "group")) {
++            v.remember_action(item, feed);
++        }
+ 		LOG(Level::INFO,
+ 			"ItemViewFormAction::process_operation: setting unread and quitting");
+ 		const auto message_lifetime = v.get_statusline().show_message_until_finished(
+@@ -438,14 +444,14 @@
+ 			if (args.size() > 0) {
+ 				if (args.front() == "read") {
+ 					item->set_unread(false);
+-					v.get_ctrl().mark_article_read(item->guid(), true);
++					if (!(args.size() > 1 && args[1] == "group")) v.sync_undoable_read(item, true);
+ 				} else if (args.front() == "unread") {
+ 					item->set_unread(true);
+-					v.get_ctrl().mark_article_read(item->guid(), false);
++					if (!(args.size() > 1 && args[1] == "group")) v.sync_undoable_read(item, false);
+ 				}
+ 			} else {
+ 				item->set_unread(true);
+-				v.get_ctrl().mark_article_read(item->guid(), false);
++				if (!(args.size() > 1 && args[1] == "group")) v.sync_undoable_read(item, false);
+ 			}
+ 		} catch (const DbException& e) {
+ 			v.get_statusline().show_error(strprintf::fmt(
+--- a/src/view.cpp
++++ b/src/view.cpp
+@@ -5,6 +5,10 @@
+ #include <dirent.h>
+ #include <grp.h>
+ #include <iostream>
++#include <fstream>
++#include <iomanip>
++#include <chrono>
++#include <algorithm>
+ #include <libgen.h>
+ #include <limits.h>
+ #include <ncurses.h>
+@@ -1043,6 +1047,123 @@
+ 	}
+ }
+ 
++
++void View::remember_action(std::shared_ptr<RssItem> item, std::shared_ptr<RssFeed> feed,
++    std::optional<bool> target_star)
++{
++    UndoState state;
++    state.token = std::to_string(getpid()) + ":" + std::to_string(
++        std::chrono::steady_clock::now().time_since_epoch().count());
++    state.guid = item->guid(); state.url = item->link();
++    state.unread = item->unread(); state.deleted = item->deleted();
++    state.item = item; state.feed = feed;
++    for (size_t i = 0; i < feed->items().size(); ++i) {
++        if (feed->items()[i]->guid() == state.guid) { state.index = i; break; }
++    }
++    if (target_star) {
++        state.has_star = true; state.target_star = *target_star;
++        if (const char* path = std::getenv("NEWSBOAT_STARRED_STATUS")) {
++            // Once the queue drains, the display index is authoritative again.
++            const std::string filename(path);
++            const auto queue = filename.substr(0, filename.find_last_of('/')) + "/star-actions";
++            bool pending = false;
++            if (auto* directory = opendir(queue.c_str())) {
++                while (auto* entry = readdir(directory)) {
++                    const std::string name(entry->d_name);
++                    if (name.size() > 5 && name.substr(name.size()-5) == ".json") { pending = true; break; }
++                }
++                closedir(directory);
++            }
++            if (!pending) { star_intents.clear(); }
++            std::ifstream input(path); std::string url;
++            while (std::getline(input, url)) { if (url == state.url) { state.star = true; break; } }
++        }
++        // A queued request can precede the display index. Use its desired state.
++        if (star_intents.count(state.url)) { state.star = star_intents.at(state.url); }
++        star_intents[state.url] = *target_star;
++    }
++    last_action = state;
++    if (const char* path = std::getenv("NEWSBOAT_UNDO_FILE")) {
++        const auto temporary = std::string(path) + "." + std::to_string(getpid());
++        std::ofstream output(temporary);
++        output << std::quoted(state.token) << ' ' << std::quoted(state.guid) << ' '
++            << std::quoted(state.url) << ' ' << state.unread << ' ' << state.deleted << ' '
++            << state.has_star << ' ' << state.star << ' ' << state.target_star << '\n';
++        output.close(); std::rename(temporary.c_str(), path);
++    }
++}
++
++void View::sync_undoable_read(std::shared_ptr<RssItem> item, bool read)
++{
++    if (const char* helper = std::getenv("NEWSBOAT_UNDO_HELPER")) {
++        const auto browser = cfg->get_configvalue("browser");
++        cfg->set_configvalue("browser", "python3 " + utils::quote(helper) +
++            " restore %u keep " + (read ? "read" : "unread"));
++        const auto result = open_in_browser(item->link(), "", "", "", false);
++        cfg->set_configvalue("browser", browser);
++        if (!result || *result != 0) { status_line.show_error("Could not queue read-state change"); }
++    } else {
++        ctrl.mark_article_read(item->guid(), read);
++    }
++}
++
++void View::undo_action()
++{
++    auto saved = last_action;
++    const char* journal = std::getenv("NEWSBOAT_UNDO_FILE");
++    if (journal) {
++        UndoState shared;
++        std::ifstream input(journal);
++        if (!(input >> std::quoted(shared.token) >> std::quoted(shared.guid)
++                >> std::quoted(shared.url) >> shared.unread >> shared.deleted
++                >> shared.has_star >> shared.star >> shared.target_star)) {
++            status_line.show_message("Nothing to undo"); return;
++        }
++        if (!saved || saved->token != shared.token) { saved = shared; }
++    }
++    if (!saved) { status_line.show_message("Nothing to undo"); return; }
++    auto state = *saved;
++    // Enqueue compensation after pending star changes, never wait for HTTP here.
++    if (const char* helper = std::getenv("NEWSBOAT_UNDO_HELPER")) {
++        const auto browser = cfg->get_configvalue("browser");
++        cfg->set_configvalue("browser", "python3 " + utils::quote(helper) + " restore %u " +
++            (state.has_star ? (state.star ? "star" : "unstar") : "keep") +
++            (state.unread ? " unread" : " read"));
++        const auto result = open_in_browser(state.url, "", "", "", false);
++        cfg->set_configvalue("browser", browser);
++        if (!result || *result != 0) { status_line.show_error("Could not queue undo"); return; }
++    }
++    const auto restore_item = [&](std::shared_ptr<RssItem> item) {
++        item->set_unread(state.unread);
++        item->set_deleted(state.deleted);
++        rsscache->mark_item_deleted(item->guid(), state.deleted);
++    };
++    if (state.item) { restore_item(state.item); }
++    if (state.feed && state.item) {
++        auto& items = state.feed->items();
++        if (std::none_of(items.begin(), items.end(), [&](const auto& i) { return i->guid() == state.guid; })) {
++            state.feed->add_item(state.item);
++            std::rotate(items.begin() + std::min(state.index, items.size()-1), items.end()-1, items.end());
++        }
++    }
++    for (const auto& feed : ctrl.get_feedcontainer()->get_all_feeds()) {
++        for (const auto& item : feed->items()) {
++            if (item->guid() == state.guid) { restore_item(item); }
++        }
++    }
++    if (!std::getenv("NEWSBOAT_UNDO_HELPER")) { ctrl.mark_article_read(state.guid, !state.unread); }
++    for (const auto& form : formaction_stack) {
++        form->set_redraw(true);
++        if (const auto list = std::dynamic_pointer_cast<ItemListFormAction>(form)) {
++            list->select_undo_item(state.guid);
++        }
++    }
++    if (journal) { std::remove(journal); }
++    if (state.has_star) { star_intents[state.url] = state.star; }
++    last_action.reset();
++    status_line.show_message("Undid last read/star change");
++}
++
+ void View::force_redraw()
+ {
+ 	std::shared_ptr<FormAction> fa = get_current_formaction();

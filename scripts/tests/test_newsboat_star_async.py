@@ -31,8 +31,10 @@ class AsyncStarTests(unittest.TestCase):
                 data = json.loads(self.rfile.read(int(self.headers['Content-Length'])))
                 started.set()
                 release.wait(8)
-                row['starred'] = data['starred']
-                changes.append(row['starred'])
+                if 'starred' in data:
+                    row['starred'] = data['starred']
+                    changes.append(row['starred'])
+                if 'status' in data:row['status']=data['status']
                 self.send_response(204); self.end_headers()
         server = http.server.ThreadingHTTPServer(('127.0.0.1', 0), Handler)
         thread = threading.Thread(target=server.serve_forever, daemon=True); thread.start()
@@ -43,8 +45,8 @@ class AsyncStarTests(unittest.TestCase):
                 creds.write_text(f'miniflux-url "http://127.0.0.1:{server.server_port}"\nminiflux-login test\nminiflux-password test\n')
                 cache = root/'cache'
                 with sqlite3.connect(cache) as db:
-                    db.execute('CREATE TABLE rss_item(guid TEXT, url TEXT)')
-                    db.execute('INSERT INTO rss_item VALUES (?,?)', ('1', row['url']))
+                    db.execute('CREATE TABLE rss_item(guid TEXT, url TEXT, unread INTEGER)')
+                    db.execute('INSERT INTO rss_item VALUES (?,?,?)', ('1', row['url'], 0))
                 env = dict(os.environ, XDG_STATE_HOME=directory, NEWSBOAT_CACHE=str(cache),
                            NEWSBOAT_URLS_FILE=str(root/'urls'), NEWSBOAT_MINIFLUX_CONFIG=str(creds))
                 try:
@@ -65,5 +67,16 @@ class AsyncStarTests(unittest.TestCase):
                 self.assertEqual(changes, [True, False])
                 self.assertEqual(list(queue.glob('*.json')), [])
                 self.assertEqual((root/'newsboat/starred-urls.txt').read_text(), '')
+                subprocess.run([sys.executable, str(SCRIPT), 'restore', row['url'], 'star', 'unread'],
+                               env=env, check=True, timeout=2, capture_output=True)
+                deadline=time.monotonic()+5
+                while time.monotonic()<deadline:
+                    if changes == [True, False, True] and not list(queue.glob('*.json')):break
+                    time.sleep(.02)
+                self.assertEqual(changes,[True,False,True])
+                self.assertEqual(row['status'],'unread')
+                with sqlite3.connect(cache) as db:
+                    self.assertEqual(db.execute('SELECT unread FROM rss_item').fetchone()[0],1)
+
         finally:
             release.set(); server.shutdown(); server.server_close(); thread.join()
