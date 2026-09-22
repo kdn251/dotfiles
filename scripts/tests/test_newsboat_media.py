@@ -127,6 +127,8 @@ class MediaTests(unittest.TestCase):
         shutil.copyfile(player,home/'scripts/newsboat-brave-app.sh')
         (home/'scripts/newsboat-brave-app.sh').chmod(0o755)
         (home/'scripts/newsboat-history.py').write_text('from pathlib import Path\nPath.home().joinpath("called").touch()\n')
+        for helper in ('newsboat-open.py', 'newsboat_media.py'):
+            shutil.copyfile(SCRIPTS/helper,home/'scripts'/helper)
         feed=self.root/'feed.xml'
         feed.write_text('<rss version="2.0"><channel><title>Fixture feed</title><link>https://example.com</link>'
                         '<description>test</description><item><title>Fixture video: creator&apos;s &quot;best&quot; &amp; more</title><link>'+URL+'</link>'
@@ -141,7 +143,7 @@ class MediaTests(unittest.TestCase):
         command=['newsboat','-C',str(config),'-u',str(media.URLS),'-c',str(cache)]
         env=dict(os.environ,HOME=str(home),TERM='xterm-256color')
         subprocess.run(command+['-x','reload'],env=env,capture_output=True,check=True,timeout=10)
-        for initial,result,expected,key in [(1,'1',1,b',v'),(1,'0',0,b',v'),(0,'0',0,b',v'),(1,'0',0,b'O'),(1,'0',0,b'o'),(0,'0',0,b'O'),(1,'1',1,b'O')]:
+        for initial,result,expected,key in [(1,'1',1,b',v'),(1,'0',0,b',v'),(0,'0',0,b',v'),(1,'0',0,b'O'),(1,'0',0,b'o'),(0,'0',0,b'O'),(1,'1',1,b'O'),(1,'1',1,b'o'),(0,'0',0,b'o')]:
             with sqlite3.connect(cache) as db:db.execute('update rss_item set unread=?',(initial,))
             marker=home/'called';marker.unlink(missing_ok=True)
             pid,fd=pty.fork()
