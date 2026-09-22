@@ -4,7 +4,7 @@
 
 - [x] **All New Items:** A single unread view across every source, with source names visible. Open it from the top of the feed list. Added September 21, 2026.
 
-- [x] **Recent history:** `H` opens a native Newsboat list of the latest 500 browser/video opens. Use o/O or ,v to reopen; q returns.
+- [x] **Recent history:** `H` opens a native Newsboat list of the latest 500 browser/video opens, displayed oldest first. Use o/O or ,v to reopen; q returns.
 
 ## Ideas to revisit — not approved for implementation
 

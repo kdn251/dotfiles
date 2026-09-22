@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Local, newest-first history of Newsboat browser and successful video opens."""
+"""Local history of Newsboat browser and successful video opens."""
 from contextlib import closing, contextmanager
 from email.utils import formatdate
 import hashlib
@@ -59,7 +59,7 @@ def prepare_view(directory):
     rss = ET.Element('rss', version='2.0')
     channel = ET.SubElement(rss, 'channel')
     for name, value in [('title', 'History'), ('link', 'https://localhost/history'),
-                        ('description', 'Recently opened items; newest first')]:
+                        ('description', 'Recently opened items; oldest first')]:
         ET.SubElement(channel, name).text = value
     rows = entries()
     for url, title, source, mode, stamp in rows:
@@ -87,7 +87,7 @@ def prepare_view(directory):
                'browser', 'bind', 'bind-key', 'macro'}
     lines = [line for line in source.read_text().splitlines()
              if line.split() and line.split()[0] in allowed and not line.startswith('bind H ')]
-    lines += ['show-read-feeds yes', 'show-read-articles yes', 'article-sort-order date-desc',
+    lines += ['show-read-feeds yes', 'show-read-articles yes', 'article-sort-order date-asc',
               'confirm-exit no', 'bind q articlelist hard-quit',
               'bind H articlelist hard-quit -- "Return from history"']
     config = directory/'config'
