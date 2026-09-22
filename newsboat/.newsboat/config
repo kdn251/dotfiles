@@ -9,15 +9,15 @@ include "~/.newsboat/miniflux_creds.conf"
 # bind-key q select-tag feedlist
 # bind-key q quit tagselection
 
-miniflux-show-special-feeds yes
+miniflux-show-special-feeds no
 
 # Compact metadata columns leave more space for names and titles.
 feedlist-title-format " Feeds%?T? — %T&?"
 feedlist-format " %3i  %n %S  %4U unread  %t"
-articlelist-format " %f  %D  %?T?%-18T │ ?%t"
+articlelist-format " %f  %D  %-7p %?T?%-18T │ ?%t"
 datetime-format "%b %d %H:%M"
 text-width 90
-# Keep list headers focused on the view name (History, Shelf, Downloaded, etc.).
+# Keep list headers focused on the view name (History, Starred, Downloaded, etc.).
 articlelist-title-format "%T"
 # feedlist-format "%?T?║%4i %n %8u (%T) %t &╠═════════════════════════════════════════════════════%t?"
 
@@ -30,7 +30,7 @@ macro d set browser "~/scripts/newsboat-download-video.sh %u &" ; open-in-browse
 macro c set browser "python3 ~/scripts/newsboat-download.py --cancel-url %u" ; open-in-browser ; set browser "~/scripts/newsboat-brave-app.sh %u" -- "Cancel selected video download"
 
 # Delete downloaded video (,D)
-macro D set browser "~/scripts/delete-downloaded.sh %u" ; open-in-browser ; set browser "~/scripts/newsboat-brave-app.sh %u" ; reload-urls -- "Delete selected downloaded video"
+macro D set browser "~/scripts/delete-downloaded.sh %u" ; open-in-browser-noninteractively ; set browser "~/scripts/newsboat-brave-app.sh %u" ; reload-urls -- "Delete selected downloaded video"
 
 # Cancel in progress download
 macro S set browser "~/scripts/cancel-download.sh %u" ; open-in-browser ; set browser "~/scripts/newsboat-brave-app.sh %u" -- "Cancel legacy video download"
@@ -73,8 +73,8 @@ max-items 250
 
 show-read-articles no
 show-read-feeds yes
-# Keep Shelf and Downloads visible even when they have no unread items.
-run-on-startup set-filter "unread_count > 0 or feedtitle = \"📚 Shelf\" or feedtitle = \"📥 Downloads\""
+# Keep Starred and Downloads visible even when they have no unread items.
+run-on-startup set-filter "unread_count > 0 or feedtitle = \"⭐ Starred\" or feedtitle = \"📥 Downloads\""
 
 # Ask before closing from the main feed list; q still goes back inside feeds.
 confirm-exit yes
@@ -84,8 +84,8 @@ confirm-exit yes
 bind ? everywhere help -- "Show shortcuts (q to return)"
 # The session wrapper handles this request independently of the selected feed.
 bind H everywhere set browser "newsboat-history://show" ; set browser "~/scripts/newsboat-brave-app.sh %u" -- "History: recent browser links and videos (q to return)"
-bind S articlelist,article,searchresultslist set browser "python3 ~/scripts/newsboat-shelf.py remove %u" ; open-in-browser-noninteractively ; set browser "~/scripts/newsboat-brave-app.sh %u" -- "Remove item from Shelf"
-bind s articlelist,article,searchresultslist set browser "python3 ~/scripts/newsboat-shelf.py save %u" ; open-in-browser-noninteractively ; set browser "~/scripts/newsboat-brave-app.sh %u" -- "Save item to Shelf"
+bind S articlelist,article,searchresultslist set browser "python3 ~/scripts/newsboat-starred.py remove %u" ; open-in-browser-noninteractively ; set browser "~/scripts/newsboat-brave-app.sh %u" -- "Unstar item"
+bind s articlelist,article,searchresultslist set browser "python3 ~/scripts/newsboat-starred.py save %u" ; open-in-browser-noninteractively ; set browser "~/scripts/newsboat-brave-app.sh %u" -- "Star item"
 bind-key j down
 bind-key k up
 bind-key g home

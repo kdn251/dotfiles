@@ -6,7 +6,11 @@
 
 - [x] **Recent history:** `H` opens a native Newsboat list of the latest 500 browser/video opens, displayed oldest first. Use o/O or ,v to reopen; q returns. C clears history after confirmation.
 
-- [x] **Shelf:** `s` saves an item; open Shelf from the main feed list. `S` removes an item from Shelf. Reading/opening/playing an item in Shelf removes it. C clears Shelf after confirmation.
+- [x] **Starred:** `s` stars and `S` unstars directly in Miniflux. Open ⭐ Starred from the main feed list, or Starred in Capy. Reading does not unstar items. C clears the displayed list after confirmation.
+
+- [x] **Automatic download cleanup:** Seven days after 90% playback; unwatched and starred files are protected.
+
+- [x] **Phone Starred:** One Miniflux collection on desktop and mobile, with no separate Shelf sync.
 
 ## Ideas to revisit — not approved for implementation
 
@@ -19,6 +23,6 @@
 7. **Open and advance:** Open an item, mark it read, and select the next unread item.
 8. **Video durations:** Show cached video duration beside titles.
 9. **Undo read:** Recover the last item accidentally marked read.
-10. **Download indicators:** Show downloading, available locally, or failed beside items.
+10. **Download indicators (completed):** Live download percentages, available locally, and failed badges beside items.
 11. **Today view:** Show unread items published today.
 12. **Feed health:** Report failed sources after refreshing.

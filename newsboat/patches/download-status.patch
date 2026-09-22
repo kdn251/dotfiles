@@ -1,0 +1,101 @@
+--- a/src/itemlistformaction.cpp
++++ b/src/itemlistformaction.cpp
+@@ -3,6 +3,9 @@
+ #include <cinttypes>
+ #include <cstdio>
+ #include <cstring>
++#include <cstdlib>
++#include <fstream>
++#include <map>
+ #include <langinfo.h>
+ #include <optional>
+ #include <sstream>
+@@ -26,6 +29,33 @@
+ #include "view.h"
+ 
+ namespace newsboat {
++
++// An external worker publishes download status; rendering never runs commands.
++static std::map<std::string, std::string> download_status;
++static std::string download_revision()
++{
++    const char* path = std::getenv("NEWSBOAT_DOWNLOAD_STATUS");
++    struct stat info {};
++    if (!path || stat(path, &info) != 0) { return ""; }
++    const auto version = std::to_string(info.st_mtim.tv_sec) + ":" +
++        std::to_string(info.st_mtim.tv_nsec) + ":" + std::to_string(info.st_size);
++    static std::string loaded;
++    if (loaded != version) {
++        std::ifstream input(path);
++        std::map<std::string, std::string> updated;
++        std::string line;
++        while (std::getline(input, line)) {
++            const auto split = line.find('\t');
++            if (split != std::string::npos) {
++                updated[line.substr(0, split)] = line.substr(split + 1);
++            }
++        }
++        download_status = std::move(updated);
++        loaded = version;
++    }
++    return version;
++}
++
+ 
+ ItemListFormAction::ItemListFormAction(View& vv,
+ 	std::string formstr,
+@@ -1087,6 +1117,11 @@
+ 
+ 	std::lock_guard<std::mutex> mtx(redraw_mtx);
+ 
++    const auto status_version = download_revision();
++    if (status_version != download_status_version) {
++        download_status_version = status_version;
++        invalidate_list();
++    }
+ 	const auto sort_strategy = cfg->get_article_sort_strategy();
+ 	if (!old_sort_strategy || sort_strategy != *old_sort_strategy) {
+ 		feed->sort(sort_strategy);
+@@ -1149,6 +1184,8 @@
+ 	fmt.register_fmt('d', item.first->deleted() ? "D" : " ");
+ 	fmt.register_fmt('F', item.first->flags());
+ 	fmt.register_fmt('e', item.first->enclosure_url());
++    const auto status = download_status.find(item.first->link());
++    fmt.register_fmt('p', status == download_status.end() ? "" : status->second);
+ 
+ 	using namespace std::chrono;
+ 	const auto article_time_point = system_clock::from_time_t(
+--- a/include/itemlistformaction.h
++++ b/include/itemlistformaction.h
+@@ -151,6 +151,7 @@
+ 
+ 	RegexManager& rxman;
+ 
++	std::string download_status_version;
+ 	unsigned int old_width;
+ 	std::optional<ArticleSortStrategy> old_sort_strategy;
+ 
+--- a/src/view.cpp
++++ b/src/view.cpp
+@@ -177,7 +177,9 @@
+ 		fa->prepare();
+ 
+ 		// we then receive the event and ignore timeouts.
+-		const std::string event = fa->draw_form_wait_for_event(INT_MAX);
++		const std::string event = fa->draw_form_wait_for_event(
++			std::getenv("NEWSBOAT_DOWNLOAD_STATUS") &&
++			std::dynamic_pointer_cast<ItemListFormAction>(fa) ? 1000 : INT_MAX);
+ 
+ 		if (ctrl_c_hit) {
+ 			ctrl_c_hit = false;
+@@ -267,7 +269,9 @@
+ 
+ 		fa->prepare();
+ 
+-		const std::string event = fa->draw_form_wait_for_event(INT_MAX);
++		const std::string event = fa->draw_form_wait_for_event(
++			std::getenv("NEWSBOAT_DOWNLOAD_STATUS") &&
++			std::dynamic_pointer_cast<ItemListFormAction>(fa) ? 1000 : INT_MAX);
+ 		LOG(Level::DEBUG, "View::run: event = %s", event);
+ 		if (event.empty() || event == "TIMEOUT") {
+ 			continue;

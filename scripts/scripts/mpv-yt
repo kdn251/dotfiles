@@ -38,9 +38,11 @@ MEDIA_HELPER="$(dirname "$(readlink -f "$0")")/newsboat_media.py"
 VIDEO_ID=$(python3 "$MEDIA_HELPER" identity "$URL" 2>/dev/null) || VIDEO_ID=""
 DOWNLOADED=$(python3 "$MEDIA_HELPER" find "$URL" 2>/dev/null) || DOWNLOADED=""
 
-READY_OPTS=()
+export NEWSBOAT_MEDIA_URL="$URL"
+export NEWSBOAT_MAINTENANCE="$(dirname "$(readlink -f "$0")")/newsboat-maintenance.py"
+READY_OPTS=("--script=$(dirname "$(readlink -f "$0")")/newsboat-watch-completion.lua")
 if [ -n "${NEWSBOAT_PLAY_READY:-}" ]; then
-  READY_OPTS=("--script=$(dirname "$(readlink -f "$0")")/newsboat-play-ready.lua")
+  READY_OPTS+=("--script=$(dirname "$(readlink -f "$0")")/newsboat-play-ready.lua")
 fi
 
 # The same creator portrait / app badge layout as YouTube, after playback starts.
@@ -94,7 +96,7 @@ if [[ "$URL" =~ twitch\.tv ]]; then
     notify-send "MPV" "Loading Twitch stream..." -t 3000 -u low &
     # Live stream - use low latency settings
     PLAYER_ARGS="--cache=yes --force-window=immediate --vo=gpu --gpu-api=opengl"
-    if [ "${#READY_OPTS[@]}" -gt 0 ]; then PLAYER_ARGS+=" ${READY_OPTS[0]}"; fi
+    PLAYER_ARGS+=" $(python3 -c 'import shlex, sys; print(shlex.join(sys.argv[1:]))' "${READY_OPTS[@]}")"
     STREAM_ARGS="--twitch-low-latency --stream-segment-threads 3 --stream-segment-attempts 3 --stream-segment-timeout 10 --retry-streams 2 --retry-open 2"
   fi
 

@@ -65,6 +65,8 @@ def save(job):
     tmp.write_text(json.dumps(job))
     tmp.chmod(0o600)
     tmp.replace(target)
+    from newsboat_download_status import publish
+    publish(STATE)
 
 
 def notify(job, phase):

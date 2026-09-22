@@ -117,11 +117,12 @@ def write_all(fd, data):
 
 def run(args):
     # Use the optional local build for page-at-a-time list navigation. Child
-    # History/Shelf views inherit both the executable path and this setting.
+    # History/Starred views inherit both the executable path and this setting.
     paged_binary = Path.home()/'.local/lib/newsboat-paged/newsboat'
     if paged_binary.is_file():
         os.environ['PATH'] = str(paged_binary.parent) + os.pathsep + os.environ.get('PATH', '')
         os.environ['NEWSBOAT_PAGE_SCROLL'] = '1'
+        os.environ['NEWSBOAT_DOWNLOAD_STATUS'] = str(Path(os.environ.get('XDG_STATE_HOME', Path.home()/'.local/state'))/'newsboat/download-status.tsv')
     # Preserve CLI/debug modes, which do not run the interactive feed list.
     passthrough = {"-h", "--help", "-v", "-vv", "--version", "-x", "--execute",
                    "-e", "--export-to-opml", "-i", "--import-from-opml",
@@ -150,7 +151,7 @@ def run(args):
     query_offset = int(settings.get('urls-source') == 'miniflux'
                        and settings.get('miniflux-show-special-feeds', 'yes') == 'yes')
     os.environ['NEWSBOAT_URLS_FILE'] = str(urls)
-    subprocess.run([sys.executable, str(Path(__file__).with_name('newsboat-shelf.py')), 'rebuild'], check=True)
+    subprocess.run([sys.executable, str(Path(__file__).with_name('newsboat-starred.py')), 'rebuild'], check=False, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     urls_version = urls.read_bytes() if urls.exists() else b''
     original = termios.tcgetattr(0)
     renderer = Renderer()
@@ -191,7 +192,7 @@ def run(args):
             next_frame = 0.0
             frame = 0
             opening_feed = False
-            shelf_return = False
+            starred_return = False
             count_refresh = False
             configured = [shlex.split(row, comments=True) for row in urls_version.decode().splitlines()]
             configured = [row for row in configured if row]
@@ -199,12 +200,12 @@ def run(args):
                              if row[0].startswith('query:📰 New:')), None)
             if fallback is None:
                 fallback = next((i for i, row in enumerate(configured)
-                                 if not row[0].startswith('query:📚 Shelf:')), 0)
+                                 if not row[0].startswith('query:⭐ Starred:')), 0)
             last_regular_feed = query_offset + fallback
             selected_feed = None
             restore_feed = None
-            counting_shelf = False
-            shelf_has_items = False
+            counting_starred = False
+            starred_has_items = False
             with selectors.DefaultSelector() as selector:
                 selector.register(log_fd, selectors.EVENT_READ, "log")
                 selector.register(master, selectors.EVENT_READ, "terminal")
@@ -224,7 +225,7 @@ def run(args):
                                 # A dedicated binding signal avoids the browser operation,
                                 # which refuses query feeds before launching any command.
                                 view_script = None
-                                for view in ('history', 'shelf'):
+                                for view in ('history', 'starred'):
                                     marker = f"ConfigContainer::set_configvalue(browser, newsboat-{view}://show) called".encode()
                                     if line.rstrip().endswith(marker):
                                         view_script = f"newsboat-{view}.py"
@@ -233,28 +234,28 @@ def run(args):
                                     if not count_refresh:
                                         restore_feed = None
                                         selected_feed = int(line.rsplit(b" ", 1)[1])
-                                shelf_entry = opening_feed and 'View::prepare_query_feed: query:📚 Shelf:'.encode() in line
+                                starred_entry = opening_feed and 'View::prepare_query_feed: query:⭐ Starred:'.encode() in line
                                 if b"View::prepare_query_feed:" in line or b"ItemListFormAction::set_feed:" in line:
                                     opening_feed = False
-                                if (not shelf_return and b"ItemListFormAction::set_feed:" in line
-                                        and not line.rstrip().endswith("title = `📚 Shelf'".encode())
+                                if (not starred_return and b"ItemListFormAction::set_feed:" in line
+                                        and not line.rstrip().endswith("title = `⭐ Starred'".encode())
                                         and selected_feed is not None):
                                     last_regular_feed = selected_feed
-                                if shelf_return and b"ItemListFormAction::set_feed:" in line and line.rstrip().endswith("title = `📚 Shelf'".encode()):
+                                if starred_return and b"ItemListFormAction::set_feed:" in line and line.rstrip().endswith("title = `⭐ Starred'".encode()):
                                     # A populated query entered the parent's article list.
-                                    # Return to its feed list after our Shelf view closes.
+                                    # Return to its feed list after our Starred view closes.
                                     navigation = b"q"
                                     if restore_feed is not None:
                                         navigation += f":{restore_feed + 1}\n".encode()
                                         restore_feed = None
                                     write_all(master, navigation)
-                                    shelf_return = False
-                                if counting_shelf:
+                                    starred_return = False
+                                if counting_starred:
                                     if b"RssFeed::update_items: Matcher matches!" in line:
-                                        shelf_has_items = True
+                                        starred_has_items = True
                                     if b"ScopeMeasure: function `RssFeed::update_items' took " in line:
-                                        counting_shelf = False
-                                        if not shelf_has_items:
+                                        counting_starred = False
+                                        if not starred_has_items:
                                             # An empty query never enters an article list,
                                             # but open still changes the feed cursor.
                                             navigation = b":\x1b"
@@ -262,20 +263,20 @@ def run(args):
                                                 navigation += f":{restore_feed + 1}\n".encode()
                                             write_all(master, navigation)
                                             restore_feed = None
-                                            shelf_return = False
-                                if shelf_entry and count_refresh:
+                                            starred_return = False
+                                if starred_entry and count_refresh:
                                     # Populate the replacement query in memory, without
-                                    # presenting Shelf or changing the selected feed.
+                                    # presenting Starred or changing the selected feed.
                                     count_refresh = False
-                                    counting_shelf = True
-                                    shelf_has_items = False
-                                    shelf_return = True
-                                    shelf_entry = False
-                                if shelf_entry:
-                                    view_script = "newsboat-shelf.py"
-                                    shelf_return = True
-                                    counting_shelf = True
-                                    shelf_has_items = False
+                                    counting_starred = True
+                                    starred_has_items = False
+                                    starred_return = True
+                                    starred_entry = False
+                                if starred_entry:
+                                    view_script = "newsboat-starred.py"
+                                    starred_return = True
+                                    counting_starred = True
+                                    starred_has_items = False
                                     restore_feed = last_regular_feed
                                     selected_feed = last_regular_feed
                                 if b"FeedListFormAction::prepare: doing redraw" in line:
@@ -286,9 +287,9 @@ def run(args):
                                         restore_feed = selected_feed
                                         configured = [shlex.split(row, comments=True) for row in current_urls.decode().splitlines()]
                                         configured = [row for row in configured if row]
-                                        shelf_index = query_offset + next(i for i, row in enumerate(configured) if row[0].startswith('query:📚 Shelf:'))
-                                        refresh_config = Path(directory)/'refresh-shelf'
-                                        refresh_config.write_text(f'bind <F12> feedlist open "{shelf_index}"\n')
+                                        starred_index = query_offset + next(i for i, row in enumerate(configured) if row[0].startswith('query:⭐ Starred:'))
+                                        refresh_config = Path(directory)/'refresh-starred'
+                                        refresh_config.write_text(f'bind <F12> feedlist open "{starred_index}"\n')
                                         write_all(master, f":exec reload-urls\n:source {refresh_config}\n".encode() + b"\x1b[24~")
                                 if view_script:
                                     # Temporarily give this terminal to the native history list.
@@ -301,7 +302,7 @@ def run(args):
                                         tty.setraw(0)
                                         write_all(1, b"\x1b[?1049h\x1b[?25l")
                                         # Dismiss the empty navigation query status before repaint.
-                                        write_all(master, b":\x1b\x0c" if shelf_entry else b"\x0c")
+                                        write_all(master, b":\x1b\x0c" if starred_entry else b"\x0c")
                                 was_active = progress.active
                                 progress.log(line)
                                 if progress.active and not was_active:

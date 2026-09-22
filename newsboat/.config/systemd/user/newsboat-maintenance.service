@@ -1,0 +1,8 @@
+[Unit]
+Description=Refresh Newsboat Starred and clean watched downloads
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/python3 %h/scripts/newsboat-maintenance.py
+TimeoutStartSec=180
+UMask=0077

@@ -1,0 +1,9 @@
+[Unit]
+Description=Maintain Newsboat Starred and downloads every minute
+
+[Timer]
+OnStartupSec=1min
+OnUnitInactiveSec=1min
+
+[Install]
+WantedBy=timers.target

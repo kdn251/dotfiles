@@ -10,6 +10,7 @@ printf '%s  %s\n' aa3d144f737a39567100e82effd1dfd9a0dbcc705332ec66d0c35a750a9a3b
 tar -xzf "$build_dir/source.tar.gz" -C "$build_dir"
 cd "$build_dir/newsboat-r2.44"
 patch -p1 < "$repo/newsboat/patches/paged-lists.patch"
+patch -p1 < "$repo/newsboat/patches/download-status.patch"
 make -j"${NEWSBOAT_BUILD_JOBS:-4}" WARNFLAGS="-Werror -Wall -Wextra -Wunreachable-code -Wno-error=unused-function" newsboat
 install -m 755 newsboat "$install_dir/newsboat.new"
 mv "$install_dir/newsboat.new" "$install_dir/newsboat"
