@@ -116,6 +116,12 @@ def write_all(fd, data):
 
 
 def run(args):
+    # Use the optional local build for page-at-a-time list navigation. Child
+    # History/Shelf views inherit both the executable path and this setting.
+    paged_binary = Path.home()/'.local/lib/newsboat-paged/newsboat'
+    if paged_binary.is_file():
+        os.environ['PATH'] = str(paged_binary.parent) + os.pathsep + os.environ.get('PATH', '')
+        os.environ['NEWSBOAT_PAGE_SCROLL'] = '1'
     # Preserve CLI/debug modes, which do not run the interactive feed list.
     passthrough = {"-h", "--help", "-v", "-vv", "--version", "-x", "--execute",
                    "-e", "--export-to-opml", "-i", "--import-from-opml",
@@ -190,7 +196,7 @@ def run(args):
             configured = [shlex.split(row, comments=True) for row in urls_version.decode().splitlines()]
             configured = [row for row in configured if row]
             fallback = next((i for i, row in enumerate(configured)
-                             if row[0].startswith('query:All New Items:')), None)
+                             if row[0].startswith('query:New:')), None)
             if fallback is None:
                 fallback = next((i for i, row in enumerate(configured)
                                  if not row[0].startswith('query:Shelf:')), 0)

@@ -207,7 +207,7 @@ def rebuild_unlocked():
     rest = [line for line in current.splitlines() if not line.startswith('"query:Downloaded:')]
     # Keep the unified unread inbox first when rebuilding the download library.
     position = next((i + 1 for i, line in enumerate(rest)
-                     if line.startswith('"query:All New Items:')), 0)
+                     if line.startswith('"query:New:')), 0)
     rest.insert(position, query)
     content = '\n'.join(rest) + '\n'
     if content != current:

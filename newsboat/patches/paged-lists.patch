@@ -1,0 +1,31 @@
+--- a/include/listmovementcontrol.h
++++ b/include/listmovementcontrol.h
+@@ -2,6 +2,7 @@
+ #define NEWSBOAT_LISTMOVEMENTCONTROL_H_
+ 
+ #include <cstdint>
++#include <cstdlib>
+ #include <string>
+ 
+ #include "dialog.h"
+@@ -201,6 +202,9 @@
+ 	{
+ 		const auto h = Backend::get_height();
+ 		const auto num_lines = Backend::get_num_lines();
++		if (std::getenv("NEWSBOAT_PAGE_SCROLL") && h > 0 && num_lines > 0) {
++			return ((num_lines - 1) / h) * h;
++		}
+ 		// An offset at which the last item of the list is at the bottom of the
+ 		// widget. We shouldn't set "offset" to more than this value, otherwise
+ 		// we'll have an empty "gap" at the bottom of the list. That's only
+@@ -227,6 +231,10 @@
+ 
+ 		const auto h = Backend::get_height();
+ 
++		if (std::getenv("NEWSBOAT_PAGE_SCROLL") && h > 0) {
++			return (pos / h) * h;
++		}
++
+ 		if (2 * num_context_lines < h) {
+ 			// Check if items at the bottom of the "context" are visible. If not,
+ 			// we'll have to scroll down.
