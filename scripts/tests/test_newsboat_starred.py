@@ -31,6 +31,7 @@ class StarredTests(unittest.TestCase):
                 starred.URLS.write_text('"query:📚 Shelf:link = \\"none\\""\n')
                 for _ in range(2):starred.set_star(server.rows[1]['url'],True,server)
                 self.assertTrue(server.rows[1]['starred'])
+                self.assertEqual(Path(str(starred.STARRED_STATUS)+'.count').read_text(), '1\n')
                 self.assertIn(server.rows[1]['url'],starred.STARRED_STATUS.read_text())
                 self.assertEqual(server.rows[1]['status'],'unread')
                 self.assertIn('⭐ Starred',starred.URLS.read_text())
@@ -40,6 +41,7 @@ class StarredTests(unittest.TestCase):
                 starred.set_star(server.rows[1]['url'],False,server)
                 self.assertFalse(server.rows[1]['starred'])
                 self.assertEqual(starred.STARRED_STATUS.read_text(),'')
+                self.assertEqual(Path(str(starred.STARRED_STATUS)+'.count').read_text(), '0\n')
                 self.assertEqual(server.rows[1]['status'],'read')
                 with patch.object(server,'starred',side_effect=OSError):
                     with self.assertRaises(OSError):starred.set_star(server.rows[1]['url'],True,server)

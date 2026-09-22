@@ -1,6 +1,10 @@
 import http.server,json,os,pty,tempfile,select,time,signal,subprocess,threading
 import unittest,shutil,fcntl,struct,termios
 from pathlib import Path
+try:
+ import pyte
+except ImportError:
+ pyte=None
 SCRIPTS=Path(__file__).resolve().parents[1]/'scripts'
 
 @unittest.skipUnless(shutil.which('newsboat'),'requires Newsboat')
@@ -41,11 +45,15 @@ class NavigationTests(unittest.TestCase):
     pid,fd=pty.fork()
     if not pid:os.execvpe('python3',['python3',str(SCRIPTS/'newsboat-session.py'),*args],env)
     fcntl.ioctl(fd,termios.TIOCSWINSZ,struct.pack('HHHH',30,120,0,0));data=bytearray()
+    screen=pyte.Screen(120,30) if pyte else None
+    stream=pyte.ByteStream(screen) if screen else None
     def until(predicate):
      end=time.monotonic()+8
      while time.monotonic()<end:
       if predicate():return
-      if select.select([fd],[],[],.05)[0]:data.extend(os.read(fd,65536))
+      if select.select([fd],[],[],.05)[0]:
+       chunk=os.read(fd,65536);data.extend(chunk)
+       if stream:stream.feed(chunk)
      raise AssertionError(repr(data[-1800:]))
     try:
      until(lambda:b'Starred | 1 unread' in data);data.clear();os.write(fd,b'\n')
@@ -56,6 +64,7 @@ class NavigationTests(unittest.TestCase):
      data.clear();os.write(fd,b'\n');until(lambda:b'Full article body' in data)
      data.clear();os.write(fd,b'q');until(lambda:b'saved-article' in data);self.assertTrue(row['starred'])
      os.write(fd,b'S');until(lambda:not row['starred']);time.sleep(.2)
+     if binary and screen:until(lambda:'saved-article' not in '\n'.join(screen.display))
      data.clear();os.write(fd,b'q');until(lambda:b'Starred | 0 unread' in data)
      self.assertNotIn(b'\x1b[?1049l',data)
      self.assertNotIn(b'\x1b[?1049h',data)

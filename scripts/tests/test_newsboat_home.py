@@ -14,16 +14,17 @@ class HomeTests(unittest.TestCase):
   with tempfile.TemporaryDirectory() as directory:
    root=Path(directory);config=root/'config';urls=root/'urls'
    selected=[line for line in CONFIG.read_text().splitlines() if line.startswith(('run-on-startup ','feedlist-title-format ','show-read-feeds ','confirm-exit ','bind n '))]
-   config.write_text('\n'.join(selected)+'\nprepopulate-query-feeds yes\nfeedlist-format "%t | %U unread"\nbind-key j down\nbind-key k up\n')
+   config.write_text('\n'.join(selected)+'\nprepopulate-query-feeds yes\nfeedlist-format "%t | %v %k"\nbind-key j down\nbind-key k up\n')
    lines=[json.dumps('query:'+name+':link = "none"',ensure_ascii=False) for name in ['📰 New','⭐ Starred','📥 Downloads','📚 All']]
    for name in ['Source A','Source B']:
     feed=root/(name.replace(' ','')+'.xml');feed.write_text(f'<rss version="2.0"><channel><title>{name}</title><link>https://example.com</link><description>Test</description><item><title>Article {name}</title><link>https://example.com/{name[-1]}</link><guid>{name}</guid></item></channel></rss>');lines.append(feed.as_uri())
    urls.write_text('\n'.join(lines)+'\n');args=[str(BINARY),'-q','-C',str(config),'-u',str(urls),'-c',str(root/'cache')]
    subprocess.run(args+['-x','reload'],check=True,capture_output=True)
    with sqlite3.connect(root/'cache') as db:db.execute("UPDATE rss_item SET unread=0 WHERE title='Article Source B'")
+   (root/'stars.count').write_text('3\n')
    pid,fd=pty.fork()
    if not pid:
-    os.environ.update(HOME=directory,TERM='xterm-256color',NEWSBOAT_LIVE_QUERIES=str(urls));os.execv(str(BINARY),args)
+    os.environ.update(NEWSBOAT_STARRED_STATUS=str(root/'stars'),HOME=directory,TERM='xterm-256color',NEWSBOAT_LIVE_QUERIES=str(urls));os.execv(str(BINARY),args)
    fcntl.ioctl(fd,termios.TIOCSWINSZ,struct.pack('HHHH',24,100,0,0));screen=pyte.Screen(100,24);stream=pyte.ByteStream(screen)
    def wait(predicate):
     end=time.monotonic()+7
@@ -32,9 +33,10 @@ class HomeTests(unittest.TestCase):
      if predicate('\n'.join(screen.display)):return
     self.fail('\n'.join(screen.display))
    try:
-    wait(lambda s:'⛵ Newsboat' in s and s.count(' unread')==4)
+    wait(lambda s:'⛵ Newsboat' in s and s.count(' unread')==2)
     self.assertIn('📚 All | 1 unread', '\n'.join(screen.display))
-    os.write(fd,b'l');wait(lambda s:'📚 All | 1 unread' in screen.display[1])
+    self.assertIn('⭐ Starred | 3 items','\n'.join(screen.display))
+    os.write(fd,b'l');wait(lambda s:'⭐ Starred | 3 items' in screen.display[1])
     self.assertIn('📚 All | 1 unread','\n'.join(screen.display))
     os.write(fd,b'l');wait(lambda s:'📰 New' in screen.display[1])
     os.write(fd,b':4\n\n');wait(lambda s:'📚 All — q: Home' in s and s.count(' unread')==2)
@@ -44,7 +46,7 @@ class HomeTests(unittest.TestCase):
     os.write(fd,b'\n');wait(lambda s:"Articles in feed 'Source A'" in s)
     os.write(fd,b'n');wait(lambda s:'Articles in feed' in s)
     os.write(fd,b'q');wait(lambda s:'📚 All — q: Home' in s and s.count(' unread')==2)
-    os.write(fd,b'q');wait(lambda s:'⛵ Newsboat' in s and s.count(' unread')==4)
+    os.write(fd,b'q');wait(lambda s:'⛵ Newsboat' in s and s.count(' unread')==2)
     self.assertEqual(screen.cursor.y,4)
     self.assertIn('📚 All | 0 unread', '\n'.join(screen.display))
     os.write(fd,b'q');wait(lambda s:'Do you really want to quit' in s)

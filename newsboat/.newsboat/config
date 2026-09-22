@@ -13,7 +13,7 @@ miniflux-show-special-feeds no
 
 # Compact metadata columns leave more space for names and titles.
 feedlist-title-format " ⛵ Newsboat"
-feedlist-format " %3i  %n %S  %4U unread  %t"
+feedlist-format " %3i  %n %S  %4v %-6k  %t"
 articlelist-format " %f  %D  %-9p %?T?%-18T │ ?%t"
 datetime-format "%b %d %H:%M"
 text-width 90

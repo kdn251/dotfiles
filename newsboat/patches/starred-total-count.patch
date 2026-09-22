@@ -1,0 +1,41 @@
+--- a/src/feedlistformaction.cpp
++++ b/src/feedlistformaction.cpp
+@@ -4,6 +4,7 @@
+ #include <cassert>
+ #include <cstdint>
+ #include <cstdlib>
++#include <fstream>
+ #include <sys/stat.h>
+ #include <cstring>
+ #include <langinfo.h>
+@@ -1130,6 +1131,15 @@
+     const std::shared_ptr<RssFeed>& feed) const
+ {
+ 	unsigned int unread_count = feed->unread_item_count();
++    if (feed->rssurl().find("query:⭐ Starred:") == 0) {
++        auto total = static_cast<unsigned int>(feed->total_item_count());
++        if (const char* stars = std::getenv("NEWSBOAT_STARRED_STATUS")) {
++            std::ifstream count_file(std::string(stars) + ".count");
++            unsigned int saved_count;
++            if (count_file >> saved_count) { total = saved_count; }
++        }
++        return total;
++    }
+     if (feed->rssurl().find("query:📚 All:") == 0) {
+         unread_count = 0;
+         for (const auto& source : v.get_ctrl().get_feedcontainer()->get_all_feeds()) {
+@@ -1156,9 +1166,12 @@
+ 		strprintf::fmt("(%u/%u)",
+ 			unread_count,
+ 			static_cast<unsigned int>(feed->total_item_count())));
+-	fmt.register_fmt('U', std::to_string(unread_count));
++    const bool starred_view = feed->rssurl().find("query:⭐ Starred:") == 0;
++    fmt.register_fmt('v', std::to_string(unread_count));
++    fmt.register_fmt('k', starred_view ? "items" : "unread");
++	fmt.register_fmt('U', std::to_string(starred_view ? feed->unread_item_count() : unread_count));
+ 	fmt.register_fmt('c', std::to_string(feed->total_item_count()));
+-	fmt.register_fmt('n', unread_count > 0 ? "N" : " ");
++	fmt.register_fmt('n', !starred_view && unread_count > 0 ? "N" : " ");
+ 	fmt.register_fmt('S', feed->get_status());
+ 	fmt.register_fmt('t', get_title(feed));
+ 	fmt.register_fmt('T', feed->get_firsttag());

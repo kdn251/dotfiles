@@ -1,0 +1,50 @@
+--- a/src/itemlistformaction.cpp
++++ b/src/itemlistformaction.cpp
+@@ -19,6 +19,7 @@
+ #include "dbexception.h"
+ #include "fmtstrformatter.h"
+ #include "formaction.h"
++#include "feedcontainer.h"
+ #include "htmlrenderer.h"
+ #include "itemutils.h"
+ #include "logger.h"
+@@ -121,6 +122,26 @@
+ 		}
+ 	}
+ 	break;
++    case OP_RELOADURLS: {
++        const bool downloads = feed->rssurl().find("query:📥 Downloads:") == 0;
++        // Rebind the open Downloads view to its freshly rebuilt query. The
++        // selected file was deleted; prefer the following row, then previous.
++        if (downloads && !visible_items.empty()) {
++            const auto next = itempos + 1 < visible_items.size() ? itempos + 1 :
++                (itempos > 0 ? itempos - 1 : itempos);
++            restore_selection_guid = visible_items[next].first->guid();
++        }
++        v.get_ctrl().reload_urls_file();
++        if (downloads) {
++            for (const auto& updated : v.get_ctrl().get_feedcontainer()->get_all_feeds()) {
++                if (updated->rssurl().find("query:📥 Downloads:") == 0) {
++                    set_feed(updated);
++                    break;
++                }
++            }
++        }
++        break;
++    }
+ 	case OP_DELETE: {
+ 		ScopeMeasure m1("OP_DELETE");
+ 		if (!visible_items.empty()) {
+--- a/src/listwidgetbackend.cpp
++++ b/src/listwidgetbackend.cpp
+@@ -95,6 +95,10 @@
+ 		listfmt.add_line(formatted_line);
+ 	}
+ 
++    // Clear rows left behind when a removal shortens the visible list.
++    for (std::uint32_t i = visible_content_lines; i < viewport_height; ++i) {
++        listfmt.add_line(StflRichText::from_plaintext(""));
++    }
+ 	form.modify(list_name, "replace_inner", listfmt.format_list());
+ }
+ 

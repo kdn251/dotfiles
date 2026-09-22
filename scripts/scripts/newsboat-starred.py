@@ -33,6 +33,7 @@ def rebuild_query(rows):
     from newsboat_media import atomic_write
     STARRED_STATUS.parent.mkdir(parents=True,exist_ok=True)
     atomic_write(STARRED_STATUS.with_name('starred-items.json'), json.dumps(rows))
+    atomic_write(Path(str(STARRED_STATUS)+'.count'), str(len(rows))+'\n')
     content = ''.join(url+'\n' for url in sorted({row['url'] for row in rows}) if not any(c in url for c in '\r\n'))
     if not STARRED_STATUS.exists() or STARRED_STATUS.read_text() != content:
         STARRED_STATUS.parent.mkdir(parents=True,exist_ok=True)

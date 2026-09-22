@@ -1,5 +1,5 @@
 """Exercise actual native query counts and selection across URL rewrites."""
-import fcntl,os,pty,select,signal,struct,subprocess,tempfile,termios,time,unittest
+import sqlite3,fcntl,os,pty,select,signal,struct,subprocess,tempfile,termios,time,unittest
 from pathlib import Path
 try:
     import pyte
@@ -12,7 +12,7 @@ class DownloadCountsTests(unittest.TestCase):
     def test_return_idle_and_delete_update_counts_without_moving_cursor(self):
         with tempfile.TemporaryDirectory() as directory:
             root=Path(directory);config=root/'config';urls=root/'urls';feed=root/'feed.xml'
-            config.write_text('articlelist-format "%-9p %t"\nshow-read-feeds yes\nshow-read-articles yes\nprepopulate-query-feeds yes\nfeedlist-format "%t | %U unread"\nconfirm-exit no\n')
+            config.write_text('articlelist-format "%-9p %t"\nshow-read-feeds yes\nshow-read-articles yes\nprepopulate-query-feeds yes\nfeedlist-format "%t | %v %k"\nconfirm-exit no\n')
             feed.write_text('<rss version="2.0"><channel><title>Source</title><link>https://example.com</link><description>Test</description>'+''.join(f'<item><title>Video{i}</title><link>https://example.com/{i}</link><guid>{i}</guid></item>' for i in [1,2])+'</channel></rss>')
             def update(expression):
                 text='"query:📥 Downloads:'+expression.replace('"','\\"')+'"\n'+feed.as_uri()+'\n'
@@ -20,6 +20,8 @@ class DownloadCountsTests(unittest.TestCase):
             update('title = "none"')
             args=[str(BINARY),'-q','-C',str(config),'-u',str(urls),'-c',str(root/'cache')]
             subprocess.run(args+['-x','reload'],check=True,capture_output=True)
+            with sqlite3.connect(root/'cache') as db:
+                db.execute('UPDATE rss_item SET unread=0')
             pid,fd=pty.fork()
             if pid==0:
                 os.environ.update(TERM='xterm-256color',NEWSBOAT_LIVE_QUERIES=str(urls),HOME=directory,NEWSBOAT_DOWNLOAD_STATUS=str(root/'downloads.tsv'),NEWSBOAT_STARRED_STATUS=str(root/'stars.txt'))
@@ -33,7 +35,7 @@ class DownloadCountsTests(unittest.TestCase):
                     if text in '\n'.join(screen.display):return
                 self.fail('\n'.join(screen.display))
             try:
-                wait('Downloads | 0 unread')
+                wait('Downloads | 0 items')
                 os.write(fd,b':2\n\n');wait("Articles in feed 'Source'")
                 (root/'downloads.tsv').write_text('https://example.com/1\t📥\n')
                 (root/'stars.txt').write_text('https://example.com/1\n')
@@ -45,11 +47,27 @@ class DownloadCountsTests(unittest.TestCase):
                 self.assertNotIn('󰓎','\n'.join(screen.display))
                 self.assertIn('📥','\n'.join(screen.display))
                 update('title = "Video1"')
-                os.write(fd,b'q');wait('Downloads | 1 unread')
+                os.write(fd,b'q');wait('Downloads | 1 items')
                 self.assertEqual(screen.cursor.y,2)
-                update('title =~ "Video"');wait('Downloads | 2 unread')
+                update('title =~ "Video"');wait('Downloads | 2 items')
                 self.assertEqual(screen.cursor.y,2)
-                update('title = "none"');wait('Downloads | 0 unread')
-                self.assertEqual(screen.cursor.y,2)
+                os.write(fd,b':1\n\n');wait("Articles in feed '📥 Downloads'")
+                update('title = "Video2"')
+                os.write(fd,b':exec reload-urls\n')
+                deadline=time.monotonic()+4
+                while time.monotonic()<deadline:
+                    if select.select([fd],[],[],.05)[0]:stream.feed(os.read(fd,65536))
+                    if 'Video1' not in '\n'.join(screen.display):break
+                self.assertNotIn('Video1','\n'.join(screen.display))
+                self.assertIn('Video2','\n'.join(screen.display))
+                update('title = "none"')
+                os.write(fd,b':exec reload-urls\n')
+                deadline=time.monotonic()+4
+                while time.monotonic()<deadline:
+                    if select.select([fd],[],[],.05)[0]:stream.feed(os.read(fd,65536))
+                    if 'Video2' not in '\n'.join(screen.display):break
+                self.assertNotIn('Video2','\n'.join(screen.display))
+                os.write(fd,b'q');wait('Downloads | 0 items')
+                self.assertEqual(screen.cursor.y,1)
             finally:
                 os.kill(pid,signal.SIGTERM);os.waitpid(pid,0);os.close(fd)
