@@ -3,6 +3,7 @@
 from contextlib import closing
 from email.utils import formatdate
 import importlib.util
+import fcntl
 import json
 import os
 from pathlib import Path
@@ -77,6 +78,44 @@ def set_star(url, desired, client=None):
     if ids:
         client.request('entries',{'entry_ids':sorted(ids),'starred':desired},method='PUT')
     rebuild_query(client.starred())
+
+
+
+def enqueue_star(url, desired):
+    """Hand the request to a detached worker; the keyboard never waits on HTTP."""
+    from newsboat_media import atomic_write
+    queue = STARRED_STATUS.parent/'star-actions'
+    queue.mkdir(parents=True, exist_ok=True)
+    job = queue/f'{time.time_ns():020d}-{os.getpid()}.json'
+    atomic_write(job, json.dumps({'url': url, 'desired': desired, 'cache': str(CACHE)}))
+    try:
+        subprocess.Popen([sys.executable, str(Path(__file__).resolve()), 'work'],
+                         stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
+                         stderr=subprocess.DEVNULL, start_new_session=True)
+    except Exception:
+        job.unlink(missing_ok=True)
+        raise
+
+
+def drain_star_actions():
+    global CACHE
+    queue = STARRED_STATUS.parent/'star-actions'
+    queue.mkdir(parents=True, exist_ok=True)
+    # Serialize rapid s/S requests so the final state follows keypress order.
+    with (queue/'worker.lock').open('a') as lock:
+        fcntl.flock(lock, fcntl.LOCK_EX)
+        while jobs := sorted(queue.glob('*.json')):
+            for job in jobs:
+                try:
+                    action = json.loads(job.read_text())
+                    CACHE = Path(action['cache'])
+                    set_star(action['url'], action['desired'])
+                except Exception:
+                    subprocess.run(['notify-send', '-a', 'Newsboat', '-t', '5000',
+                                    'Star change failed',
+                                    'Could not update Miniflux. Reopen Starred after syncing and try again.'], check=False)
+                finally:
+                    job.unlink(missing_ok=True)
 
 
 def write_feed(directory, rows):
@@ -180,7 +219,8 @@ def main():
     try:
         action=sys.argv[1]
         if action in {'save','remove'}:
-            set_star(sys.argv[2],action=='save')
+            enqueue_star(sys.argv[2],action=='save')
+        elif action=='work':drain_star_actions()
         elif action=='rebuild':rebuild_query(entries())
         elif action=='show':show()
         return 0
