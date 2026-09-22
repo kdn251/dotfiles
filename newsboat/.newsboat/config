@@ -11,7 +11,12 @@ include "~/.newsboat/miniflux_creds.conf"
 
 miniflux-show-special-feeds yes
 
-articlelist-format "%4i %f %D %?T?| %-17T| ?%t"
+# Compact metadata columns leave more space for names and titles.
+feedlist-title-format " Feeds%?T? — %T&?"
+feedlist-format " %3i  %n %S  %4U unread  %t"
+articlelist-format " %f  %D  %?T?%-18T │ ?%t"
+datetime-format "%b %d %H:%M"
+text-width 90
 # Keep list headers focused on the view name (History, Shelf, Downloaded, etc.).
 articlelist-title-format "%T"
 # feedlist-format "%?T?║%4i %n %8u (%T) %t &╠═════════════════════════════════════════════════════%t?"
@@ -129,4 +134,3 @@ ignore-article "*" "tags =~ \"LIVE\""
 # highlight feedlist ".*0/0.." default default invis
 
 user-agent "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
-
