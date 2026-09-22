@@ -6,6 +6,8 @@
 
 - [x] **Recent history:** `H` opens a native Newsboat list of the latest 500 browser/video opens, displayed oldest first. Use o/O or ,v to reopen; q returns. C clears history after confirmation.
 
+- [x] **Shelf:** `s` saves an item; `S` opens the native list. Reading/opening/playing an item in Shelf removes it. C clears Shelf after confirmation.
+
 ## Ideas to revisit — not approved for implementation
 
 1. **Watch queue:** Queue videos while browsing, then play them in order.

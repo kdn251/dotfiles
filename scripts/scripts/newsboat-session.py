@@ -182,12 +182,17 @@ def run(args):
                                 line, pending_log = pending_log.split(b"\n", 1)
                                 # A dedicated binding signal avoids the browser operation,
                                 # which refuses query feeds before launching any command.
-                                if line.rstrip().endswith(b"ConfigContainer::set_configvalue(browser, newsboat-history://show) called"):
+                                view_script = None
+                                for view in ('history', 'shelf'):
+                                    marker = f"ConfigContainer::set_configvalue(browser, newsboat-{view}://show) called".encode()
+                                    if line.rstrip().endswith(marker):
+                                        view_script = f"newsboat-{view}.py"
+                                if view_script:
                                     # Temporarily give this terminal to the native history list.
                                     termios.tcsetattr(0, termios.TCSADRAIN, original)
                                     try:
                                         subprocess.run(
-                                            [sys.executable, str(Path(__file__).with_name("newsboat-history.py")), "show"],
+                                            [sys.executable, str(Path(__file__).with_name(view_script)), "show"],
                                             check=False)
                                     finally:
                                         tty.setraw(0)

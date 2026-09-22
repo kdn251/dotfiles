@@ -12,6 +12,8 @@ include "~/.newsboat/miniflux_creds.conf"
 miniflux-show-special-feeds yes
 
 articlelist-format "%4i %f %D %?T?| %-17T| ?%t"
+# Keep list headers focused on the view name (History, Shelf, Downloaded, etc.).
+articlelist-title-format "%T"
 # feedlist-format "%?T?║%4i %n %8u (%T) %t &╠═════════════════════════════════════════════════════%t?"
 
 browser "~/scripts/newsboat-brave-app.sh %u"
@@ -75,6 +77,8 @@ confirm-exit yes
 bind ? everywhere help -- "Show shortcuts (q to return)"
 # The session wrapper handles this request independently of the selected feed.
 bind H everywhere set browser "newsboat-history://show" ; set browser "~/scripts/newsboat-brave-app.sh %u" -- "History: recent browser links and videos (q to return)"
+bind S everywhere set browser "newsboat-shelf://show" ; set browser "~/scripts/newsboat-brave-app.sh %u" -- "Open Shelf (saved for later)"
+bind s articlelist,article,searchresultslist set browser "python3 ~/scripts/newsboat-shelf.py save %u" ; open-in-browser-noninteractively ; set browser "~/scripts/newsboat-brave-app.sh %u" -- "Save item to Shelf"
 bind-key j down
 bind-key k up
 bind-key g home
