@@ -71,12 +71,12 @@ def rebuild_query():
     current = URLS.read_text()
     lines = current.splitlines()
     position = next((i for i, line in enumerate(lines)
-                     if line.startswith('"query:Shelf:')), None)
+                     if line.startswith('"query:📚 Shelf:')), None)
     if position is None:
         return
     expression = ' or '.join('link = ' + json.dumps(row[0]) for row in entries())
     expression = expression or 'link = "newsboat-shelf://navigation"'
-    lines[position] = json.dumps('query:Shelf:(' + expression + ') and feedtitle !~ "Starred"')
+    lines[position] = json.dumps('query:📚 Shelf:(' + expression + ') and feedtitle !~ "Starred"', ensure_ascii=False)
     content = '\n'.join(lines) + '\n'
     if content != current:
         # Follow the stow symlink, and replace only after the full file is written.
@@ -96,7 +96,7 @@ def prepare_view(directory):
     command, config = history.prepare_view(directory)
     rss = ET.Element('rss', version='2.0')
     channel = ET.SubElement(rss, 'channel')
-    for key, value in [('title', 'Shelf'), ('link', 'https://localhost/shelf'),
+    for key, value in [('title', '📚 Shelf'), ('link', 'https://localhost/shelf'),
                        ('description', 'Saved for later. Opening an item removes it from Shelf.')]:
         ET.SubElement(channel, key).text = value
     rows = entries()

@@ -202,12 +202,12 @@ def rebuild_unlocked():
         patterns.append(r'^https?://(clips[.]twitch[.]tv/|(www[.])?twitch[.]tv/[^/]+/clip/)('
                         + '|'.join(clips) + r')([?&#/]|$)')
     expression = ' or '.join('link =~ ' + json.dumps(pattern) for pattern in patterns) or 'link = ""'
-    query = json.dumps('query:Downloaded:(' + expression + ') and feedtitle !~ "Starred"', ensure_ascii=False) + ' downloaded'
+    query = json.dumps('query:📥 Downloads:(' + expression + ') and feedtitle !~ "Starred"', ensure_ascii=False) + ' downloaded'
     current = URLS.read_text() if URLS.exists() else ''
-    rest = [line for line in current.splitlines() if not line.startswith('"query:Downloaded:')]
+    rest = [line for line in current.splitlines() if not line.startswith(('"query:Downloaded:', '"query:📥 Downloaded:', '"query:📥 Downloads:'))]
     # Keep the unified unread inbox first when rebuilding the download library.
     position = next((i + 1 for i, line in enumerate(rest)
-                     if line.startswith('"query:New:')), 0)
+                     if line.startswith('"query:📰 New:')), 0)
     rest.insert(position, query)
     content = '\n'.join(rest) + '\n'
     if content != current:

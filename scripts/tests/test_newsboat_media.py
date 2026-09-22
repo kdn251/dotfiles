@@ -102,7 +102,7 @@ class MediaTests(unittest.TestCase):
         text=media.URLS.read_text()
         self.assertIn('abc123DEF45',text);self.assertIn('1234567890',text)
         self.assertNotIn('abc123DEF46',text);self.assertTrue(text.endswith(original))
-        self.assertEqual(text.count('query:Downloaded:'),1)
+        self.assertEqual(text.count('query:📥 Downloads:'),1)
         media.rebuild();self.assertEqual(media.URLS.read_text(),text)
 
     @unittest.skipUnless(shutil.which('mpv'), 'requires mpv')
@@ -159,7 +159,7 @@ class MediaTests(unittest.TestCase):
                         except OSError:break
                 self.fail(repr(data[-1000:]))
             try:
-                wait_for(lambda:b'Downloaded' in data)
+                wait_for(lambda:'📥 Downloads'.encode() in data)
                 os.write(fd,b'\n');wait_for(lambda:b'Fixture video' in data)
                 launch_offset=len(data)
                 os.write(fd,key);wait_for(marker.exists)

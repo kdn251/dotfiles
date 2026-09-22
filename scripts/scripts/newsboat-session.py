@@ -196,10 +196,10 @@ def run(args):
             configured = [shlex.split(row, comments=True) for row in urls_version.decode().splitlines()]
             configured = [row for row in configured if row]
             fallback = next((i for i, row in enumerate(configured)
-                             if row[0].startswith('query:New:')), None)
+                             if row[0].startswith('query:📰 New:')), None)
             if fallback is None:
                 fallback = next((i for i, row in enumerate(configured)
-                                 if not row[0].startswith('query:Shelf:')), 0)
+                                 if not row[0].startswith('query:📚 Shelf:')), 0)
             last_regular_feed = query_offset + fallback
             selected_feed = None
             restore_feed = None
@@ -233,14 +233,14 @@ def run(args):
                                     if not count_refresh:
                                         restore_feed = None
                                         selected_feed = int(line.rsplit(b" ", 1)[1])
-                                shelf_entry = opening_feed and b'View::prepare_query_feed: query:Shelf:' in line
+                                shelf_entry = opening_feed and 'View::prepare_query_feed: query:📚 Shelf:'.encode() in line
                                 if b"View::prepare_query_feed:" in line or b"ItemListFormAction::set_feed:" in line:
                                     opening_feed = False
                                 if (not shelf_return and b"ItemListFormAction::set_feed:" in line
-                                        and not line.rstrip().endswith(b"title = `Shelf'")
+                                        and not line.rstrip().endswith("title = `📚 Shelf'".encode())
                                         and selected_feed is not None):
                                     last_regular_feed = selected_feed
-                                if shelf_return and b"ItemListFormAction::set_feed:" in line and line.rstrip().endswith(b"title = `Shelf'"):
+                                if shelf_return and b"ItemListFormAction::set_feed:" in line and line.rstrip().endswith("title = `📚 Shelf'".encode()):
                                     # A populated query entered the parent's article list.
                                     # Return to its feed list after our Shelf view closes.
                                     navigation = b"q"
@@ -286,7 +286,7 @@ def run(args):
                                         restore_feed = selected_feed
                                         configured = [shlex.split(row, comments=True) for row in current_urls.decode().splitlines()]
                                         configured = [row for row in configured if row]
-                                        shelf_index = query_offset + next(i for i, row in enumerate(configured) if row[0].startswith('query:Shelf:'))
+                                        shelf_index = query_offset + next(i for i, row in enumerate(configured) if row[0].startswith('query:📚 Shelf:'))
                                         refresh_config = Path(directory)/'refresh-shelf'
                                         refresh_config.write_text(f'bind <F12> feedlist open "{shelf_index}"\n')
                                         write_all(master, f":exec reload-urls\n:source {refresh_config}\n".encode() + b"\x1b[24~")

@@ -42,7 +42,7 @@ macro S set browser "~/scripts/cancel-download.sh %u" ; open-in-browser ; set br
 macro w set browser "~/scripts/twitch-launcher.sh" ; open-in-browser ; set browser "~/scripts/newsboat-brave-app.sh %u" -- "Open Twitch live-channel picker"
 
 # Refresh downloaded videos feed (,R)
-macro R set browser "~/scripts/update-downloaded-query.sh" ; open-in-browser ; set browser "~/scripts/newsboat-brave-app.sh %u" ; reload-urls -- "Rebuild and reload Downloaded view"
+macro R set browser "~/scripts/update-downloaded-query.sh" ; open-in-browser ; set browser "~/scripts/newsboat-brave-app.sh %u" ; reload-urls -- "Rebuild and reload Downloads view"
 
 # Keep Newsboat visible while waiting for playback, then mark the article read.
 # Stream YouTube video
@@ -73,8 +73,8 @@ max-items 250
 
 show-read-articles no
 show-read-feeds yes
-# Keep the Shelf navigation entry visible even when empty.
-run-on-startup set-filter "unread_count > 0 or feedtitle = \"Shelf\""
+# Keep Shelf and Downloads visible even when they have no unread items.
+run-on-startup set-filter "unread_count > 0 or feedtitle = \"📚 Shelf\" or feedtitle = \"📥 Downloads\""
 
 # Ask before closing from the main feed list; q still goes back inside feeds.
 confirm-exit yes

@@ -9,10 +9,10 @@ class ShelfNavigationTests(unittest.TestCase):
  def test_main_entry_unshelf_and_empty_reopen(self):
   with tempfile.TemporaryDirectory() as tmp:
    p=Path(tmp);(p/'.newsboat').mkdir();config=p/'.newsboat/config'
-   config.write_text('bind-key j down\nprepopulate-query-feeds yes\nfeedlist-format "%t | %U unread"\nshow-read-feeds yes\nrun-on-startup set-filter "unread_count > 0 or feedtitle = \\"Shelf\\""\n')
+   config.write_text('bind-key j down\nprepopulate-query-feeds yes\nfeedlist-format "%t | %U unread"\nshow-read-feeds yes\nrun-on-startup set-filter "unread_count > 0 or feedtitle = \\"📚 Shelf\\""\n')
    with config.open('a') as output:
     output.write(f'bind S articlelist set browser "python3 {scripts}/newsboat-shelf.py consume %u" ; open-in-browser-noninteractively\n')
-   (p/'urls').write_text('"query:Shelf:link = \\"newsboat-shelf://navigation\\""\n')
+   (p/'urls').write_text('"query:📚 Shelf:link = \\"newsboat-shelf://navigation\\""\n')
    feed = p/'feed.xml'
    feed.write_text('<rss version="2.0"><channel><title>Source</title><link>https://example.com</link><description>test</description><item><title>saved-article</title><link>https://example.com/saved-article</link><guid>one</guid></item></channel></rss>')
    with (p/'urls').open('a') as output: output.write(feed.as_uri()+'\n')
@@ -48,20 +48,20 @@ class ShelfNavigationTests(unittest.TestCase):
     data.clear();os.write(fd,b'q');until(lambda:b'Shelf | 1 unread' in data)
     time.sleep(.2)
     data.clear();os.write(fd,b'\n');until(lambda:b"Articles in feed 'Source'" in data)
-    self.assertNotIn(b"Articles in feed 'Shelf'", data)
+    self.assertNotIn("Articles in feed '📚 Shelf'".encode(), data)
     os.write(fd,b'S');until(lambda:count()==0)
     data.clear();os.write(fd,b'q');until(lambda:b'Shelf | 0 unread' in data)
     time.sleep(.2)
     data.clear();os.write(fd,b'\n');until(lambda:b"Articles in feed 'Source'" in data)
-    self.assertNotIn(b"Articles in feed 'Shelf'", data)
+    self.assertNotIn("Articles in feed '📚 Shelf'".encode(), data)
     # Return from Shelf itself to the previously opened source, not Shelf.
     subprocess.run(['python3', '-c', "import runpy,sys; runpy.run_path(sys.argv[1])['save']('https://example.com/saved-article')", str(scripts/'newsboat-shelf.py')], env=env, check=True)
     data.clear();os.write(fd,b'q');until(lambda:b'Shelf | 1 unread' in data)
     time.sleep(.2)
-    data.clear();os.write(fd,b':1\n\n');until(lambda:b"Articles in feed 'Shelf'" in data)
+    data.clear();os.write(fd,b':1\n\n');until(lambda:"Articles in feed '📚 Shelf'".encode() in data)
     os.write(fd,b'S');until(lambda:count()==0)
     data.clear();os.write(fd,b'q');until(lambda:b'Shelf | 0 unread' in data)
     time.sleep(.2)
     data.clear();os.write(fd,b'\n');until(lambda:b"Articles in feed 'Source'" in data)
-    self.assertNotIn(b"Articles in feed 'Shelf'", data)
+    self.assertNotIn("Articles in feed '📚 Shelf'".encode(), data)
    finally:os.killpg(pid,signal.SIGKILL);os.waitpid(pid,0);os.close(fd)
