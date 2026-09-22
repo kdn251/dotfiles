@@ -6,6 +6,7 @@ import json
 import os
 from pathlib import Path
 import re
+import sqlite3
 import subprocess
 import sys
 import tempfile
@@ -170,6 +171,28 @@ def atomic_write(path, text):
             os.unlink(name)
 
 
+def duplicate_download_guids(keys):
+    """Prefer the newest cached entry when a video was imported again."""
+    cache = URLS.parent / 'cache.db'
+    if not cache.exists():
+        return []
+    seen = set()
+    duplicates = []
+    try:
+        with contextlib.closing(sqlite3.connect(cache.as_uri() + '?mode=ro', uri=True)) as db:
+            for guid, url in db.execute('SELECT guid, url FROM rss_item WHERE deleted=0 ORDER BY id DESC'):
+                key = identity(url)
+                if key not in keys:
+                    continue
+                if key in seen:
+                    duplicates.append(guid)
+                else:
+                    seen.add(key)
+    except sqlite3.Error:
+        return []
+    return duplicates
+
+
 def rebuild_unlocked():
     index_path = STATE / '.media-index.json'
     try:
@@ -202,7 +225,9 @@ def rebuild_unlocked():
         patterns.append(r'^https?://(clips[.]twitch[.]tv/|(www[.])?twitch[.]tv/[^/]+/clip/)('
                         + '|'.join(clips) + r')([?&#/]|$)')
     expression = ' or '.join('link =~ ' + json.dumps(pattern) for pattern in patterns) or 'link = ""'
-    query = json.dumps('query:📥 Downloads:(' + expression + ') and feedtitle !~ "Starred"', ensure_ascii=False) + ' downloaded'
+    exclusions = ''.join(' and guid != ' + json.dumps(guid)
+                         for guid in duplicate_download_guids(keys))
+    query = json.dumps('query:📥 Downloads:(' + expression + ') and feedtitle !~ "Starred"' + exclusions, ensure_ascii=False) + ' downloaded'
     current = URLS.read_text() if URLS.exists() else ''
     rest = [line for line in current.splitlines() if not line.startswith(('"query:Downloaded:', '"query:📥 Downloaded:', '"query:📥 Downloads:'))]
     # Keep Downloads below both New and Starred when rebuilding the library.

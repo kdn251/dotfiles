@@ -105,6 +105,19 @@ class MediaTests(unittest.TestCase):
         self.assertEqual(text.count('query:📥 Downloads:'),1)
         media.rebuild();self.assertEqual(media.URLS.read_text(),text)
 
+    def test_download_query_excludes_old_entries_for_same_video(self):
+        self.video('YouTube [abc123DEF45].mp4')
+        with sqlite3.connect(media.URLS.parent/'cache.db') as db:
+            db.execute('CREATE TABLE rss_item (id INTEGER PRIMARY KEY, guid TEXT, url TEXT, deleted INTEGER)')
+            db.executemany('INSERT INTO rss_item VALUES (?,?,?,?)', [
+                (1, 'old', URL, 0), (2, 'restored', URL, 0),
+                (3, 'deleted', URL, 1), (4, 'other', 'https://example.com', 0)])
+        self.assertEqual(media.duplicate_download_guids({media.identity(URL)}), ['old'])
+        media.rebuild()
+        query = json.loads(media.URLS.read_text().splitlines()[0].removesuffix(' downloaded'))
+        self.assertIn('and guid != "old"', query)
+        self.assertNotIn('guid != "restored"', query)
+
     @unittest.skipUnless(shutil.which('mpv'), 'requires mpv')
     def test_mpv_reports_real_playback_and_failure_separately(self):
         ready=self.root/'ready'
