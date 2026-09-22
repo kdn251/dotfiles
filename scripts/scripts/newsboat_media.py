@@ -205,9 +205,9 @@ def rebuild_unlocked():
     query = json.dumps('query:📥 Downloads:(' + expression + ') and feedtitle !~ "Starred"', ensure_ascii=False) + ' downloaded'
     current = URLS.read_text() if URLS.exists() else ''
     rest = [line for line in current.splitlines() if not line.startswith(('"query:Downloaded:', '"query:📥 Downloaded:', '"query:📥 Downloads:'))]
-    # Keep the unified unread inbox first when rebuilding the download library.
-    position = next((i + 1 for i, line in enumerate(rest)
-                     if line.startswith('"query:📰 New:')), 0)
+    # Keep Downloads below both New and Shelf when rebuilding the library.
+    position = max((i + 1 for i, line in enumerate(rest)
+                    if line.startswith(('"query:📰 New:', '"query:📚 Shelf:'))), default=0)
     rest.insert(position, query)
     content = '\n'.join(rest) + '\n'
     if content != current:
