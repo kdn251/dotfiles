@@ -27,14 +27,14 @@
     padding: 0 8px;
 }
 
-/* Shared video download indicator. Only active downloads pulse.
-   The glyph has more internal padding than
-   the neighbouring icons, so it needs a larger font-size to look the same
-   optical weight. */
+/* Enlarge the glyph without letting its font line box grow the 24px bar.
+   The negative vertical margins reclaim the extra font space. */
 #custom-twitch_dl {
   padding: 0 8px;
   color: #ffffff;
   font-size: 20px;
+  margin-top: -2px;
+  margin-bottom: -2px;
 }
 
 #custom-twitch_dl.downloading {
