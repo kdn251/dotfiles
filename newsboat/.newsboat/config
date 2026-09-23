@@ -117,6 +117,7 @@ color article            default default
 
 # Color status glyphs without changing the surrounding text or column widths.
 # Style the adjacent cell too so Kitty sizes stars equally on read/unread rows.
+highlight articlelist ".*◆.*" cyan default bold
 highlight articlelist "󰓎 " yellow default bold
 
 # Show query feeds

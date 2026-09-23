@@ -14,6 +14,7 @@ class PlaybackTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             root=Path(directory)
             shutil.copyfile(SCRIPTS/'newsboat-play-video.py',root/'newsboat-play-video.py')
+            shutil.copyfile(SCRIPTS/'newsboat_last_opened.py',root/'newsboat_last_opened.py')
             player=root/'mpv-yt'
             player.write_text('#!/usr/bin/env python3\nimport os,time\nfrom pathlib import Path\ntime.sleep(2)\nPath(os.environ["NEWSBOAT_PLAY_READY"]).write_text("playing")\n')
             player.chmod(0o755)
@@ -26,7 +27,7 @@ class PlaybackTests(unittest.TestCase):
             subprocess.run(args+['-x','reload'],check=True,capture_output=True)
             pid,fd=pty.fork()
             if pid==0:
-                os.environ['TERM']='xterm-256color';os.execv(str(BINARY),args)
+                os.environ['NEWSBOAT_LAST_OPENED']=str(root/'last-opened');os.environ['TERM']='xterm-256color';os.execv(str(BINARY),args)
             fcntl.ioctl(fd,termios.TIOCSWINSZ,struct.pack('HHHH',24,100,0,0))
             screen=pyte.Screen(100,24);stream=pyte.ByteStream(screen)
             def wait(predicate,timeout=5):
@@ -40,6 +41,7 @@ class PlaybackTests(unittest.TestCase):
                 wait(lambda:'Item2' in '\n'.join(screen.display))
                 os.write(fd,b'oj');wait(lambda:screen.cursor.y==2,timeout=1)
                 self.assertFalse((root/'played').exists())
+                self.assertEqual((root/'last-opened').read_text().strip(), 'https://example.com/1')
                 wait(lambda:(root/'played').exists())
             finally:
                 os.kill(pid,signal.SIGTERM);os.waitpid(pid,0);os.close(fd)

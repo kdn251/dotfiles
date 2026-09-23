@@ -24,7 +24,7 @@ class DeleteSelectionTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as folder:
             root = Path(folder)
             config, urls, feed = root/'config', root/'urls', root/'feed.xml'
-            config.write_text('article-sort-order title-desc\nshow-read-feeds yes\nshow-read-articles yes\nprepopulate-query-feeds yes\nconfirm-exit no\narticlelist-format "%t"\n')
+            config.write_text('article-sort-order title-desc\nshow-read-feeds yes\nshow-read-articles yes\nprepopulate-query-feeds yes\nconfirm-exit no\ncolor listfocus black cyan bold\ncolor listfocus_unread black cyan bold\nhighlight articlelist ".*◆.*" cyan default bold\narticlelist-format "%p %t"\n')
             feed.write_text('<rss version="2.0"><channel><title>Source</title><link>https://example.com</link><description>Test</description>'+''.join(f'<item><title>Video{i:02}</title><link>https://example.com/{i}</link><guid>{i}</guid></item>' for i in [3,7,1,5,2,6,4])+'</channel></rss>')
             remaining = list(range(1,8))
             def update():
@@ -37,7 +37,7 @@ class DeleteSelectionTests(unittest.TestCase):
             subprocess.run(args+['-x','reload'],check=True,capture_output=True)
             pid,fd=pty.fork()
             if pid==0:
-                os.environ.update(TERM='xterm-256color',HOME=folder,NEWSBOAT_DOWNLOAD_STATUS=str(root/'status.tsv'))
+                os.environ.update(TERM='xterm-256color',HOME=folder,NEWSBOAT_DOWNLOAD_STATUS=str(root/'status.tsv'),NEWSBOAT_LAST_OPENED=str(root/'last-opened'))
                 os.execv(str(BINARY),args)
             fcntl.ioctl(fd,termios.TIOCSWINSZ,struct.pack('HHHH',24,100,0,0))
             screen=pyte.Screen(100,24);stream=pyte.ByteStream(screen)
@@ -83,6 +83,27 @@ class DeleteSelectionTests(unittest.TestCase):
                 wait(lambda:order()==['07','02','03'] and selected('Video03'))
                 (root/'status.tsv.watched').write_text('')
                 wait(lambda:order()==['07','03','02'] and selected('Video03'))
+
+                # Opening an article marks it even after returning and moving
+                # away. An external browser/player open replaces the marker.
+                os.write(fd,b'\n')
+                wait(lambda:(root/'last-opened').exists())
+                self.assertEqual((root/'last-opened').read_text().strip(),'https://example.com/3')
+                os.write(fd,b'q')
+                wait(lambda: any('◆' in row and 'Video03' in row for row in screen.display))
+                row = next(i for i,line in enumerate(screen.display) if '◆' in line and 'Video03' in line)
+                column = screen.display[row].index('Video03')
+                self.assertEqual(screen.buffer[row][column].fg, 'black')
+                self.assertEqual(screen.buffer[row][column].bg, 'cyan')
+                os.write(fd,b':1\n')
+                wait(lambda:selected('Video07'))
+                self.assertTrue(any('◆' in row and 'Video03' in row for row in screen.display))
+                self.assertEqual(screen.buffer[row][column].fg, 'cyan')
+
+                (root/'last-opened').write_text('https://example.com/2\n')
+                wait(lambda:any('◆' in row and 'Video02' in row for row in screen.display))
+                self.assertTrue(selected('Video07'))
+                self.assertFalse(any('◆' in row and 'Video03' in row for row in screen.display))
 
             finally:
                 os.kill(pid,signal.SIGTERM);os.waitpid(pid,0);os.close(fd)

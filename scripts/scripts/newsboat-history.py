@@ -35,6 +35,9 @@ def database():
 def record(url, mode):
     if mode not in {'browser', 'video'} or urlparse(url).scheme not in {'http', 'https'}:
         return
+    if mode == 'browser':
+        from newsboat_last_opened import mark
+        mark(url)
     title, source = url, urlparse(url).hostname or ''
     try:
         with closing(sqlite3.connect(CACHE.as_uri()+'?mode=ro', uri=True, timeout=1)) as cache:

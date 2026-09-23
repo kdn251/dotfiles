@@ -1,0 +1,118 @@
+--- a/src/itemlistformaction.cpp
++++ b/src/itemlistformaction.cpp
+@@ -39,9 +39,11 @@
+ static std::set<std::string> commentary_urls;
+ static std::map<std::string, std::string> watched_progress;
+ static std::map<std::string, double> downloaded_at;
++static std::string last_opened_url;
+ static std::string download_revision()
+ {
+     const char* path = std::getenv("NEWSBOAT_DOWNLOAD_STATUS");
++    const char* last_opened = std::getenv("NEWSBOAT_LAST_OPENED");
+     const char* stars = std::getenv("NEWSBOAT_STARRED_STATUS");
+     const auto revision = [](const char* filename) {
+         struct stat info {};
+@@ -52,7 +54,7 @@
+     const std::string watched_path = path ? std::string(path) + ".watched" : "";
+     const std::string order_path = path ? std::string(path) + ".order" : "";
+     const std::string commentary_path = stars ? std::string(stars) + ".commentary" : "";
+-    const auto version = revision(order_path.c_str()) + "|" + revision(commentary_path.c_str()) + "|" + revision(path) + "|" + revision(stars) + "|" + revision(watched_path.c_str());
++    const auto version = revision(last_opened) + "|" + revision(order_path.c_str()) + "|" + revision(commentary_path.c_str()) + "|" + revision(path) + "|" + revision(stars) + "|" + revision(watched_path.c_str());
+     static std::string loaded;
+     if (loaded != version) {
+         std::map<std::string, std::string> updated;
+@@ -75,6 +77,11 @@
+                 watched_progress[line.substr(0, split)] = line.substr(split + 1);
+             }
+         }
++        last_opened_url.clear();
++        if (last_opened) {
++            std::ifstream input(last_opened);
++            std::getline(input, last_opened_url);
++        }
+         downloaded_at.clear();
+         std::ifstream order_input(order_path);
+         while (std::getline(order_input, line)) {
+@@ -138,6 +145,13 @@
+ 		if (!visible_items.empty()) {
+ 			// no need to mark item as read, the itemview already do
+ 			// that
++            if (const auto path = std::getenv("NEWSBOAT_LAST_OPENED")) {
++                const auto temporary = std::string(path) + ".tmp";
++                std::ofstream output(temporary);
++                output << visible_items[itempos].first->link() << '\n';
++                output.close();
++                if (output) { std::rename(temporary.c_str(), path); }
++            }
+ 			old_itempos = itempos;
+ 			v.push_itemview(feed,
+ 				visible_items[itempos].first->guid());
+@@ -1314,6 +1328,9 @@
+     for (size_t i = 0; i < markers.size(); ++i) {
+         if (i != primary) { append(i); }
+     }
++    if (!last_opened_url.empty() && item.first->link() == last_opened_url) {
++        badges = "◆ " + badges;
++    }
+     fmt.register_fmt('p', badges);
+     const auto progress = watched_progress.find(item.first->link());
+     fmt.register_fmt('w', progress == watched_progress.end() ? "0%" : progress->second);
+@@ -1686,15 +1703,20 @@
+ void ItemListFormAction::register_format_styles()
+ {
+ 	std::string focus_background;
++    std::string focus_foreground;
+ 	v.get_ctrl().get_colormanager().apply_colors([&](const std::string& name, const std::string& style) {
+ 		if (name == "listfocus") {
++            const auto fg = style.find("fg=");
++            if (fg != std::string::npos) {
++                focus_foreground = style.substr(fg, style.find(',', fg) - fg);
++            }
+ 			const auto begin = style.find("bg=");
+ 			if (begin != std::string::npos) {
+ 				focus_background = style.substr(begin, style.find(',', begin) - begin);
+ 			}
+ 		}
+ 	});
+-	const std::string attrstr = rxman.get_attrs_stfl_string(Dialog::ArticleList, true, focus_background);
++	const std::string attrstr = rxman.get_attrs_stfl_string(Dialog::ArticleList, true, focus_background, focus_foreground);
+ 	const std::string textview = strprintf::fmt(
+ 			"{!list[items] .expand:vh style_normal[listnormal]: "
+ 			"style_focus[listfocus]: "
+--- a/src/regexmanager.cpp
++++ b/src/regexmanager.cpp
+@@ -204,7 +204,8 @@
+ }
+ 
+ std::string RegexManager::get_attrs_stfl_string(Dialog location,
+-	bool hasFocus, const std::string& focus_background) const
++	bool hasFocus, const std::string& focus_background,
++    const std::string& focus_foreground) const
+ {
+ 	const auto location_regexes = locations.find(location);
+ 	if (location_regexes == locations.end()) {
+@@ -221,6 +222,12 @@
+ 			if (text_styles[i].second.get_bgcolor() == "default" && !focus_background.empty()) {
+ 				if (!focused_style.empty()) { focused_style += ","; }
+ 				focused_style += focus_background;
++                // A cyan row highlight must not become cyan-on-cyan when
++                // selected. Use the configured cursor text colour then.
++                if (!focus_foreground.empty() && focus_background ==
++                        "bg=" + text_styles[i].second.get_fgcolor()) {
++                    focused_style += "," + focus_foreground;
++                }
+ 			}
+ 			attrstr.append(strprintf::fmt("@style_%u_focus:%s ", i, focused_style));
+ 		}
+--- a/include/regexmanager.h
++++ b/include/regexmanager.h
+@@ -28,7 +28,8 @@
+ 	int article_matches(Matchable* item) const;
+ 	int feed_matches(Matchable* feed) const;
+ 	std::string get_attrs_stfl_string(Dialog location, bool hasFocus,
+-		const std::string& focus_background = "") const;
++		const std::string& focus_background = "",
++        const std::string& focus_foreground = "") const;
+ 
+ private:
+ 	using RegexStyleVector = std::vector<std::pair<std::shared_ptr<Regex>, TextStyle>>;

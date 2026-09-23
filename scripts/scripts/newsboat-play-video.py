@@ -6,6 +6,7 @@ import subprocess
 import sys
 import tempfile
 import time
+from newsboat_last_opened import mark
 
 
 def play(args):
@@ -42,6 +43,7 @@ def launch(args):
                      start_new_session=True, stdin=subprocess.DEVNULL,
                      stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
                      close_fds=True)
+    mark(args[0])
     return 0
 
 

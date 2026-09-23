@@ -216,6 +216,9 @@ def run(args):
     if live_queries:
         os.environ['PATH'] = str(paged_binary.parent) + os.pathsep + os.environ.get('PATH', '')
         os.environ['NEWSBOAT_PAGE_SCROLL'] = '1'
+        last_opened = Path(os.environ.get('XDG_STATE_HOME', Path.home()/'.local/state'))/'newsboat/last-opened'
+        last_opened.parent.mkdir(parents=True, exist_ok=True)
+        os.environ['NEWSBOAT_LAST_OPENED'] = str(last_opened)
         os.environ['NEWSBOAT_DOWNLOAD_STATUS'] = str(Path(os.environ.get('XDG_STATE_HOME', Path.home()/'.local/state'))/'newsboat/download-status.tsv')
         os.environ['NEWSBOAT_STARRED_STATUS'] = str(Path(os.environ.get('XDG_STATE_HOME', Path.home()/'.local/state'))/'newsboat/starred-urls.txt')
     # Preserve CLI/debug modes, which do not run the interactive feed list.
