@@ -1,6 +1,7 @@
 #!/bin/bash
 # Configuration
 USERNAME_LIST="$HOME/scripts/twitch_usernames.txt"
+RUMBLE_LIST="$HOME/scripts/rumble_channels.tsv"
 TWITCH_TOKEN_FILE="$HOME/.newsboat/.twitch_oauth"
 IMAGE_CACHE="$HOME/.cache/twitch-profiles"
 PIXMAPS="$HOME/.local/share/pixmaps"
@@ -15,6 +16,14 @@ CHAT_LAYOUT="$HOME/.local/share/chatterino/Settings/window-layout.json"
 SESSION_FILE="/tmp/twitch-session.id"
 SESSION_ID="$$-$(date +%s%N)"
 exec >>/tmp/twitch-stream-debug.log 2>&1
+
+# All services use the same compact loading notification.
+notify_loading() {
+  local icon="$1" description="$2"
+  local args=(-t 2000 -u low)
+  [ -f "$icon" ] && args+=(-i "$icon")
+  notify-send "${args[@]}" "MPV" "Loading $description stream..."
+}
 
 # --- Chatterino lifecycle ---------------------------------------------------
 # One window, one tab, tied to the life of the stream.
@@ -171,6 +180,10 @@ awk -v stats="$STATS_FILE" '
     printf "%05d\t%s\t%s\n", c, tolower(label), label
   }' "$USERNAME_LIST" >"$MENU_TMP"
 
+# Read the background live check without delaying the picker for a request.
+python3 "$HOME/scripts/rumble-live.py" --menu >>"$MENU_TMP"
+python3 "$HOME/scripts/youtube-live.py" --menu >>"$MENU_TMP"
+
 TOP5=$(sort -t"$(printf '\t')" -k1,1nr -k2,2 "$MENU_TMP" | awk -F'\t' '$1 + 0 > 0' | head -n 5)
 
 # An argument names a streamer to open directly, skipping the picker. Used by
@@ -178,22 +191,35 @@ TOP5=$(sort -t"$(printf '\t')" -k1,1nr -k2,2 "$MENU_TMP" | awk -F'\t' '$1 + 0 > 
 if [ -n "${1:-}" ]; then
   CHOICE="$1"
 else
-CHOICE=$(
+# Keep the full service-tagged rows privately; fuzzel returns an index so
+# identical display names on different platforms still resolve correctly.
+MENU_ORDERED=$(mktemp)
   {
     [ -n "$TOP5" ] && printf '%s\n' "$TOP5"
     sort -t"$(printf '\t')" -k2,2 "$MENU_TMP" | grep -vxF -f <(printf '%s\n' "$TOP5")
-  } |
+  } | awk -F'\t' 'NF >= 3' >"$MENU_ORDERED"
+CHOICE_INDEX=$(
     awk -F'\t' -v p="$PIXMAPS" '
       NF >= 3 {
         split($3, w, " ")
-        printf "%s\000icon\x1f%s/%s.png\n", $3, p, tolower(w[1])
-      }' |
-    fuzzel --dmenu \
-      --prompt "󰕃  " \
+        icon = (NF >= 4 && $4 != "") ? $4 : p "/" tolower(w[1]) ".png"
+        label = $3
+        sub(/ \(YouTube\)$/, "", label)
+        sub(/ \(Rumble\)$/, "", label)
+        printf "%s\000icon\x1f%s\n", label, icon
+      }' "$MENU_ORDERED" |
+    fuzzel --dmenu --index \
+      --font "Stream Launcher Icons,JetBrainsMono Nerd Font:size=14" \
+      --prompt "      " \
       --line-height 35 \
       --width 50 \
       --lines 10
 )
+CHOICE=""
+if [[ "$CHOICE_INDEX" =~ ^[0-9]+$ ]]; then
+  CHOICE=$(awk -F'\t' -v row="$CHOICE_INDEX" 'NR == row + 1 {print $3; exit}' "$MENU_ORDERED")
+fi
+rm -f "$MENU_ORDERED"
 fi
 rm -f "$MENU_TMP"
 
@@ -204,6 +230,67 @@ fi
 # Extract just the username
 STREAMER_USERNAME=$(echo "$CHOICE" | awk '{print $1}')
 STREAMER="$STREAMER_USERNAME"
+
+# Resolve non-Twitch broadcasts again on selection in case the cached live
+# entry has since ended. They do not use Twitch credentials or Chatterino.
+if [[ "$CHOICE" == *"(Rumble)" || "$CHOICE" == *"(YouTube)" ]]; then
+  if [[ "$CHOICE" == *"(YouTube)" ]]; then
+    SERVICE=YouTube
+    CHANNEL_LIST="$HOME/scripts/youtube_live_channels.tsv"
+    LIVE_HELPER="$HOME/scripts/youtube-live.py"
+  else
+    SERVICE=Rumble
+    CHANNEL_LIST="$RUMBLE_LIST"
+    LIVE_HELPER="$HOME/scripts/rumble-live.py"
+  fi
+  CHANNEL_URL=$(awk -v name="$STREAMER_USERNAME" '$1 == name {print $2; exit}' "$CHANNEL_LIST")
+  (
+    # The background live check already cached the avatar: show it immediately,
+    # before waiting for the playback URL to resolve.
+    IMG_PATH=$(python3 - "$CHANNEL_URL" <<'PYICON'
+import sys
+from pathlib import Path
+sys.path.insert(0, str(Path.home() / 'scripts'))
+from stream_profile import cache_avatar
+print(cache_avatar(sys.argv[1], ''))
+PYICON
+)
+    notify_loading "$IMG_PATH" "$STREAMER" &
+    NOTIFY_ARGS=(-a "$SERVICE" -t 6000)
+    [ -f "$IMG_PATH" ] && NOTIFY_ARGS+=(-i "$IMG_PATH")
+    ERROR_FILE=$(mktemp)
+    if ! LIVE=$(python3 "$LIVE_HELPER" "$CHANNEL_URL" 2>"$ERROR_FILE"); then
+      notify-send "${NOTIFY_ARGS[@]}" "$STREAMER — $SERVICE" "$(cat "$ERROR_FILE")"
+      rm -f "$ERROR_FILE"
+      exit 1
+    fi
+    rm -f "$ERROR_FILE"
+    LIVE_URL=$(jq -er '.url' <<<"$LIVE") || exit 1
+    LIVE_TITLE=$(jq -r '.title' <<<"$LIVE")
+    PLAYER_ARGS=()
+    if [[ "$SERVICE" == YouTube ]]; then
+      YTDL="$HOME/.local/bin/yt-dlp"
+      [ -x "$YTDL" ] || YTDL=$(command -v yt-dlp)
+      PLAYER_ARGS=("--script-opts=ytdl_hook-ytdl_path=$YTDL"
+        '--ytdl-format=bestvideo[height<=?1080]+bestaudio/best[height<=?1080]/best')
+    else
+      PLAYER_ARGS=(--user-agent=Mozilla/5.0 --referrer=https://rumble.com/)
+    fi
+    # Quality switching reads this JSON instead of evaluating stream titles.
+    CONTEXT="$HOME/.cache/${SERVICE,,}-live-player.json"
+    jq --arg service "$SERVICE" '. + {service:$service, quality:"best"}' <<<"$LIVE" >"$CONTEXT.tmp"
+    mv "$CONTEXT.tmp" "$CONTEXT"
+    echo "$SESSION_ID" >"$SESSION_FILE"
+    pkill mpv
+    chat_stop
+    mpv --cache=yes --cache-secs=30 --demuxer-max-bytes=150MiB \
+      --demuxer-max-back-bytes=100MiB --hwdec=auto \
+      --input-ipc-server="/tmp/mpv-${SERVICE,,}-live-ipc" \
+      "${PLAYER_ARGS[@]}" --force-media-title="$STREAMER — $LIVE_TITLE" "$LIVE_URL" ||
+      notify-send "${NOTIFY_ARGS[@]}" "$STREAMER — $SERVICE" "Unable to play the live stream. Try again."
+  ) &
+  exit 0
+fi
 URL="https://www.twitch.tv/$STREAMER_USERNAME"
 
 # --- 4. Update Stats ---
@@ -229,11 +316,7 @@ awk -v user="$STREAMER_USERNAME" '
   echo "$SESSION_ID" >"$SESSION_FILE"
 
   IMG_PATH="$PIXMAPS/${STREAMER_USERNAME,,}.png"
-  if [ -f "$IMG_PATH" ]; then
-    notify-send -i "$IMG_PATH" "MPV" "Loading $STREAMER stream..." -t 2000 -u low &
-  else
-    notify-send "MPV" "Loading $STREAMER stream..." -t 2000 -u low &
-  fi
+  notify_loading "$IMG_PATH" "$STREAMER" &
 
   # Build streamlink auth args
   # NOTE: --twitch-low-latency dropped on purpose. It forces playback to the

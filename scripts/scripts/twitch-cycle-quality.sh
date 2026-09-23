@@ -1,4 +1,7 @@
 #!/bin/bash
+python3 "$HOME/scripts/live-stream-quality.py"
+LIVE_RC=$?
+[ "$LIVE_RC" -ne 2 ] && exit "$LIVE_RC"
 TWITCH_CONTEXT="/tmp/twitch-stream-context.conf"
 YT_CONTEXT="/tmp/youtube-stream-context.conf"
 QUALITY_FILE="/tmp/current-quality.txt"
