@@ -26,6 +26,27 @@ spec.loader.exec_module(session)
 
 
 class ProgressTests(unittest.TestCase):
+    def test_slide_clips_at_right_margin(self):
+        for offset in (0, 8, 20, 33):
+            output = session.Renderer.compact(0, '2/5 feeds refreshed', 80, 24, 9, offset)
+            columns = re.findall(rb'\x1b\[\d+;(\d+)H', output)
+            self.assertEqual(set(columns), {str(45 + offset).encode()})
+            self.assertIn(f'\x1b[{34-offset}X'.encode(), output)
+        self.assertEqual(session.Renderer.compact(0, 'done', 80, 24, 9, 34), b'')
+
+    def test_summary_counts_new_items_and_distinct_sources(self):
+        progress = session.Progress()
+        progress.log(session.RELOAD_START + b' total feeds: 2')
+        for source in (b'one', b'one', b'two'):
+            progress.log(b'Newsboat refresh new item source: ' + source)
+        progress.log(b'USERERROR: Feed failed')
+        progress.log(session.BATCH_DONE[0])
+        self.assertIn('3 new · 2 sources updated', progress.toast_caption())
+        self.assertIn('1 failed', progress.toast_caption())
+        progress.log(session.RELOAD_START)
+        progress.log(session.BATCH_DONE[0])
+        self.assertIn('0 new · 0 sources updated', progress.toast_caption())
+
     def test_total_is_available_before_first_feed_finishes(self):
         progress = session.Progress()
         progress.log(session.RELOAD_START + b' total feeds: 207')
@@ -34,8 +55,8 @@ class ProgressTests(unittest.TestCase):
     def test_compact_renderer_stays_in_top_right_toast(self):
         for frame in (0, 6, 22):
             output = session.Renderer.compact(frame, '2/5 feeds refreshed', 80, 24, 9)
-            self.assertEqual(re.findall(rb'\x1b\[(\d+);47H', output),
-                             [str(row).encode() for row in range(1, 10)])
+            self.assertEqual(re.findall(rb'\x1b\[(\d+);45H', output),
+                             [str(row).encode() for row in range(2, 11)])
             self.assertNotIn(b'\x1b[2J', output)
             self.assertIn(b'2/5 feeds refreshed', output)
             self.assertTrue(output.startswith(b'\x1b7'))
@@ -207,6 +228,8 @@ class TerminalIntegrationTests(unittest.TestCase):
                         os.write(fd, b'h')
                         until(lambda data: b'NESTED_VIEW' in data)
                         until(lambda data: final in data[data.find(b'NESTED_VIEW'):])
+                        expected_summary = '0 new · 0 sources updated' if repeat else '6 new · 6 sources updated'
+                        until(lambda data: expected_summary.encode() in data)
                         self.assertIn('╭'.encode(), captured[captured.find(b'NESTED_VIEW'):])
                         os.write(fd, b'q')
                         counts = [int(v) for v in re.findall(rb'(\d+)/7 feeds (?:refreshed|checked)', captured)]

@@ -1,0 +1,10 @@
+--- a/src/cache.cpp
++++ b/src/cache.cpp
+@@ -959,6 +959,7 @@
+ 				item.enqueued() ? 1 : 0,
+ 				item.get_base());
+ 		run_sql(insert);
++		LOG(Level::DEBUG, "Newsboat refresh new item source: %s", feedurl);
+ 	}
+ }
+ 

@@ -50,6 +50,8 @@ class Progress:
         self.total = None
         self.started_at = 0.0
         self.displayed = 0
+        self.new_items = 0
+        self.updated_sources = set()
 
     def log(self, line):
         if RELOAD_START in line:
@@ -59,7 +61,10 @@ class Progress:
             self.active = True
             self.started_at = time.monotonic()
         elif self.active:
-            if FEED_DONE in line:
+            if b"Newsboat refresh new item source: " in line:
+                self.new_items += 1
+                self.updated_sources.add(line.split(b"Newsboat refresh new item source: ", 1)[1])
+            elif FEED_DONE in line:
                 self.completed += 1
             elif b"Reloader::reload: skipping query feed" in line:
                 self.queries += 1
@@ -82,6 +87,15 @@ class Progress:
         if self.errors:
             result += f" ({self.errors} failed)"
         return result
+
+
+    def toast_caption(self):
+        caption = self.caption()
+        if self.finished:
+            sources = len(self.updated_sources)
+            word = "source" if sources == 1 else "sources"
+            caption += f"\n{self.new_items} new · {sources} {word} updated"
+        return caption
 
 
 class Renderer:
@@ -114,16 +128,16 @@ class Renderer:
         self.process.stdout.close()
 
     @staticmethod
-    def compact(frame, caption, cols, rows, height):
+    def compact(frame, caption, cols, rows, height, offset=0):
         """Paint a small top-right toast, preserving Newsboat's cursor."""
         width = max(1, min(34, cols - 2))
         if height == 1:
-            lines = ['🚢  ' + caption[:max(0, width-4)]]
+            lines = ['🚢  ' + caption.splitlines()[-1][:max(0, width-4)]]
         else:
             smoke = [list(' ' * 18) for _ in range(2)]
             for stack in (7, 11):
-                for offset in (0, 6):
-                    age = (frame // 2 + offset + (2 if stack == 11 else 0)) % 12
+                for puff_offset in (0, 6):
+                    age = (frame // 2 + puff_offset + (2 if stack == 11 else 0)) % 12
                     smoke[1-age//6][stack+age//4] = 'o' if 3 <= age < 9 else '.'
             art = [''.join(line) for line in smoke] + [
                 '      |#| |#|     ',
@@ -141,12 +155,25 @@ class Renderer:
             inner = width - 2
             art = [line.center(inner) for line in art[:-1]] + [(wave * 3)[shift:shift+inner]]
             lines = [f'│\x1b[38;5;{color}m{line}\x1b[0m│' for color,line in zip(colors,art)]
-            lines.append('│' + caption[:inner].center(inner) + '│')
+            lines.extend('│' + line[:inner].center(inner) + '│' for line in caption.splitlines())
             lines = ['╭' + '─' * inner + '╮'] + lines + ['╰' + '─' * inner + '╯']
+        visible = max(0, width-offset)
+        if not visible:
+            return b''
         output = bytearray(b'\x1b7')
         for index,line in enumerate(lines):
-            output.extend(f'\x1b[{1+index};{max(1, cols-width+1)}H\x1b[0m\x1b[{width}X'.encode())
-            output.extend(line.encode())
+            # Clip the moving toast at the right margin without wrapping ANSI
+            # colors or border characters onto the next terminal row.
+            clipped = []
+            remaining = visible
+            for part in re.split(r'(\x1b\[[0-?]*[ -/]*[@-~])', line):
+                if part.startswith('\x1b'):
+                    clipped.append(part)
+                elif remaining:
+                    clipped.append(part[:remaining])
+                    remaining -= len(part[:remaining])
+            output.extend(f'\x1b[{min(2, rows)+index};{max(1, cols-width-1+offset)}H\x1b[0m\x1b[{visible}X'.encode())
+            output.extend(''.join(clipped).encode())
         output.extend(b'\x1b[0m\x1b8')
         return bytes(output)
 
@@ -296,14 +323,15 @@ def run(args):
             finish_at = None
             next_frame = 0.0
             frame = 0
+            toast_offset = 0
             def paint_terminal(data):
                 # ncurses can redraw the area behind the toast. Restore the current frame in the same terminal
                 # update rather than leaving it blank until the next tick.
                 if toast_rows:
                     cols, rows = os.get_terminal_size(1)
                     data = data.replace(b"\x1b[?2026h", b"").replace(b"\x1b[?2026l", b"")
-                    data += renderer.compact(max(0, frame - 1), progress.caption(),
-                                             cols, rows, toast_rows)
+                    data += renderer.compact(max(0, frame - 1), progress.toast_caption(),
+                                             cols, rows, toast_rows, toast_offset)
                     data = b"\x1b[?2026h" + data + b"\x1b[?2026l"
                 write_all(1, data)
 
@@ -444,7 +472,9 @@ def run(args):
                                         nested_starred_entry = starred_entry
                                 was_active = progress.active
                                 progress.log(line)
-                                if progress.active and not was_active:
+                                if RELOAD_START in line:
+                                    finish_at = None
+                                if progress.active and (not was_active or RELOAD_START in line):
                                     frame = 0
                                     next_frame = 0
                                     pending_terminal = b""
@@ -509,13 +539,13 @@ def run(args):
                         return_output.clear()
                         return_deadline = None
                     if progress.finished and finish_at is None:
-                        finish_at = now + 0.5
+                        finish_at = now + 3.0
                     if finish_at is not None and now >= finish_at:
                         progress.active = False
                         progress.finished = False
                         finish_at = None
                     cols, rows = os.get_terminal_size(1)
-                    wanted_toast = (9 if cols >= 42 and rows >= 12 else 1) if progress.active and not startup else 0
+                    wanted_toast = (9 + int(progress.finished) if cols >= 42 and rows >= 12 else 1) if progress.active and not startup else 0
                     if wanted_toast != toast_rows:
                         toast_rows = wanted_toast
                         if not toast_rows:
@@ -523,13 +553,26 @@ def run(args):
                             write_all(nested_master if nested_master is not None else master, b"\x0c")
                         next_frame = 0
                     if (startup or progress.active) and now >= next_frame:
-                        label = progress.caption() if progress.active else "setting sail"
+                        label = progress.toast_caption() if progress.active else "setting sail"
                         if startup:
                             write_all(1, renderer.draw(frame, label))
                         elif return_deadline is None:
-                            write_all(1, b"\x1b[?2026h" +
-                                      renderer.compact(frame, label, cols, rows, toast_rows) +
-                                      b"\x1b[?2026l")
+                            width = max(1, min(34, cols - 2))
+                            previous_offset = toast_offset
+                            if toast_rows == 1:
+                                toast_offset = 0
+                            elif finish_at is not None and now >= finish_at - 0.32:
+                                toast_offset = round(width * (1 - max(0, finish_at-now)/0.32) ** 2)
+                            else:
+                                toast_offset = round(width * max(0, 1-frame/4) ** 3)
+                            if toast_offset > previous_offset:
+                                # Repaint the newly exposed list behind the
+                                # departing toast, then composite in one update.
+                                write_all(nested_master if nested_master is not None else master, b"\x0c")
+                            else:
+                                write_all(1, b"\x1b[?2026h" +
+                                          renderer.compact(frame, label, cols, rows, toast_rows, toast_offset) +
+                                          b"\x1b[?2026l")
                         frame += 1
                         next_frame = now + 0.08
 
