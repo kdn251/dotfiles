@@ -172,7 +172,7 @@ def prepare_view(directory, rows):
     # Opening a saved item leaves it selected so S can remove it when finished.
     # Keep advancement for explicit read/star/download actions unchanged.
     lines = [line.replace('toggle-article-read "read"', 'toggle-article-read "read" "stay"')
-             if line.startswith(('bind o ', 'bind O ', 'macro v ')) else
+             if line.startswith(('bind o ', 'bind O ', 'macro v ', 'macro a ')) else
              line.replace('toggle-article-read ;', 'toggle-article-read "toggle" "stay" ;')
              if line.startswith('macro r ') else line for line in lines]
     lines += ['show-read-articles yes','article-sort-order date-desc',

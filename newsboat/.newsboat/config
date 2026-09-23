@@ -48,6 +48,7 @@ macro R set browser "~/scripts/update-downloaded-query.sh" ; open-in-browser ; s
 # Stream YouTube video
 # macro v set browser "setsid -f mpv-yt %u" ; open-in-browser ; set browser "google-chrome-stable %u"
 macro v set browser "~/scripts/newsboat-play-video.sh %u" ; open-in-browser-noninteractively ; set browser "~/scripts/newsboat-brave-app.sh %u" ; toggle-article-read "read" -- "Play video; mark read after playback starts"
+macro a set browser "python3 ~/scripts/newsboat-archive.py %u" ; open-in-browser-noninteractively ; set browser "~/scripts/newsboat-brave-app.sh %u" ; toggle-article-read "read" -- "Open latest archived article; mark read"
 
 # macro r set browser "w3m %u" ; open-in-browser ; set browser "google-chrome-stable %u"
 macro r set browser "w3m -o display_image=1 %u" ; open-in-browser ; toggle-article-read ; set browser "~/scripts/newsboat-brave-app.sh %u" -- "Read in w3m; toggle read status"

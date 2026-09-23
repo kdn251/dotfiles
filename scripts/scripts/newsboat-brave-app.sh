@@ -7,7 +7,7 @@
 url="$1"
 # Save the original feed URL before rewriting Reddit links.
 if command -v brave >/dev/null 2>&1; then
-  python3 "$(dirname "$(readlink -f "$0")")/newsboat-history.py" record "$url" browser 2>/dev/null || true
+  python3 "$(dirname "$(readlink -f "$0")")/newsboat-history.py" record "${NEWSBOAT_HISTORY_URL:-$url}" browser 2>/dev/null || true
 fi
 
 # Rewrite reddit links to old.reddit (less flashy, less addicting).
