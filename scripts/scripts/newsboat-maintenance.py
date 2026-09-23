@@ -6,6 +6,18 @@ import sys
 from pathlib import Path
 from newsboat_miniflux import Client
 import newsboat_download_cleanup as cleanup
+from urllib.parse import urlparse
+
+
+def publish_feed_platforms(client):
+    from newsboat_media import atomic_write
+    lines = []
+    for feed in client.request('feeds'):
+        hosts = {urlparse(feed.get(key, '')).hostname for key in ('feed_url', 'site_url')}
+        icon = ' ' if hosts & {'youtube.com', 'www.youtube.com', 'm.youtube.com', 'youtu.be'} else ' ' if hosts & {'twitch.tv', 'www.twitch.tv', 'twitchrss.appspot.com'} else ''
+        if icon:
+            lines.append(f'{feed["id"]}\t{icon}\n')
+    atomic_write(cleanup.STATE/'download-status.tsv.feeds', ''.join(lines))
 
 
 def load_starred():
@@ -16,11 +28,16 @@ def load_starred():
 
 
 def main():
+    if sys.argv[1:2] == ['progress']:
+        from newsboat_watch_progress import record
+        return 0 if record(sys.argv[2], float(sys.argv[3]), float(sys.argv[4])) else 1
     if sys.argv[1:2] == ['watched']:
         return 0 if cleanup.record(sys.argv[2],sys.argv[3],float(sys.argv[4])) else 1
     starred = load_starred()
     try:
-        rows = Client().starred()
+        client = Client()
+        publish_feed_platforms(client)
+        rows = client.starred()
         starred.rebuild_query(rows)
         if sys.argv[1:2] != ['sync'] and cleanup.CONFIG.exists():
             settings = json.loads(cleanup.CONFIG.read_text())

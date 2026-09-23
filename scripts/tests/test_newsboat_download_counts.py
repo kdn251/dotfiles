@@ -52,6 +52,9 @@ class DownloadCountsTests(unittest.TestCase):
                 update('title =~ "Video"');wait('Downloads | 2 items')
                 self.assertEqual(screen.cursor.y,2)
                 os.write(fd,b':1\n\n');wait("Articles in feed '📥 Downloads'")
+                (root/'downloads.tsv.watched').write_text('https://example.com/1\t72%\nhttps://example.com/2\t100%\n')
+                wait('72%')
+                self.assertIn('100%', '\n'.join(screen.display))
                 update('title = "Video2"')
                 os.write(fd,b':exec reload-urls\n')
                 deadline=time.monotonic()+4

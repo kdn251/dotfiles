@@ -1,0 +1,74 @@
+--- a/include/rssfeed.h
++++ b/include/rssfeed.h
+@@ -15,6 +15,17 @@
+ 
+ namespace newsboat {
+ 
++// Match platform hosts, not unrelated URLs that merely mention a video site.
++inline std::string media_platform_icon(const std::string& url)
++{
++    const auto start = url.find("://");
++    if (start == std::string::npos) { return ""; }
++    const auto host = url.substr(start + 3, url.find_first_of("/:?#", start + 3) - (start + 3));
++    if (host == "youtube.com" || host == "www.youtube.com" || host == "m.youtube.com" || host == "youtu.be") { return " "; }
++    if (host == "twitch.tv" || host == "www.twitch.tv" || host == "clips.twitch.tv" || host == "twitchrss.appspot.com") { return " "; }
++    return "";
++}
++
+ enum class DlStatus { SUCCESS, TO_BE_DOWNLOADED, DURING_DOWNLOAD, DL_ERROR };
+ 
+ class Cache;
+--- a/src/feedlistformaction.cpp
++++ b/src/feedlistformaction.cpp
+@@ -5,6 +5,7 @@
+ #include <cstdint>
+ #include <cstdlib>
+ #include <fstream>
++#include <map>
+ #include <sys/stat.h>
+ #include <cstring>
+ #include <langinfo.h>
+@@ -1124,7 +1125,31 @@
+ 	if (title.length() == 0) {
+ 		title = "<no title>";
+ 	}
+-	return title;
++    std::string icon;
++    if (const char* status = std::getenv("NEWSBOAT_DOWNLOAD_STATUS")) {
++        static std::map<std::string, std::string> platforms;
++        static std::string loaded;
++        const std::string path = std::string(status) + ".feeds";
++        struct stat info {};
++        if (stat(path.c_str(), &info) == 0) {
++            const auto version = path + std::to_string(info.st_mtim.tv_sec) + ":" + std::to_string(info.st_mtim.tv_nsec);
++            if (version != loaded) {
++                platforms.clear();
++                std::ifstream input(path);
++                std::string line;
++                while (std::getline(input, line)) {
++                    const auto split = line.find('\t');
++                    if (split != std::string::npos) { platforms[line.substr(0, split)] = line.substr(split + 1); }
++                }
++                loaded = version;
++            }
++            const auto found = platforms.find(feed->rssurl());
++            if (found != platforms.end()) { icon = found->second; }
++        }
++    }
++    if (icon.empty()) { icon = media_platform_icon(feed->link()); }
++    if (icon.empty()) { icon = media_platform_icon(feed->rssurl()); }
++    return icon + title;
+ }
+ 
+ unsigned int FeedListFormAction::displayed_unread_count(
+--- a/src/itemlistformaction.cpp
++++ b/src/itemlistformaction.cpp
+@@ -1260,7 +1260,7 @@
+ 		item.first->get_feedptr() != nullptr) {
+ 		auto feedtitle = item.first->get_feedptr()->title();
+ 		utils::remove_soft_hyphens(feedtitle);
+-		fmt.register_fmt('T', feedtitle);
++		fmt.register_fmt('T', media_platform_icon(item.first->link()) + feedtitle);
+ 	}
+ 
+ 	auto itemtitle = utils::utf8_to_locale(item.first->title());

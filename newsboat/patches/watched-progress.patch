@@ -1,0 +1,54 @@
+--- a/src/itemlistformaction.cpp
++++ b/src/itemlistformaction.cpp
+@@ -35,6 +35,7 @@
+ // External workers publish status; rendering never runs commands or API calls.
+ static std::map<std::string, std::string> download_status;
+ static std::set<std::string> starred_urls;
++static std::map<std::string, std::string> watched_progress;
+ static std::string download_revision()
+ {
+     const char* path = std::getenv("NEWSBOAT_DOWNLOAD_STATUS");
+@@ -45,7 +46,8 @@
+         return std::to_string(info.st_mtim.tv_sec) + ":" +
+             std::to_string(info.st_mtim.tv_nsec) + ":" + std::to_string(info.st_size);
+     };
+-    const auto version = revision(path) + "|" + revision(stars);
++    const std::string watched_path = path ? std::string(path) + ".watched" : "";
++    const auto version = revision(path) + "|" + revision(stars) + "|" + revision(watched_path.c_str());
+     static std::string loaded;
+     if (loaded != version) {
+         std::map<std::string, std::string> updated;
+@@ -60,6 +62,14 @@
+             }
+         }
+         download_status = std::move(updated);
++        watched_progress.clear();
++        std::ifstream progress_input(watched_path);
++        while (std::getline(progress_input, line)) {
++            const auto split = line.find('\t');
++            if (split != std::string::npos) {
++                watched_progress[line.substr(0, split)] = line.substr(split + 1);
++            }
++        }
+         starred_urls.clear();
+         if (stars) {
+             std::ifstream input(stars);
+@@ -1140,7 +1150,8 @@
+ 		auto& item = visible_items[line];
+         const bool numbered = feed->title() == "⭐ Starred" ||
+             feed->rssurl().find("query:📥 Downloads:") == 0;
+-        const auto format = numbered ? strprintf::fmt("%4u ", line + 1) + itemlist_format : itemlist_format;
++        const std::string watched = feed->rssurl().find("query:📥 Downloads:") == 0 ? "%4w " : "";
++        const auto format = numbered ? strprintf::fmt("%4u ", line + 1) + watched + itemlist_format : itemlist_format;
+         return item2formatted_line(item, width, format, datetime_format);
+ 	};
+ 	list.invalidate_list_content(visible_items.size(), render_line);
+@@ -1230,6 +1241,8 @@
+         badges += status->second;
+     }
+     fmt.register_fmt('p', badges);
++    const auto progress = watched_progress.find(item.first->link());
++    fmt.register_fmt('w', progress == watched_progress.end() ? "0%" : progress->second);
+ 
+ 	using namespace std::chrono;
+ 	const auto article_time_point = system_clock::from_time_t(
