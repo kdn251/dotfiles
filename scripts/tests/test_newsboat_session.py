@@ -12,6 +12,7 @@ import shutil
 import signal
 import struct
 import subprocess
+import sys
 import tempfile
 import termios
 import threading
@@ -25,11 +26,11 @@ spec.loader.exec_module(session)
 
 
 class ProgressTests(unittest.TestCase):
-    def test_compact_renderer_stays_in_footer(self):
+    def test_compact_renderer_stays_in_top_right_toast(self):
         for frame in (0, 6, 22):
-            output = session.Renderer.compact(frame, '2/5 feeds refreshed', 80, 24, 6)
-            self.assertEqual(re.findall(rb'\x1b\[(\d+);1H', output),
-                             [str(row).encode() for row in range(19, 25)])
+            output = session.Renderer.compact(frame, '2/5 feeds refreshed', 80, 24, 9)
+            self.assertEqual(re.findall(rb'\x1b\[(\d+);46H', output),
+                             [str(row).encode() for row in range(2, 11)])
             self.assertNotIn(b'\x1b[2J', output)
             self.assertIn(b'2/5 feeds refreshed', output)
             self.assertTrue(output.startswith(b'\x1b7'))
@@ -136,8 +137,21 @@ class TerminalIntegrationTests(unittest.TestCase):
         try:
             with tempfile.TemporaryDirectory() as directory:
                 root = Path(directory)
+                wrapper = root / 'newsboat-session.py'
+                shutil.copyfile(SCRIPT, wrapper)
+                (root/'newsboat-launch.sh').symlink_to(SCRIPT.with_name('newsboat-launch.sh'))
+                (root/'newsboat-starred.py').write_text(
+                    'import os, tty\ntty.setraw(0)\n'
+                    'os.write(1,b"\\x1b[H\\x1b[2JNESTED_VIEW")\n'
+                    'while os.read(0,1) != b"q": pass\n')
+                binary = Path.home()/'.local/lib/newsboat-paged/newsboat'
+                target = root/'.local/lib/newsboat-paged'
+                target.mkdir(parents=True)
+                (target/'newsboat').symlink_to(binary)
+
                 config = root / 'config'
                 config.write_text('reload-threads 3\nshow-read-feeds yes\n'
+                                  'bind h everywhere set browser "newsboat-starred://show" ; set browser "sh -c \'printf BROWSER_OPEN; sleep 0.2\' -- %u"\n'
                                   'browser "sh -c \'printf BROWSER_OPEN; sleep 0.2\' -- %u"\n')
                 urls = root / 'urls'
                 urls.write_text(''.join(f'http://127.0.0.1:{server.server_port}/{i}\n' for i in range(6))
@@ -145,7 +159,7 @@ class TerminalIntegrationTests(unittest.TestCase):
                 pid, fd = pty.fork()
                 if pid == 0:
                     os.environ.update(HOME=directory, TERM='xterm-256color')
-                    os.execv('/bin/bash', ['bash', str(SCRIPT.with_name('newsboat-launch.sh')),
+                    os.execv(sys.executable, [sys.executable, str(wrapper),
                                           '-C', str(config), '-u', str(urls), '-c', str(root / 'cache.db')])
                 worker.start()
                 fcntl.ioctl(fd, termios.TIOCSWINSZ, struct.pack('HHHH', 24, 80, 0, 0))
@@ -182,7 +196,11 @@ class TerminalIntegrationTests(unittest.TestCase):
                         until(lambda data: b'Help' in data)
                         self.assertNotIn(final, captured, 'input was blocked until refresh finished')
                         os.write(fd, b'q')
-                        until(lambda data: final in data)
+                        os.write(fd, b'h')
+                        until(lambda data: b'NESTED_VIEW' in data)
+                        until(lambda data: final in data[data.find(b'NESTED_VIEW'):])
+                        self.assertIn('╭'.encode(), captured[captured.find(b'NESTED_VIEW'):])
+                        os.write(fd, b'q')
                         counts = [int(v) for v in re.findall(rb'(\d+)/7 feeds (?:refreshed|checked)', captured)]
                         self.assertTrue(any(0 < count < 7 for count in counts), counts)
                         self.assertEqual(counts, sorted(counts))

@@ -113,9 +113,10 @@ class Renderer:
 
     @staticmethod
     def compact(frame, caption, cols, rows, height):
-        """Paint only the reserved footer, preserving Newsboat's cursor."""
+        """Paint a small top-right toast, preserving Newsboat's cursor."""
+        width = max(1, min(34, cols - 2))
         if height == 1:
-            lines = ['🚢  ' + caption[:max(0, cols-5)]]
+            lines = ['🚢  ' + caption[:max(0, width-4)]]
         else:
             smoke = [list(' ' * 18) for _ in range(2)]
             for stack in (7, 11):
@@ -136,11 +137,13 @@ class Renderer:
             art.append(wave[shift:shift+18])
             colors.append(38)
             lines = [f'\x1b[38;5;{color}m{line}\x1b[0m' for color,line in zip(colors,art)]
-            label = caption[:max(0,cols-23)]
-            lines[-1] += '  ' + label
+            inner = width - 2
+            lines = ['│' + line + ' ' * (inner - 18) + '│' for line in lines]
+            lines.append('│' + caption[:inner].ljust(inner) + '│')
+            lines = ['╭' + '─' * inner + '╮'] + lines + ['╰' + '─' * inner + '╯']
         output = bytearray(b'\x1b7')
         for index,line in enumerate(lines):
-            output.extend(f'\x1b[{rows-height+index+1};1H\x1b[2K'.encode())
+            output.extend(f'\x1b[{min(2, rows)+index};{max(1, cols-width)}H\x1b[0m\x1b[{width}X'.encode())
             output.extend(line.encode())
         output.extend(b'\x1b[0m\x1b8')
         return bytes(output)
@@ -228,10 +231,12 @@ def run(args):
     renderer = Renderer()
     pid = None
     master = None
+    nested_pid = None
+    nested_master = None
     status = None
     startup_error = b""
     offline_requested = False
-    footer_rows = 0
+    toast_rows = 0
     previous_signals = {sig: signal.getsignal(sig) for sig in (signal.SIGWINCH, signal.SIGTERM, signal.SIGHUP)}
     with tempfile.TemporaryDirectory(prefix="newsboat-progress-") as directory:
         if live_queries:
@@ -258,8 +263,10 @@ def run(args):
                 size = fcntl.ioctl(0, termios.TIOCGWINSZ, b"\0" * 8)
                 height, width, xpixels, ypixels = struct.unpack('HHHH', size)
                 height, width = height or 24, width or 80
-                size = struct.pack('HHHH', max(1, height-footer_rows), width, xpixels, ypixels)
+                size = struct.pack('HHHH', height, width, xpixels, ypixels)
                 fcntl.ioctl(master, termios.TIOCSWINSZ, size)
+                if nested_master is not None:
+                    fcntl.ioctl(nested_master, termios.TIOCSWINSZ, size)
 
             def forward_signal(signum, _):
                 # Avoid Newsboat's terminal-reset SIGHUP handler after the
@@ -285,6 +292,17 @@ def run(args):
             finish_at = None
             next_frame = 0.0
             frame = 0
+            def paint_terminal(data):
+                # ncurses can redraw the area behind the toast. Restore the current frame in the same terminal
+                # update rather than leaving it blank until the next tick.
+                if toast_rows:
+                    cols, rows = os.get_terminal_size(1)
+                    data = data.replace(b"\x1b[?2026h", b"").replace(b"\x1b[?2026l", b"")
+                    data += renderer.compact(max(0, frame - 1), progress.caption(),
+                                             cols, rows, toast_rows)
+                    data = b"\x1b[?2026h" + data + b"\x1b[?2026l"
+                write_all(1, data)
+
             opening_feed = False
             starred_return = False
             count_refresh = False
@@ -392,21 +410,30 @@ def run(args):
                                     view_script = "newsboat-starred.py"
                                 if b"FeedListFormAction: opening Commentary view" in line:
                                     view_script = "newsboat-commentary.py"
-                                if view_script:
-                                    # Temporarily give this terminal to the native history list.
+                                if view_script and not live_queries:
                                     termios.tcsetattr(0, termios.TCSADRAIN, original)
                                     try:
-                                        if live_queries:
-                                            write_all(1, b"\x1b[?2026h")
-                                        subprocess.run(
-                                            [sys.executable, str(Path(__file__).with_name(view_script)), "show"],
-                                            check=False, env=view_env)
+                                        subprocess.run([sys.executable, str(Path(__file__).with_name(view_script)), "show"],
+                                                       check=False, env=view_env)
                                     finally:
-                                        write_all(1, b"\x1b[?2026l")
                                         tty.setraw(0)
                                         return_deadline = time.monotonic() + 0.12
-                                        # Dismiss the empty navigation query status before repaint.
                                         write_all(master, b":\x1b\x0c" if starred_entry else b"\x0c")
+                                    view_script = None
+                                if view_script:
+                                    # Keep the outer event loop alive while a saved
+                                    # list owns a separate PTY. Refresh logs and the
+                                    # toast continue independently of navigation.
+                                    if nested_pid is None:
+                                        write_all(1, b"\x1b[?2026h")
+                                        nested_pid, nested_master = pty.fork()
+                                        if nested_pid == 0:
+                                            os.execve(sys.executable,
+                                                [sys.executable, str(Path(__file__).with_name(view_script)), "show"],
+                                                view_env)
+                                        resize()
+                                        selector.register(nested_master, selectors.EVENT_READ, "nested")
+                                        nested_starred_entry = starred_entry
                                 was_active = progress.active
                                 progress.log(line)
                                 if progress.active and not was_active:
@@ -424,14 +451,26 @@ def run(args):
                                     pass
                                 running = False
                                 break
-                            write_all(master, data)
+                            write_all(nested_master if nested_master is not None else master, data)
                         else:
                             try:
-                                data = os.read(master, 65536)
+                                data = os.read(key.fd, 65536)
                             except OSError as error:
                                 if error.errno != errno.EIO:
                                     raise
                                 data = b""
+                            if key.data == "nested":
+                                if data:
+                                    paint_terminal(data.replace(FRAME_READY, b""))
+                                else:
+                                    selector.unregister(nested_master)
+                                    os.close(nested_master)
+                                    nested_master = None
+                                    os.waitpid(nested_pid, 0)
+                                    nested_pid = None
+                                    return_deadline = time.monotonic() + 0.12
+                                    write_all(master, b":\x1b\x0c" if nested_starred_entry else b"\x0c")
+                                continue
                             if not data:
                                 running = False
                                 break
@@ -442,11 +481,11 @@ def run(args):
                                     startup = False
                                     write_all(1, bytes(startup_output))
                                     startup_output.clear()
-                            else:
+                            elif nested_master is None:
                                 if return_deadline is not None:
                                     return_output.extend(data)
                                 else:
-                                    write_all(1, data.replace(FRAME_READY, b""))
+                                    paint_terminal(data.replace(FRAME_READY, b""))
                             if progress.active:
                                 pending_terminal = (pending_terminal + data)[-8192:]
                                 match = TOTAL.search(CSI.sub(b"", pending_terminal))
@@ -458,7 +497,7 @@ def run(args):
                         break
                     if return_deadline is not None and (FRAME_READY in return_output or now >= return_deadline):
                         frame_output = re.sub(rb"\x1b\[\?(?:1049|1047|47)[hl]", b"", bytes(return_output).replace(FRAME_READY, b""))
-                        write_all(1, b"\x1b[?2026h" + frame_output + b"\x1b[?2026l")
+                        paint_terminal(b"\x1b[?2026h" + frame_output + b"\x1b[?2026l")
                         return_output.clear()
                         return_deadline = None
                     if progress.finished and finish_at is None:
@@ -468,18 +507,21 @@ def run(args):
                         progress.finished = False
                         finish_at = None
                     cols, rows = os.get_terminal_size(1)
-                    wanted_footer = (6 if cols >= 42 and rows >= 16 else 1) if progress.active and not startup else 0
-                    if wanted_footer != footer_rows:
-                        footer_rows = wanted_footer
-                        resize()
-                        write_all(master, b"\x0c")
+                    wanted_toast = (9 if cols >= 42 and rows >= 12 else 1) if progress.active and not startup else 0
+                    if wanted_toast != toast_rows:
+                        toast_rows = wanted_toast
+                        if not toast_rows:
+                            # Restore the list underneath the dismissed toast.
+                            write_all(nested_master if nested_master is not None else master, b"\x0c")
                         next_frame = 0
                     if (startup or progress.active) and now >= next_frame:
                         label = progress.caption() if progress.active else "setting sail"
                         if startup:
                             write_all(1, renderer.draw(frame, label))
                         elif return_deadline is None:
-                            write_all(1, renderer.compact(frame, label, cols, rows, footer_rows))
+                            write_all(1, b"\x1b[?2026h" +
+                                      renderer.compact(frame, label, cols, rows, toast_rows) +
+                                      b"\x1b[?2026l")
                         frame += 1
                         next_frame = now + 0.08
 
@@ -495,6 +537,14 @@ def run(args):
                 write_all(1, b"\x1b[0m\x1b[?1049l\x1b[?25h")
             except (OSError, termios.error):
                 pass
+            if nested_pid:
+                try:
+                    os.killpg(nested_pid, signal.SIGTERM)
+                    os.waitpid(nested_pid, 0)
+                except ProcessLookupError:
+                    pass
+            if nested_master is not None:
+                os.close(nested_master)
             if master is not None:
                 os.close(master)
             if pid:
