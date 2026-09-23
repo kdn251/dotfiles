@@ -89,7 +89,7 @@ def prepare_view(directory):
              if line.split() and line.split()[0] in allowed and not line.startswith('bind H ')]
     lines += ['show-read-feeds yes', 'show-read-articles yes', 'article-sort-order date-asc',
               'confirm-exit no', 'confirm-delete-all-articles yes',
-              'bind C articlelist clear-filter ; delete-all-articles ; purge-deleted -- "Clear history (asks for confirmation)"',
+              'macro C clear-filter ; delete-all-articles ; purge-deleted -- "Clear history (asks for confirmation)"',
               'bind q articlelist hard-quit',
               'bind H articlelist hard-quit -- "Return from history"']
     config = directory/'config'

@@ -40,6 +40,15 @@ class DownloadCountsTests(unittest.TestCase):
                 (root/'downloads.tsv').write_text('https://example.com/1\t📥\n')
                 (root/'stars.txt').write_text('https://example.com/1\n')
                 wait('󰓎 📥')
+                (root/'stars.txt.commentary').write_text('https://example.com/1\n')
+                wait('📣')
+                position = screen.cursor.y
+                (root/'stars.txt.commentary').write_text('')
+                deadline=time.monotonic()+4
+                while '📣' in '\n'.join(screen.display) and time.monotonic()<deadline:
+                    if select.select([fd],[],[],.1)[0]:stream.feed(os.read(fd,65536))
+                self.assertNotIn('📣','\n'.join(screen.display))
+                self.assertEqual(screen.cursor.y,position)
                 (root/'stars.txt').write_text('')
                 deadline=time.monotonic()+4
                 while '󰓎' in '\n'.join(screen.display) and time.monotonic()<deadline:

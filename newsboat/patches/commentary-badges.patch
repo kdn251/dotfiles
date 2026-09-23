@@ -1,0 +1,41 @@
+--- a/src/itemlistformaction.cpp
++++ b/src/itemlistformaction.cpp
+@@ -35,6 +35,7 @@
+ // External workers publish status; rendering never runs commands or API calls.
+ static std::map<std::string, std::string> download_status;
+ static std::set<std::string> starred_urls;
++static std::set<std::string> commentary_urls;
+ static std::map<std::string, std::string> watched_progress;
+ static std::string download_revision()
+ {
+@@ -47,7 +48,8 @@
+             std::to_string(info.st_mtim.tv_nsec) + ":" + std::to_string(info.st_size);
+     };
+     const std::string watched_path = path ? std::string(path) + ".watched" : "";
+-    const auto version = revision(path) + "|" + revision(stars) + "|" + revision(watched_path.c_str());
++    const std::string commentary_path = stars ? std::string(stars) + ".commentary" : "";
++    const auto version = revision(commentary_path.c_str()) + "|" + revision(path) + "|" + revision(stars) + "|" + revision(watched_path.c_str());
+     static std::string loaded;
+     if (loaded != version) {
+         std::map<std::string, std::string> updated;
+@@ -75,6 +77,9 @@
+             std::ifstream input(stars);
+             while (std::getline(input, line)) { starred_urls.insert(line); }
+         }
++        commentary_urls.clear();
++        std::ifstream commentary_input(commentary_path);
++        while (std::getline(commentary_input, line)) { commentary_urls.insert(line); }
+         loaded = version;
+     }
+     return version;
+@@ -1240,6 +1245,10 @@
+         if (!badges.empty()) { badges += " "; }
+         badges += status->second;
+     }
++    if (commentary_urls.count(item.first->link())) {
++        if (!badges.empty()) { badges += " "; }
++        badges += "💬";
++    }
+     fmt.register_fmt('p', badges);
+     const auto progress = watched_progress.find(item.first->link());
+     fmt.register_fmt('w', progress == watched_progress.end() ? "0%" : progress->second);

@@ -168,7 +168,7 @@ def prepare_view(directory, rows):
     history=importlib.util.module_from_spec(spec);spec.loader.exec_module(history)
     command,config=history.prepare_view(directory)
     write_feed(directory,rows)
-    lines=[line for line in config.read_text().splitlines() if not line.startswith(('bind C ','bind S ','bind H ','show-read-articles ','article-sort-order '))]
+    lines=[line for line in config.read_text().splitlines() if not line.startswith(('macro C ','bind S ','bind H ','show-read-articles ','article-sort-order '))]
     # Opening a saved item leaves it selected so S can remove it when finished.
     # Keep advancement for explicit read/star/download actions unchanged.
     lines = [line.replace('toggle-article-read "read"', 'toggle-article-read "read" "stay"')
@@ -178,7 +178,7 @@ def prepare_view(directory, rows):
     lines += ['show-read-articles yes','article-sort-order date-desc',
               'bind S articlelist undo-checkpoint unstar ; set browser "python3 ~/scripts/newsboat-starred.py remove %u" ; open-in-browser-noninteractively ; set browser "~/scripts/newsboat-brave-app.sh %u" ; delete-article ; purge-deleted -- "Unstar item"',
               'bind S article,searchresultslist undo-checkpoint unstar ; set browser "python3 ~/scripts/newsboat-starred.py remove %u" ; open-in-browser-noninteractively ; set browser "~/scripts/newsboat-brave-app.sh %u" -- "Unstar item"',
-              'bind C articlelist clear-filter ; delete-all-articles -- "Unstar all displayed items (asks for confirmation)"']
+              'macro C clear-filter ; delete-all-articles -- "Unstar all displayed items (asks for confirmation)"']
     if not os.environ.get('NEWSBOAT_UNDO_HELPER'):
         lines = [line.replace('undo-checkpoint unstar ; ', '') for line in lines]
     config.write_text('\n'.join(lines)+'\n')
@@ -276,7 +276,8 @@ def main():
             message = 'Newsboat could not load the Starred view configuration.'
         else:
             message=str(error) if isinstance(error,ValueError) else 'Could not reach Miniflux. Please try again when connected.'
-        subprocess.run(['notify-send','-a','Newsboat','-t','5000','Starred unavailable',message])
+        if not os.environ.get('NEWSBOAT_QUIET_ERROR'):
+            subprocess.run(['notify-send','-a','Newsboat','-t','5000','Starred unavailable',message])
         print(message,file=sys.stderr)
         return 1
 

@@ -75,7 +75,7 @@ max-items 250
 show-read-articles no
 show-read-feeds yes
 # Start with the four main views, including when they are empty.
-run-on-startup set-filter "feedtitle = \"📰 New\" or feedtitle = \"⭐ Starred\" or feedtitle = \"📥 Downloads\" or feedtitle = \"📚 All\""
+run-on-startup set-filter "feedtitle = \"📬 New\" or feedtitle = \"⭐ Starred\" or feedtitle = \"📥 Downloads\" or feedtitle = \"📣 Commentary\" or feedtitle = \"📚 All\""
 
 # Ask before closing from the main feed list; q still goes back inside feeds.
 confirm-exit yes
@@ -88,7 +88,7 @@ bind H everywhere set browser "newsboat-history://show" ; set browser "~/scripts
 bind S articlelist,searchresultslist undo-checkpoint unstar ; set browser "python3 ~/scripts/newsboat-starred.py remove %u" ; open-in-browser-noninteractively ; set browser "~/scripts/newsboat-brave-app.sh %u" ; down -- "Unstar item and advance"
 bind S article undo-checkpoint unstar ; set browser "python3 ~/scripts/newsboat-starred.py remove %u" ; open-in-browser-noninteractively ; set browser "~/scripts/newsboat-brave-app.sh %u" -- "Unstar item"
 bind s articlelist,article,searchresultslist undo-checkpoint star ; set browser "python3 ~/scripts/newsboat-starred.py save %u" ; open-in-browser-noninteractively ; set browser "~/scripts/newsboat-brave-app.sh %u" ; toggle-article-read "read" "group" -- "Star item, mark read, and advance"
-bind U everywhere undo-action -- "Undo last read/unread or star/unstar change"
+bind U everywhere undo-action -- "Undo last read, star, or Commentary change"
 bind n articlelist,article,searchresultslist toggle-article-read -- "Toggle read/unread (same as N)"
 bind-key j down
 bind-key k up
@@ -144,3 +144,7 @@ ignore-article "*" "tags =~ \"LIVE\""
 # highlight feedlist ".*0/0.." default default invis
 
 user-agent "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+
+# Collect items for commentary independently of Starred.
+bind c articlelist,article,searchresultslist undo-checkpoint commentary ; set browser "python3 ~/scripts/newsboat-commentary.py save %u" ; open-in-browser-noninteractively ; set browser "~/scripts/newsboat-brave-app.sh %u" -- "Save to Commentary"
+bind C articlelist,article,searchresultslist undo-checkpoint commentary ; set browser "python3 ~/scripts/newsboat-commentary.py remove %u" ; open-in-browser-noninteractively ; set browser "~/scripts/newsboat-brave-app.sh %u" -- "Remove from Commentary"

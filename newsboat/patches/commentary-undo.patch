@@ -1,0 +1,182 @@
+--- a/include/view.h
++++ b/include/view.h
+@@ -36,12 +36,13 @@
+ 	explicit View(Controller&);
+ 	~View();
+     void remember_action(std::shared_ptr<RssItem> item, std::shared_ptr<RssFeed> feed,
+-        std::optional<bool> target_star = std::nullopt);
++        std::optional<bool> target_star = std::nullopt, bool commentary_action = false);
+     void undo_action();
+     void sync_undoable_read(std::shared_ptr<RssItem> item, bool read);
+     struct UndoState {
+         std::string token, guid, url;
+         bool unread = false, deleted = false, has_star = false, star = false, target_star = false;
++        bool has_commentary = false, commentary = false;
+         std::shared_ptr<RssItem> item;
+         std::shared_ptr<RssFeed> feed;
+         size_t index = 0;
+--- a/src/view.cpp
++++ b/src/view.cpp
+@@ -1049,7 +1049,7 @@
+ 
+ 
+ void View::remember_action(std::shared_ptr<RssItem> item, std::shared_ptr<RssFeed> feed,
+-    std::optional<bool> target_star)
++    std::optional<bool> target_star, bool commentary_action)
+ {
+     UndoState state;
+     state.token = std::to_string(getpid()) + ":" + std::to_string(
+@@ -1082,13 +1082,22 @@
+         if (star_intents.count(state.url)) { state.star = star_intents.at(state.url); }
+         star_intents[state.url] = *target_star;
+     }
++    if (commentary_action) {
++        state.has_commentary = true;
++        if (const char* path = std::getenv("NEWSBOAT_STARRED_STATUS")) {
++            std::ifstream input(std::string(path) + ".commentary");
++            std::string url;
++            while (std::getline(input, url)) { if (url == state.url) { state.commentary = true; break; } }
++        }
++    }
+     last_action = state;
+     if (const char* path = std::getenv("NEWSBOAT_UNDO_FILE")) {
+         const auto temporary = std::string(path) + "." + std::to_string(getpid());
+         std::ofstream output(temporary);
+         output << std::quoted(state.token) << ' ' << std::quoted(state.guid) << ' '
+             << std::quoted(state.url) << ' ' << state.unread << ' ' << state.deleted << ' '
+-            << state.has_star << ' ' << state.star << ' ' << state.target_star << '\n';
++            << state.has_star << ' ' << state.star << ' ' << state.target_star << ' '
++            << state.has_commentary << ' ' << state.commentary << '\n';
+         output.close(); std::rename(temporary.c_str(), path);
+     }
+ }
+@@ -1119,10 +1128,21 @@
+                 >> shared.has_star >> shared.star >> shared.target_star)) {
+             status_line.show_message("Nothing to undo"); return;
+         }
++        input >> shared.has_commentary >> shared.commentary;
+         if (!saved || saved->token != shared.token) { saved = shared; }
+     }
+     if (!saved) { status_line.show_message("Nothing to undo"); return; }
+     auto state = *saved;
++    if (state.has_commentary) {
++        const char* helper = std::getenv("NEWSBOAT_COMMENTARY_HELPER");
++        if (!helper) { status_line.show_error("Restart Newsboat to undo Commentary changes"); return; }
++        const auto browser = cfg->get_configvalue("browser");
++        cfg->set_configvalue("browser", "python3 " + utils::quote(helper) + " restore %u " +
++            (state.commentary ? "saved" : "removed"));
++        const auto result = open_in_browser(state.url, "", "", "", false);
++        cfg->set_configvalue("browser", browser);
++        if (!result || *result != 0) { status_line.show_error("Could not undo Commentary change"); return; }
++    } else {
+     // Enqueue compensation after pending star changes, never wait for HTTP here.
+     if (const char* helper = std::getenv("NEWSBOAT_UNDO_HELPER")) {
+         const auto browser = cfg->get_configvalue("browser");
+@@ -1133,6 +1153,7 @@
+         cfg->set_configvalue("browser", browser);
+         if (!result || *result != 0) { status_line.show_error("Could not queue undo"); return; }
+     }
++    }
+     const auto restore_item = [&](std::shared_ptr<RssItem> item) {
+         item->set_unread(state.unread);
+         item->set_deleted(state.deleted);
+@@ -1151,7 +1172,7 @@
+             if (item->guid() == state.guid) { restore_item(item); }
+         }
+     }
+-    if (!std::getenv("NEWSBOAT_UNDO_HELPER")) { ctrl.mark_article_read(state.guid, !state.unread); }
++    if (!state.has_commentary && !std::getenv("NEWSBOAT_UNDO_HELPER")) { ctrl.mark_article_read(state.guid, !state.unread); }
+     for (const auto& form : formaction_stack) {
+         form->set_redraw(true);
+         if (const auto list = std::dynamic_pointer_cast<ItemListFormAction>(form)) {
+@@ -1161,7 +1182,7 @@
+     if (journal) { std::remove(journal); }
+     if (state.has_star) { star_intents[state.url] = state.star; }
+     last_action.reset();
+-    status_line.show_message("Undid last read/star change");
++    status_line.show_message(state.has_commentary ? "Undid last Commentary change" : "Undid last read/star change");
+ }
+ 
+ void View::force_redraw()
+--- a/src/itemlistformaction.cpp
++++ b/src/itemlistformaction.cpp
+@@ -294,8 +294,9 @@
+ 	break;
+     case OP_UNDO_CHECKPOINT:
+         if (!visible_items.empty()) {
++            const bool commentary = !args.empty() && args[0] == "commentary";
+             v.remember_action(visible_items[itempos].first, feed,
+-                !args.empty() && args[0] == "star");
++                commentary ? std::nullopt : std::optional<bool>(!args.empty() && args[0] == "star"), commentary);
+         }
+         break;
+ 	case OP_TOGGLEITEMREAD: {
+@@ -1153,7 +1154,7 @@
+ 			return StflRichText::from_plaintext("ERROR");
+ 		}
+ 		auto& item = visible_items[line];
+-        const bool numbered = (feed->title() == "⭐ Starred" || feed->title() == "💬 Commentary") ||
++        const bool numbered = (feed->title() == "⭐ Starred" || feed->title() == "📣 Commentary") ||
+             feed->rssurl().find("query:📥 Downloads:") == 0;
+         const std::string watched = feed->rssurl().find("query:📥 Downloads:") == 0 ? "%4w " : "";
+         const auto format = numbered ? strprintf::fmt("%4u ", line + 1) + watched + itemlist_format : itemlist_format;
+@@ -1247,7 +1248,7 @@
+     }
+     if (commentary_urls.count(item.first->link())) {
+         if (!badges.empty()) { badges += " "; }
+-        badges += "💬";
++        badges += "📣";
+     }
+     fmt.register_fmt('p', badges);
+     const auto progress = watched_progress.find(item.first->link());
+@@ -1507,7 +1508,7 @@
+ 
+ void ItemListFormAction::handle_cmdline_num(unsigned int idx)
+ {
+-    if ((feed->title() == "⭐ Starred" || feed->title() == "💬 Commentary") || feed->rssurl().find("query:📥 Downloads:") == 0) {
++    if ((feed->title() == "⭐ Starred" || feed->title() == "📣 Commentary") || feed->rssurl().find("query:📥 Downloads:") == 0) {
+         if (idx > 0 && idx <= visible_items.size()) { list.set_position(idx - 1); }
+         else { v.get_statusline().show_error(_("Invalid position!")); }
+         return;
+--- a/src/itemviewformaction.cpp
++++ b/src/itemviewformaction.cpp
+@@ -430,7 +430,9 @@
+ 		}
+ 		break;
+     case OP_UNDO_CHECKPOINT:
+-        v.remember_action(item, feed, !args.empty() && args[0] == "star");
++        v.remember_action(item, feed,
++            !args.empty() && args[0] == "commentary" ? std::nullopt : std::optional<bool>(!args.empty() && args[0] == "star"),
++            !args.empty() && args[0] == "commentary");
+         break;
+ 	case OP_TOGGLEITEMREAD: {
+         if (!(args.size() > 1 && args[1] == "group")) {
+--- a/src/feedlistformaction.cpp
++++ b/src/feedlistformaction.cpp
+@@ -124,7 +124,7 @@
+ 			if (visible_feeds.size() > 0) {
+ 				const auto selected = v.get_ctrl().get_feedcontainer()->get_feed(pos);
+                 if (std::getenv("NEWSBOAT_NESTED_VIEWS") && selected &&
+-                    selected->rssurl().find("query:💬 Commentary:") == 0) {
++                    selected->rssurl().find("query:📣 Commentary:") == 0) {
+                     LOG(Level::INFO, "FeedListFormAction: opening Commentary view");
+                     break;
+                 }
+@@ -1161,7 +1161,7 @@
+     const std::shared_ptr<RssFeed>& feed) const
+ {
+ 	unsigned int unread_count = feed->unread_item_count();
+-    if (feed->rssurl().find("query:💬 Commentary:") == 0) {
++    if (feed->rssurl().find("query:📣 Commentary:") == 0) {
+         unsigned int total = 0;
+         if (const char* stars = std::getenv("NEWSBOAT_STARRED_STATUS")) {
+             std::ifstream count_file(std::string(stars) + ".commentary.count");
+@@ -1207,7 +1207,7 @@
+ 		strprintf::fmt("(%u/%u)",
+ 			unread_count,
+ 			static_cast<unsigned int>(feed->total_item_count())));
+-    const bool total_view = feed->rssurl().find("query:💬 Commentary:") == 0 ||
++    const bool total_view = feed->rssurl().find("query:📣 Commentary:") == 0 ||
+         feed->rssurl().find("query:⭐ Starred:") == 0 ||
+         feed->rssurl().find("query:📥 Downloads:") == 0;
+     fmt.register_fmt('v', std::to_string(unread_count));

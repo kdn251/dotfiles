@@ -232,7 +232,7 @@ def rebuild_unlocked():
     rest = [line for line in current.splitlines() if not line.startswith(('"query:Downloaded:', '"query:📥 Downloaded:', '"query:📥 Downloads:'))]
     # Keep Downloads below both New and Starred when rebuilding the library.
     position = max((i + 1 for i, line in enumerate(rest)
-                    if line.startswith(('"query:📰 New:', '"query:⭐ Starred:'))), default=0)
+                    if line.startswith(('"query:📬 New:', '"query:⭐ Starred:'))), default=0)
     rest.insert(position, query)
     content = '\n'.join(rest) + '\n'
     if content != current:

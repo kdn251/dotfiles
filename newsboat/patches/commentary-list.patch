@@ -1,0 +1,59 @@
+--- a/src/feedlistformaction.cpp
++++ b/src/feedlistformaction.cpp
+@@ -123,6 +123,11 @@
+ 				"FeedListFormAction: opening feed at position `%d'", pos);
+ 			if (visible_feeds.size() > 0) {
+ 				const auto selected = v.get_ctrl().get_feedcontainer()->get_feed(pos);
++                if (std::getenv("NEWSBOAT_NESTED_VIEWS") && selected &&
++                    selected->rssurl().find("query:💬 Commentary:") == 0) {
++                    LOG(Level::INFO, "FeedListFormAction: opening Commentary view");
++                    break;
++                }
+ 				if (std::getenv("NEWSBOAT_NESTED_VIEWS") && selected &&
+                     selected->rssurl().find("query:⭐ Starred:") == 0) {
+                     LOG(Level::INFO, "FeedListFormAction: opening Starred view");
+@@ -1156,6 +1161,14 @@
+     const std::shared_ptr<RssFeed>& feed) const
+ {
+ 	unsigned int unread_count = feed->unread_item_count();
++    if (feed->rssurl().find("query:💬 Commentary:") == 0) {
++        unsigned int total = 0;
++        if (const char* stars = std::getenv("NEWSBOAT_STARRED_STATUS")) {
++            std::ifstream count_file(std::string(stars) + ".commentary.count");
++            count_file >> total;
++        }
++        return total;
++    }
+     if (feed->rssurl().find("query:📥 Downloads:") == 0) {
+         return static_cast<unsigned int>(feed->total_item_count());
+     }
+@@ -1194,7 +1207,8 @@
+ 		strprintf::fmt("(%u/%u)",
+ 			unread_count,
+ 			static_cast<unsigned int>(feed->total_item_count())));
+-    const bool total_view = feed->rssurl().find("query:⭐ Starred:") == 0 ||
++    const bool total_view = feed->rssurl().find("query:💬 Commentary:") == 0 ||
++        feed->rssurl().find("query:⭐ Starred:") == 0 ||
+         feed->rssurl().find("query:📥 Downloads:") == 0;
+     fmt.register_fmt('v', std::to_string(unread_count));
+     fmt.register_fmt('k', total_view ? "items" : "unread");
+--- a/src/itemlistformaction.cpp
++++ b/src/itemlistformaction.cpp
+@@ -1148,7 +1148,7 @@
+ 			return StflRichText::from_plaintext("ERROR");
+ 		}
+ 		auto& item = visible_items[line];
+-        const bool numbered = feed->title() == "⭐ Starred" ||
++        const bool numbered = (feed->title() == "⭐ Starred" || feed->title() == "💬 Commentary") ||
+             feed->rssurl().find("query:📥 Downloads:") == 0;
+         const std::string watched = feed->rssurl().find("query:📥 Downloads:") == 0 ? "%4w " : "";
+         const auto format = numbered ? strprintf::fmt("%4u ", line + 1) + watched + itemlist_format : itemlist_format;
+@@ -1498,7 +1498,7 @@
+ 
+ void ItemListFormAction::handle_cmdline_num(unsigned int idx)
+ {
+-    if (feed->title() == "⭐ Starred" || feed->rssurl().find("query:📥 Downloads:") == 0) {
++    if ((feed->title() == "⭐ Starred" || feed->title() == "💬 Commentary") || feed->rssurl().find("query:📥 Downloads:") == 0) {
+         if (idx > 0 && idx <= visible_items.size()) { list.set_position(idx - 1); }
+         else { v.get_statusline().show_error(_("Invalid position!")); }
+         return;

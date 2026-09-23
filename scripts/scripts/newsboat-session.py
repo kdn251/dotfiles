@@ -155,11 +155,14 @@ def run(args):
 
     urls = Path(os.environ.get('NEWSBOAT_URLS_FILE', Path.home()/'.newsboat/urls'))
     config = Path.home()/'.newsboat/config'
+    cache = Path.home()/'.newsboat/cache.db'
     for index, arg in enumerate(args[:-1]):
         if arg in ('-u', '--url-file'):
             urls = Path(args[index + 1])
         elif arg in ('-C', '--config-file'):
             config = Path(args[index + 1])
+        elif arg in ('-c', '--cache-file'):
+            cache = Path(args[index + 1])
     settings = {}
     if config.exists():
         for row in config.read_text().splitlines():
@@ -170,7 +173,21 @@ def run(args):
     query_offset = int(settings.get('urls-source') == 'miniflux'
                        and settings.get('miniflux-show-special-feeds', 'yes') == 'yes')
     os.environ['NEWSBOAT_URLS_FILE'] = str(urls)
-    subprocess.run([sys.executable, str(Path(__file__).with_name('newsboat-starred.py')), 'rebuild'], check=False, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    remote = settings.get('urls-source') == 'miniflux'
+    if remote:
+        subprocess.run([sys.executable, str(Path(__file__).with_name('newsboat-commentary.py')), 'rebuild'], check=False, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    startup_deadline = time.monotonic() + 5
+    if remote:
+        try:
+            result = subprocess.run([sys.executable, str(Path(__file__).with_name('newsboat-starred.py')), 'rebuild'],
+                                    check=False, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=5,
+                                    env=dict(os.environ, NEWSBOAT_QUIET_ERROR='1'))
+            offline = result.returncode != 0
+        except subprocess.TimeoutExpired:
+            offline = True
+        if offline:
+            from newsboat_offline import show
+            return show(config.resolve(), urls.resolve(), cache.resolve())
     urls_version = urls.read_bytes() if urls.exists() else b''
     original = termios.tcgetattr(0)
     renderer = Renderer()
@@ -178,10 +195,13 @@ def run(args):
     master = None
     status = None
     startup_error = b""
+    offline_requested = False
+    previous_signals = {sig: signal.getsignal(sig) for sig in (signal.SIGWINCH, signal.SIGTERM, signal.SIGHUP)}
     with tempfile.TemporaryDirectory(prefix="newsboat-progress-") as directory:
         if live_queries:
             os.environ['NEWSBOAT_UNDO_FILE'] = str(Path(directory)/'undo')
             os.environ['NEWSBOAT_UNDO_HELPER'] = str(Path(__file__).with_name('newsboat-starred.py'))
+            os.environ['NEWSBOAT_COMMENTARY_HELPER'] = str(Path(__file__).with_name('newsboat-commentary.py'))
         view_env = nested_view_environment(directory)
         if live_queries:
             view_env["NEWSBOAT_SYNC_VIEW"] = "1"
@@ -232,7 +252,7 @@ def run(args):
             configured = [shlex.split(row, comments=True) for row in urls_version.decode().splitlines()]
             configured = [row for row in configured if row]
             fallback = next((i for i, row in enumerate(configured)
-                             if row[0].startswith('query:📰 New:')), None)
+                             if row[0].startswith('query:📬 New:')), None)
             if fallback is None:
                 fallback = next((i for i, row in enumerate(configured)
                                  if not row[0].startswith('query:⭐ Starred:')), 0)
@@ -247,6 +267,10 @@ def run(args):
                 selector.register(0, selectors.EVENT_READ, "input")
                 running = True
                 while running:
+                    if remote and startup and time.monotonic() >= startup_deadline:
+                        offline_requested = True
+                        os.kill(pid, signal.SIGTERM)
+                        break
                     events = selector.select(0.04)
                     # Observe completion events before dealing with terminal
                     # updates from the same refresh. No raw logs are retained.
@@ -327,6 +351,8 @@ def run(args):
                                         write_all(master, f":exec reload-urls\n:source {refresh_config}\n".encode() + b"\x1b[24~")
                                 if b"FeedListFormAction: opening Starred view" in line:
                                     view_script = "newsboat-starred.py"
+                                if b"FeedListFormAction: opening Commentary view" in line:
+                                    view_script = "newsboat-commentary.py"
                                 if view_script:
                                     # Temporarily give this terminal to the native history list.
                                     termios.tcsetattr(0, termios.TCSADRAIN, original)
@@ -438,6 +464,13 @@ def run(args):
                     pass
             os.close(log_fd)
             renderer.close()
+            for sig, handler in previous_signals.items():
+                signal.signal(sig, handler)
+    if remote and startup_error and re.search(rb'connect|timed out|resolve host|network|HTTP.*(?:401|403|50[234])', startup_error, re.I):
+        offline_requested = True
+    if offline_requested:
+        from newsboat_offline import show
+        return show(config.resolve(), urls.resolve(), cache.resolve())
     if startup_error:
         write_all(2, startup_error)
     return os.waitstatus_to_exitcode(status)
