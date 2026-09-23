@@ -141,7 +141,7 @@ class Renderer:
             inner = width - 2
             art = [line.center(inner) for line in art[:-1]] + [(wave * 3)[shift:shift+inner]]
             lines = [f'│\x1b[38;5;{color}m{line}\x1b[0m│' for color,line in zip(colors,art)]
-            lines.append('│' + caption[:inner].ljust(inner) + '│')
+            lines.append('│' + caption[:inner].center(inner) + '│')
             lines = ['╭' + '─' * inner + '╮'] + lines + ['╰' + '─' * inner + '╯']
         output = bytearray(b'\x1b7')
         for index,line in enumerate(lines):
