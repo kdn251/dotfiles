@@ -1,0 +1,11 @@
+--- a/src/reloader.cpp
++++ b/src/reloader.cpp
+@@ -163,7 +163,7 @@
+ 	const int max_threads = num_feeds;
+ 	num_threads = std::max(min_threads, std::min(num_threads, max_threads));
+ 
+-	LOG(Level::DEBUG, "Reloader::partition_reload_to_threads: starting with reload...");
++	LOG(Level::DEBUG, "Reloader::partition_reload_to_threads: starting with reload... total feeds: %u", num_feeds);
+ 	reload_progress = 0;
+ 	reload_progress_max = num_feeds;
+ 	if (num_threads == 1) {

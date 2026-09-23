@@ -54,6 +54,8 @@ class Progress:
     def log(self, line):
         if RELOAD_START in line:
             self.__init__()
+            if b" total feeds: " in line:
+                self.total = int(line.rsplit(b": ", 1)[1])
             self.active = True
             self.started_at = time.monotonic()
         elif self.active:
@@ -136,14 +138,14 @@ class Renderer:
             shift = (frame//2) % 6
             art.append(wave[shift:shift+18])
             colors.append(38)
-            lines = [f'\x1b[38;5;{color}m{line}\x1b[0m' for color,line in zip(colors,art)]
             inner = width - 2
-            lines = ['│' + line + ' ' * (inner - 18) + '│' for line in lines]
+            art = [line.center(inner) for line in art[:-1]] + [(wave * 3)[shift:shift+inner]]
+            lines = [f'│\x1b[38;5;{color}m{line}\x1b[0m│' for color,line in zip(colors,art)]
             lines.append('│' + caption[:inner].ljust(inner) + '│')
             lines = ['╭' + '─' * inner + '╮'] + lines + ['╰' + '─' * inner + '╯']
         output = bytearray(b'\x1b7')
         for index,line in enumerate(lines):
-            output.extend(f'\x1b[{min(2, rows)+index};{max(1, cols-width)}H\x1b[0m\x1b[{width}X'.encode())
+            output.extend(f'\x1b[{1+index};{max(1, cols-width+1)}H\x1b[0m\x1b[{width}X'.encode())
             output.extend(line.encode())
         output.extend(b'\x1b[0m\x1b8')
         return bytes(output)

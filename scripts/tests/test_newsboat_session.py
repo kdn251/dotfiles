@@ -26,15 +26,22 @@ spec.loader.exec_module(session)
 
 
 class ProgressTests(unittest.TestCase):
+    def test_total_is_available_before_first_feed_finishes(self):
+        progress = session.Progress()
+        progress.log(session.RELOAD_START + b' total feeds: 207')
+        self.assertEqual(progress.caption(), '0/207 feeds refreshed')
+
     def test_compact_renderer_stays_in_top_right_toast(self):
         for frame in (0, 6, 22):
             output = session.Renderer.compact(frame, '2/5 feeds refreshed', 80, 24, 9)
-            self.assertEqual(re.findall(rb'\x1b\[(\d+);46H', output),
-                             [str(row).encode() for row in range(2, 11)])
+            self.assertEqual(re.findall(rb'\x1b\[(\d+);47H', output),
+                             [str(row).encode() for row in range(1, 10)])
             self.assertNotIn(b'\x1b[2J', output)
             self.assertIn(b'2/5 feeds refreshed', output)
             self.assertTrue(output.startswith(b'\x1b7'))
             self.assertTrue(output.endswith(b'\x1b8'))
+            water = next(line for line in session.CSI.sub(b'', output).decode().split('│') if '~' in line)
+            self.assertEqual(len(water), 32)
 
     def test_counts_completions_not_starts_and_defers_queries(self):
         p = session.Progress()
@@ -192,6 +199,7 @@ class TerminalIntegrationTests(unittest.TestCase):
                         os.write(fd, b'R')
                         final = b'7/7 feeds checked (1 failed)' if repeat else b'7/7 feeds refreshed'
                         until(lambda data: b'feeds refreshed' in data)
+                        self.assertNotIn(b'/? feeds', captured)
                         os.write(fd, b'?')
                         until(lambda data: b'Help' in data)
                         self.assertNotIn(final, captured, 'input was blocked until refresh finished')
