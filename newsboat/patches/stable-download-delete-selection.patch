@@ -1,0 +1,56 @@
+--- a/src/itemlistformaction.cpp
++++ b/src/itemlistformaction.cpp
+@@ -139,18 +139,36 @@
+ 	break;
+     case OP_RELOADURLS: {
+         const bool downloads = feed->rssurl().find("query:📥 Downloads:") == 0;
+-        // Rebind the open Downloads view to its freshly rebuilt query. The
+-        // selected file was deleted; prefer the following row, then previous.
+-        if (downloads && !visible_items.empty()) {
+-            const auto next = itempos + 1 < visible_items.size() ? itempos + 1 :
+-                (itempos > 0 ? itempos - 1 : itempos);
+-            restore_selection_guid = visible_items[next].first->guid();
++        // Preserve the selected item on ordinary reloads. If it was removed,
++        // prefer its next surviving neighbour in the displayed order, then
++        // walk backwards. Feed indices can change when the query is rebuilt.
++        std::vector<std::string> selection_candidates;
++        if (downloads && itempos < visible_items.size()) {
++            for (size_t i = itempos; i < visible_items.size(); ++i) {
++                selection_candidates.push_back(visible_items[i].first->guid());
++            }
++            for (size_t i = itempos; i > 0; --i) {
++                selection_candidates.push_back(visible_items[i - 1].first->guid());
++            }
+         }
+         v.get_ctrl().reload_urls_file();
+         if (downloads) {
+             for (const auto& updated : v.get_ctrl().get_feedcontainer()->get_all_feeds()) {
+                 if (updated->rssurl().find("query:📥 Downloads:") == 0) {
+                     set_feed(updated);
++                    restore_selection_guid.reset();
++                    list.set_position(0);
++                    bool selected = false;
++                    for (const auto& guid : selection_candidates) {
++                        for (size_t i = 0; i < visible_items.size(); ++i) {
++                            if (visible_items[i].first->guid() == guid) {
++                                list.set_position(i);
++                                selected = true;
++                                break;
++                            }
++                        }
++                        if (selected) { break; }
++                    }
+                     break;
+                 }
+             }
+@@ -1695,6 +1713,10 @@
+ 		fd->title());
+ 	feed = fd;
+ 	feed->load();
++    // A replacement query has a new item vector even when the configured
++    // sort strategy is unchanged. Sort before computing/restoring positions.
++    old_sort_strategy = cfg->get_article_sort_strategy();
++    feed->sort(*old_sort_strategy);
+ 	invalidate_list();
+ 	do_update_visible_items();
+ }

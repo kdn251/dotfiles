@@ -37,6 +37,8 @@ patch -p1 < "$repo/newsboat/patches/refresh-total.patch"
 patch -p1 < "$repo/newsboat/patches/refresh-any-list.patch"
 patch -p1 < "$repo/newsboat/patches/refresh-summary.patch"
 patch -p1 < "$repo/newsboat/patches/multi-action-undo.patch"
+patch -p1 < "$repo/newsboat/patches/stable-download-delete-selection.patch"
+patch -p1 < "$repo/newsboat/patches/download-watch-order.patch"
 make -j"${NEWSBOAT_BUILD_JOBS:-4}" WARNFLAGS="-Werror -Wall -Wextra -Wunreachable-code -Wno-error=unused-function" newsboat
 install -m 755 newsboat "$install_dir/newsboat.new"
 mv "$install_dir/newsboat.new" "$install_dir/newsboat"

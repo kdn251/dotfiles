@@ -1,0 +1,90 @@
+--- a/src/itemlistformaction.cpp
++++ b/src/itemlistformaction.cpp
+@@ -1,6 +1,7 @@
+ #include <itemlistformaction.h>
+ 
+ #include <cinttypes>
++#include <algorithm>
+ #include <cstdio>
+ #include <cstring>
+ #include <cstdlib>
+@@ -37,6 +38,7 @@
+ static std::set<std::string> starred_urls;
+ static std::set<std::string> commentary_urls;
+ static std::map<std::string, std::string> watched_progress;
++static std::map<std::string, double> downloaded_at;
+ static std::string download_revision()
+ {
+     const char* path = std::getenv("NEWSBOAT_DOWNLOAD_STATUS");
+@@ -48,8 +50,9 @@
+             std::to_string(info.st_mtim.tv_nsec) + ":" + std::to_string(info.st_size);
+     };
+     const std::string watched_path = path ? std::string(path) + ".watched" : "";
++    const std::string order_path = path ? std::string(path) + ".order" : "";
+     const std::string commentary_path = stars ? std::string(stars) + ".commentary" : "";
+-    const auto version = revision(commentary_path.c_str()) + "|" + revision(path) + "|" + revision(stars) + "|" + revision(watched_path.c_str());
++    const auto version = revision(order_path.c_str()) + "|" + revision(commentary_path.c_str()) + "|" + revision(path) + "|" + revision(stars) + "|" + revision(watched_path.c_str());
+     static std::string loaded;
+     if (loaded != version) {
+         std::map<std::string, std::string> updated;
+@@ -70,6 +73,14 @@
+             const auto split = line.find('\t');
+             if (split != std::string::npos) {
+                 watched_progress[line.substr(0, split)] = line.substr(split + 1);
++            }
++        }
++        downloaded_at.clear();
++        std::ifstream order_input(order_path);
++        while (std::getline(order_input, line)) {
++            const auto split = line.find('\t');
++            if (split != std::string::npos) {
++                downloaded_at[line.substr(0, split)] = std::strtod(line.c_str() + split + 1, nullptr);
+             }
+         }
+         starred_urls.clear();
+@@ -1133,6 +1144,23 @@
+ 		i++;
+ 	}
+ 
++    if (feed->rssurl().find("query:📥 Downloads:") == 0) {
++        std::stable_sort(new_visible_items.begin(), new_visible_items.end(),
++            [](const ItemPtrPosPair& a, const ItemPtrPosPair& b) {
++                const auto percent = [](const std::string& url) {
++                    const auto it = watched_progress.find(url);
++                    return it == watched_progress.end() ? 0 : std::atoi(it->second.c_str());
++                };
++                const auto date = [](const std::string& url) {
++                    const auto it = downloaded_at.find(url);
++                    return it == downloaded_at.end() ? 0.0 : it->second;
++                };
++                const auto ap = percent(a.first->link()), bp = percent(b.first->link());
++                if (ap != bp) { return ap > bp; }
++                return date(a.first->link()) > date(b.first->link());
++            });
++    }
++
+ 	LOG(Level::DEBUG,
+ 		"ItemListFormAction::do_update_visible_items: size = %" PRIu64,
+ 		static_cast<uint64_t>(visible_items.size()));
+@@ -1198,7 +1226,12 @@
+     if (status_version != download_status_version) {
+         download_status_version = status_version;
+         // Badges must not refilter read items or move the current page.
+-        invalidate(list.get_position());
++        if (feed->rssurl().find("query:📥 Downloads:") == 0) {
++            if (!restore_selection_guid) { store_selection(); }
++            invalidate_list();
++        } else {
++            invalidate(list.get_position());
++        }
+     }
+ 	const auto sort_strategy = cfg->get_article_sort_strategy();
+ 	if (!old_sort_strategy || sort_strategy != *old_sort_strategy) {
+@@ -1713,6 +1746,7 @@
+ 		fd->title());
+ 	feed = fd;
+ 	feed->load();
++    download_revision();
+     // A replacement query has a new item vector even when the configured
+     // sort strategy is unchanged. Sort before computing/restoring positions.
+     old_sort_strategy = cfg->get_article_sort_strategy();

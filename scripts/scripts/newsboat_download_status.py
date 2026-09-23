@@ -14,6 +14,7 @@ def publish(state):
     with (state/'.status.lock').open('w') as lock:
         fcntl.flock(lock, fcntl.LOCK_EX)
         statuses = {}
+        completed = {}
         urls = {}
         for path in state.glob('*.json'):
             try:
@@ -32,6 +33,7 @@ def publish(state):
                     value = '✕'
                 elif status == 'done' and any(Path(p).is_file() for p in job.get('files', [])):
                     value = '📥'
+                    completed[key] = max(completed.get(key, 0), float(job.get('updated', 0)))
                 else:
                     continue
                 statuses[key] = value
@@ -45,6 +47,7 @@ def publish(state):
                     key = filename_identity(Path(path))
                     if key:
                         statuses.setdefault(key, '📥')
+                        completed.setdefault(key, record.get('downloaded_at', Path(path).stat().st_ctime))
         except (OSError, ValueError):
             pass
         cache = Path(os.environ.get('NEWSBOAT_CACHE', Path.home()/'.newsboat/cache.db'))
@@ -61,3 +64,9 @@ def publish(state):
         target = state.parent/'download-status.tsv'
         if not target.exists() or target.read_text() != content:
             atomic_write(target, content)
+
+        order = ''.join(f'{url}\t{completed[key]}\n' for url, key in sorted(urls.items())
+                        if key in completed and not any(c in url for c in '\t\r\n'))
+        order_path = target.with_name(target.name + '.order')
+        if not order_path.exists() or order_path.read_text() != order:
+            atomic_write(order_path, order)

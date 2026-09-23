@@ -77,6 +77,22 @@ class MediaTests(unittest.TestCase):
         self.assertNotIn('abc123DEF45',media.URLS.read_text())
         self.assertIn('abc123DEF46',media.URLS.read_text())
 
+    def test_download_order_uses_completion_time_and_persists_legacy_timestamp(self):
+        selected = self.video('Selected [abc123DEF45].mp4')
+        # yt-dlp can preserve the upload mtime; that is not download time.
+        os.utime(selected, (100, 100))
+        with patch.dict(os.environ, NEWSBOAT_CACHE=str(self.root/'missing.db')):
+            media.rebuild()
+            index = json.loads((media.STATE/'.media-index.json').read_text())
+            first = index[str(selected)]['downloaded_at']
+            self.assertGreater(first, 100)
+            media.rebuild()
+            self.assertEqual(json.loads((media.STATE/'.media-index.json').read_text())[str(selected)]['downloaded_at'], first)
+            (media.STATE/'job.json').write_text(json.dumps({'url':URL, 'status':'done', 'updated':12345, 'files':[str(selected)]}))
+            from newsboat_download_status import publish
+            publish(media.STATE)
+            self.assertIn(URL+'\t12345.0\n', (media.STATE.parent/'download-status.tsv.order').read_text())
+
     def test_twitch_exact_id_and_archive(self):
         selected=self.video('twitch-vods/creator - title - 1234567890.mp4')
         unrelated=self.video('twitch-vods/creator - other - 11234567890.mp4')

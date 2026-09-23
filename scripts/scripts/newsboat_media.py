@@ -209,7 +209,8 @@ def rebuild_unlocked():
         signature = [stat.st_size, stat.st_mtime_ns]
         entry = old.get(str(path), {})
         valid = entry.get('valid') if entry.get('signature') == signature else playable(path)
-        index[str(path)] = dict(signature=signature, valid=valid)
+        index[str(path)] = dict(signature=signature, valid=valid,
+                                downloaded_at=entry.get("downloaded_at", stat.st_ctime))
         if valid:
             keys.add(key)
     patterns = []
