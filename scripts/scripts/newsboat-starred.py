@@ -169,6 +169,12 @@ def prepare_view(directory, rows):
     command,config=history.prepare_view(directory)
     write_feed(directory,rows)
     lines=[line for line in config.read_text().splitlines() if not line.startswith(('bind C ','bind S ','bind H ','show-read-articles ','article-sort-order '))]
+    # Opening a saved item leaves it selected so S can remove it when finished.
+    # Keep advancement for explicit read/star/download actions unchanged.
+    lines = [line.replace('toggle-article-read "read"', 'toggle-article-read "read" "stay"')
+             if line.startswith(('bind o ', 'bind O ', 'macro v ')) else
+             line.replace('toggle-article-read ;', 'toggle-article-read "toggle" "stay" ;')
+             if line.startswith('macro r ') else line for line in lines]
     lines += ['show-read-articles yes','article-sort-order date-desc',
               'bind S articlelist undo-checkpoint unstar ; set browser "python3 ~/scripts/newsboat-starred.py remove %u" ; open-in-browser-noninteractively ; set browser "~/scripts/newsboat-brave-app.sh %u" ; delete-article ; purge-deleted -- "Unstar item"',
               'bind S article,searchresultslist undo-checkpoint unstar ; set browser "python3 ~/scripts/newsboat-starred.py remove %u" ; open-in-browser-noninteractively ; set browser "~/scripts/newsboat-brave-app.sh %u" -- "Unstar item"',
@@ -266,7 +272,10 @@ def main():
         elif action=='show':show()
         return 0
     except Exception as error:
-        message=str(error) if isinstance(error,ValueError) else 'Could not reach Miniflux. Please try again when connected.'
+        if isinstance(error, subprocess.CalledProcessError):
+            message = 'Newsboat could not load the Starred view configuration.'
+        else:
+            message=str(error) if isinstance(error,ValueError) else 'Could not reach Miniflux. Please try again when connected.'
         subprocess.run(['notify-send','-a','Newsboat','-t','5000','Starred unavailable',message])
         print(message,file=sys.stderr)
         return 1

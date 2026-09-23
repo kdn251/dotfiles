@@ -3,6 +3,7 @@ import copy
 import importlib.util
 from pathlib import Path
 import sqlite3
+import subprocess
 import tempfile
 import unittest
 from unittest.mock import patch
@@ -50,12 +51,17 @@ class StarredTests(unittest.TestCase):
     def test_view_shows_read_items_and_never_consumes_them(self):
         with tempfile.TemporaryDirectory() as d:
             server=Server();server.rows[1].update(starred=True,status='read')
-            _,config=starred.prepare_view(d,server.starred())
+            command,config=starred.prepare_view(d,server.starred())
             text=config.read_text()
             self.assertIn('show-read-articles yes',text)
             self.assertNotIn('consume',text)
             self.assertIn('Unstar all displayed items (asks for confirmation)',text)
             self.assertIn('⭐ Starred',(Path(d)/'history.xml').read_text())
+            binary = Path.home()/'.local/lib/newsboat-paged/newsboat'
+            if binary.exists():
+                command[0] = str(binary)
+                result = subprocess.run(command+['-x','reload'], capture_output=True, text=True, timeout=10)
+                self.assertEqual(result.returncode, 0, result.stderr)
 
     def test_generated_view_preserves_server_read_and_unread_states(self):
         with tempfile.TemporaryDirectory() as directory:
