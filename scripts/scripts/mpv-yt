@@ -41,6 +41,7 @@ DOWNLOADED=$(python3 "$MEDIA_HELPER" find "$URL" 2>/dev/null) || DOWNLOADED=""
 export NEWSBOAT_MEDIA_URL="$URL"
 export NEWSBOAT_MAINTENANCE="$(dirname "$(readlink -f "$0")")/newsboat-maintenance.py"
 READY_OPTS=("--script=$(dirname "$(readlink -f "$0")")/newsboat-watch-completion.lua")
+READY_OPTS+=("--script=$(dirname "$(readlink -f "$0")")/newsboat-local-playback.lua")
 if [ -n "${NEWSBOAT_PLAY_READY:-}" ]; then
   READY_OPTS+=("--script=$(dirname "$(readlink -f "$0")")/newsboat-play-ready.lua")
 fi
@@ -207,8 +208,9 @@ else
         timeout 2 socat - "$sock" 2>/dev/null | grep -q '"error":"success"'; then
         pos=$(printf '%s\n' '{"command":["get_property","time-pos"]}' |
           timeout 2 socat - "$sock" 2>/dev/null | jq -r '.data // 0')
-        jq -cn --arg f "$local_file" --arg s "$pos" \
-          '{"command":["loadfile",$f,"replace",0,{"start":$s}]}' |
+        jq -cn --arg f "$local_file" --arg s "$pos" --arg u "$URL" \
+          --arg t "$TITLE" --arg i "$icon" --arg b "$YOUTUBE_ICON" \
+          '{"command":["script-message-to","newsboat_local_playback","switch",$u,$f,$s,$t,$i,$b]}' |
           timeout 5 socat - "$sock" >/dev/null 2>&1
       fi
       # Keep the cache under 6GB, oldest first.
