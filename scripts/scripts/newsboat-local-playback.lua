@@ -5,6 +5,8 @@ mp.register_script_message('switch', function(source, path, position, title, ico
     -- An old download must not replace a different video in a newer player.
     if mp.get_property('path', '') ~= source then return end
     pending = {path=path, title=title, icon=icon, badge=badge}
+    local display_title = title ~= '' and title or mp.get_property('media-title', '')
+    if display_title ~= '' then mp.set_property('force-media-title', display_title) end
     mp.commandv('loadfile', path, 'replace', '0', 'start=' .. position)
 end)
 

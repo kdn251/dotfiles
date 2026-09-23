@@ -56,8 +56,8 @@ def save(url):
 
 def remove(url):
     with closing(database()) as db, db:
-        db.execute('DELETE FROM removed')
-        db.execute('INSERT INTO removed SELECT * FROM items WHERE url=?', (url,))
+        db.execute('INSERT OR REPLACE INTO removed SELECT * FROM items WHERE url=?', (url,))
+        db.execute('DELETE FROM removed WHERE rowid NOT IN (SELECT rowid FROM removed ORDER BY rowid DESC LIMIT 100)')
         db.execute('DELETE FROM items WHERE url=?', (url,))
     rebuild()
 

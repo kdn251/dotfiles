@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Wait for this particular mpv launch before Newsboat marks its item read."""
+"""Launch playback without blocking Newsboat; monitor readiness in a worker."""
 import os
 from pathlib import Path
 import subprocess
@@ -31,9 +31,19 @@ def play(args):
                 break
             time.sleep(0.05)
     subprocess.run(['notify-send', '-a', 'Newsboat', '-t', '5000',
-                    'Playback did not start', 'Read status was not changed.'])
+                    'Playback did not start', 'Try opening the video again.'])
     return 1
 
 
+def launch(args):
+    if not args:
+        return 1
+    subprocess.Popen([sys.executable, str(Path(__file__).resolve()), '--wait', *args],
+                     start_new_session=True, stdin=subprocess.DEVNULL,
+                     stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                     close_fds=True)
+    return 0
+
+
 if __name__ == '__main__':
-    sys.exit(play(sys.argv[1:]))
+    sys.exit(play(sys.argv[2:]) if sys.argv[1:2] == ['--wait'] else launch(sys.argv[1:]))

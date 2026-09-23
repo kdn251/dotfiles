@@ -56,5 +56,20 @@ class UndoTests(unittest.TestCase):
                 os.write(fd,b'\n');wait(lambda:has('Item1'))
                 self.assertIn('N',screen.display[1])
                 os.write(fd,b'U');wait(lambda:has('Nothing to undo'))
+                # Three different actions survive returning to the home view.
+                for number in range(1,4):
+                    os.write(fd,f':{number}\nn'.encode())
+                    wait(lambda: (root/'undo').exists() and
+                         len((root/'undo').read_text().splitlines()) == number)
+                os.write(fd,b'q');wait(lambda:not has('Item1'))
+                for remaining in (2,1,0):
+                    os.write(fd,b'U')
+                    wait(lambda: (len((root/'undo').read_text().splitlines())
+                         if (root/'undo').exists() else 0) == remaining)
+                    self.assertEqual(json.loads((root/'restored').read_text())[1],
+                                     f'https://example.com/{remaining+1}')
+                os.write(fd,b'\n');wait(lambda:has('Item1'))
+                for row in screen.display[1:4]: self.assertIn('N',row)
+                os.write(fd,b'U');wait(lambda:has('Nothing to undo'))
             finally:
                 os.kill(pid,signal.SIGTERM);os.waitpid(pid,0);os.close(fd)

@@ -12,6 +12,20 @@ spec=importlib.util.spec_from_file_location('commentary',SCRIPTS/'newsboat-comme
 commentary=importlib.util.module_from_spec(spec);spec.loader.exec_module(commentary)
 
 class CommentaryTests(unittest.TestCase):
+    def test_multiple_removed_items_keep_their_snapshots(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root=Path(directory)
+            with patch.multiple(commentary,STATE=root), patch.object(commentary,'rebuild'):
+                with commentary.database() as db:
+                    db.executemany('INSERT INTO items VALUES (?,?,?,?,?)',[
+                        ('https://example.com/one','One','Source','Original one',1),
+                        ('https://example.com/two','Two','Source','Original two',2)])
+                commentary.remove('https://example.com/one')
+                commentary.remove('https://example.com/two')
+                commentary.restore('https://example.com/two',True)
+                commentary.restore('https://example.com/one',True)
+                self.assertEqual([row[3] for row in commentary.entries()],['Original two','Original one'])
+
     def test_save_persistence_count_order_remove_and_native_config(self):
         import sys
         sys.path.insert(0,str(SCRIPTS))

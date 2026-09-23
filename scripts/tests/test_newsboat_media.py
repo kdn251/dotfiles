@@ -25,6 +25,15 @@ URL = 'https://www.youtube.com/watch?v=abc123DEF45'
 
 
 class MediaTests(unittest.TestCase):
+    def test_cached_title_uses_local_article_metadata(self):
+        cache=self.root/'articles.db'
+        with sqlite3.connect(cache) as db:
+            db.execute('CREATE TABLE rss_item(id INTEGER, url TEXT, title TEXT)')
+            db.execute('INSERT INTO rss_item VALUES (1,?,?)',(URL,'Video title, not its ID'))
+        with patch.dict(os.environ,NEWSBOAT_CACHE=str(cache)):
+            self.assertEqual(media.cached_title(URL),'Video title, not its ID')
+            self.assertEqual(media.cached_title('https://example.com/missing'),'')
+
     @classmethod
     def setUpClass(cls):
         cls.fixture = tempfile.TemporaryDirectory()

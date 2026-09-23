@@ -1,0 +1,116 @@
+--- a/include/view.h
++++ b/include/view.h
+@@ -47,7 +47,7 @@
+         std::shared_ptr<RssFeed> feed;
+         size_t index = 0;
+     };
+-    std::optional<UndoState> last_action;
++    std::vector<UndoState> undo_history;
+     std::map<std::string, bool> star_intents;
+ 	int run();
+ 	std::string run_modal(std::shared_ptr<FormAction> f,
+--- a/src/view.cpp
++++ b/src/view.cpp
+@@ -1047,6 +1047,36 @@
+ 	}
+ }
+ 
++
++namespace {
++std::vector<View::UndoState> read_undo_history(const char* path)
++{
++    std::vector<View::UndoState> states;
++    std::ifstream input(path);
++    View::UndoState state;
++    while (input >> std::quoted(state.token) >> std::quoted(state.guid)
++        >> std::quoted(state.url) >> state.unread >> state.deleted
++        >> state.has_star >> state.star >> state.target_star
++        >> state.has_commentary >> state.commentary) {
++        states.push_back(state);
++    }
++    return states;
++}
++
++void write_undo_history(const char* path, const std::vector<View::UndoState>& states)
++{
++    if (states.empty()) { std::remove(path); return; }
++    const auto temporary = std::string(path) + "." + std::to_string(getpid());
++    std::ofstream output(temporary);
++    for (const auto& state : states) {
++        output << std::quoted(state.token) << ' ' << std::quoted(state.guid) << ' '
++            << std::quoted(state.url) << ' ' << state.unread << ' ' << state.deleted << ' '
++            << state.has_star << ' ' << state.star << ' ' << state.target_star << ' '
++            << state.has_commentary << ' ' << state.commentary << '\n';
++    }
++    output.close(); std::rename(temporary.c_str(), path);
++}
++}
+ 
+ void View::remember_action(std::shared_ptr<RssItem> item, std::shared_ptr<RssFeed> feed,
+     std::optional<bool> target_star, bool commentary_action)
+@@ -1090,15 +1120,13 @@
+             while (std::getline(input, url)) { if (url == state.url) { state.commentary = true; break; } }
+         }
+     }
+-    last_action = state;
++    undo_history.push_back(state);
++    if (undo_history.size() > 100) { undo_history.erase(undo_history.begin()); }
+     if (const char* path = std::getenv("NEWSBOAT_UNDO_FILE")) {
+-        const auto temporary = std::string(path) + "." + std::to_string(getpid());
+-        std::ofstream output(temporary);
+-        output << std::quoted(state.token) << ' ' << std::quoted(state.guid) << ' '
+-            << std::quoted(state.url) << ' ' << state.unread << ' ' << state.deleted << ' '
+-            << state.has_star << ' ' << state.star << ' ' << state.target_star << ' '
+-            << state.has_commentary << ' ' << state.commentary << '\n';
+-        output.close(); std::rename(temporary.c_str(), path);
++        auto states = read_undo_history(path);
++        states.push_back(state);
++        if (states.size() > 100) { states.erase(states.begin()); }
++        write_undo_history(path, states);
+     }
+ }
+ 
+@@ -1118,21 +1146,15 @@
+ 
+ void View::undo_action()
+ {
+-    auto saved = last_action;
+     const char* journal = std::getenv("NEWSBOAT_UNDO_FILE");
+-    if (journal) {
+-        UndoState shared;
+-        std::ifstream input(journal);
+-        if (!(input >> std::quoted(shared.token) >> std::quoted(shared.guid)
+-                >> std::quoted(shared.url) >> shared.unread >> shared.deleted
+-                >> shared.has_star >> shared.star >> shared.target_star)) {
+-            status_line.show_message("Nothing to undo"); return;
+-        }
+-        input >> shared.has_commentary >> shared.commentary;
+-        if (!saved || saved->token != shared.token) { saved = shared; }
+-    }
+-    if (!saved) { status_line.show_message("Nothing to undo"); return; }
+-    auto state = *saved;
++    auto states = journal ? read_undo_history(journal) : undo_history;
++    if (states.empty()) { status_line.show_message("Nothing to undo"); return; }
++    auto state = states.back();
++    // Local snapshots retain pointers needed to restore purged rows. The
++    // shared journal determines ordering across separate saved-list views.
++    const auto local = std::find_if(undo_history.begin(), undo_history.end(),
++        [&](const auto& item) { return item.token == state.token; });
++    if (local != undo_history.end()) { state = *local; }
+     if (state.has_commentary) {
+         const char* helper = std::getenv("NEWSBOAT_COMMENTARY_HELPER");
+         if (!helper) { status_line.show_error("Restart Newsboat to undo Commentary changes"); return; }
+@@ -1179,9 +1201,11 @@
+             list->select_undo_item(state.guid);
+         }
+     }
+-    if (journal) { std::remove(journal); }
++    states.pop_back();
++    if (journal) { write_undo_history(journal, states); }
+     if (state.has_star) { star_intents[state.url] = state.star; }
+-    last_action.reset();
++    undo_history.erase(std::remove_if(undo_history.begin(), undo_history.end(),
++        [&](const auto& item) { return item.token == state.token; }), undo_history.end());
+     status_line.show_message(state.has_commentary ? "Undid last Commentary change" : "Undid last read/star change");
+ }
+ 

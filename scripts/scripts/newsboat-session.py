@@ -371,10 +371,9 @@ def run(args):
                         offline_requested = True
                         os.kill(pid, signal.SIGTERM)
                         break
-                    if refresh_request.exists():
+                    if refresh_request.exists() and not progress.active:
                         refresh_request.unlink(missing_ok=True)
-                        if not progress.active:
-                            write_all(master, b":exec reload-all\n")
+                        write_all(master, b":exec reload-all\n")
                     animation_wait = max(0, next_frame-time.monotonic()) if startup or progress.active else 0.04
                     events = selector.select(min(0.04, animation_wait))
                     # Observe completion events before dealing with terminal

@@ -58,6 +58,7 @@ pkill -f "mpv.*ytdl-format" 2>/dev/null
 pkill -f "streamlink.*--player" 2>/dev/null
 
 if [ -n "$DOWNLOADED" ]; then
+  [ -n "$TITLE" ] || TITLE=$(python3 "$MEDIA_HELPER" title "$URL" 2>/dev/null)
   META="$HOME/.cache/mpv-yt-videos/${VIDEO_ID}.meta"
   if [ -s "$META" ]; then
     # shellcheck disable=SC1090
@@ -67,6 +68,8 @@ if [ -n "$DOWNLOADED" ]; then
     [ -n "${YT_ICON:-}" ] && [ -f "$YT_ICON" ] && NARGS+=(-h "string:image-path:$YT_ICON")
     notify-send "${NARGS[@]}" "${YT_TITLE:-Playing video}" "${YT_CHANNEL:-}" &
   fi
+  TITLE="${TITLE:-${YT_TITLE:-}}"
+  [ -n "$TITLE" ] && READY_OPTS+=("--force-media-title=$TITLE")
   mpv "${READY_OPTS[@]}" --save-position-on-quit --really-quiet "$DOWNLOADED" >/dev/null 2>&1 &
   exit 0
 fi
@@ -103,6 +106,7 @@ if [[ "$URL" =~ twitch\.tv ]]; then
 
   if [ -n "$TWITCH_TOKEN" ]; then
     exec streamlink \
+      --title "{author} — {title}" \
       --twitch-disable-ads \
       --twitch-api-header "Authorization=OAuth $TWITCH_TOKEN" \
       --player mpv \
@@ -112,6 +116,7 @@ if [[ "$URL" =~ twitch\.tv ]]; then
   else
     # Fallback without token
     exec streamlink \
+      --title "{author} — {title}" \
       --twitch-disable-ads \
       --player mpv \
       --player-args "$PLAYER_ARGS" \

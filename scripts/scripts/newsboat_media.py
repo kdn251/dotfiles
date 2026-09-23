@@ -277,8 +277,29 @@ def delete(url):
         return len(paths)
 
 
+def cached_title(url):
+    """Read local metadata without delaying playback for a network lookup."""
+    key = identity(url)
+    if key:
+        for _, job in records():
+            if identity(job.get('url', '')) == key and job.get('title'):
+                return job['title']
+    cache = Path(os.environ.get('NEWSBOAT_CACHE', Path.home()/'.newsboat/cache.db'))
+    try:
+        with contextlib.closing(sqlite3.connect(cache.as_uri()+'?mode=ro', uri=True, timeout=.2)) as db:
+            row = db.execute('SELECT title FROM rss_item WHERE url=? ORDER BY id DESC LIMIT 1', (url,)).fetchone()
+            if row and row[0]:
+                return row[0]
+    except (OSError, sqlite3.Error):
+        pass
+    return ''
+
+
 def main():
     command = sys.argv[1]
+    if command == 'title':
+        print(cached_title(sys.argv[2]))
+        return 0
     if command == 'find':
         path = find(sys.argv[2])
         if path:
