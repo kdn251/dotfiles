@@ -26,6 +26,16 @@ spec.loader.exec_module(session)
 
 
 class ProgressTests(unittest.TestCase):
+    def test_slide_uses_small_monotonic_steps(self):
+        entering = [session.slide_offset(i/60, 34) for i in range(31)]
+        leaving = [session.slide_offset(i/60, 34, exiting=True) for i in range(31)]
+        self.assertEqual((entering[0], entering[-1]), (34, 0))
+        self.assertEqual((leaving[0], leaving[-1]), (0, 34))
+        self.assertEqual(entering, sorted(entering, reverse=True))
+        self.assertEqual(leaving, sorted(leaving))
+        self.assertGreater(len(set(entering)), 20)
+        self.assertLessEqual(max(abs(a-b) for a,b in zip(entering, entering[1:])), 2)
+
     def test_slide_clips_at_right_margin(self):
         for offset in (0, 8, 20, 33):
             output = session.Renderer.compact(0, '2/5 feeds refreshed', 80, 24, 9, offset)

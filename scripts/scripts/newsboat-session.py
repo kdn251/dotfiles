@@ -26,6 +26,15 @@ import time
 import tty
 
 
+SLIDE_DURATION = 0.5
+
+
+def slide_offset(elapsed, width, exiting=False):
+    fraction = max(0.0, min(1.0, elapsed / SLIDE_DURATION))
+    eased = fraction * fraction * (3 - 2 * fraction)
+    return round(width * (eased if exiting else 1 - eased))
+
+
 FRAME_READY = b"\x1b]777;newsboat-frame-ready\x07"
 CSI = re.compile(rb"\x1b\[[0-?]*[ -/]*[@-~]")
 # Match the localized loading status, not unrelated (unread/total) counts.
@@ -324,13 +333,15 @@ def run(args):
             next_frame = 0.0
             frame = 0
             toast_offset = 0
+            toast_started = None
+            animation_started = time.monotonic()
             def paint_terminal(data):
                 # ncurses can redraw the area behind the toast. Restore the current frame in the same terminal
                 # update rather than leaving it blank until the next tick.
                 if toast_rows:
                     cols, rows = os.get_terminal_size(1)
                     data = data.replace(b"\x1b[?2026h", b"").replace(b"\x1b[?2026l", b"")
-                    data += renderer.compact(max(0, frame - 1), progress.toast_caption(),
+                    data += renderer.compact(frame, progress.toast_caption(),
                                              cols, rows, toast_rows, toast_offset)
                     data = b"\x1b[?2026h" + data + b"\x1b[?2026l"
                 write_all(1, data)
@@ -364,7 +375,8 @@ def run(args):
                         refresh_request.unlink(missing_ok=True)
                         if not progress.active:
                             write_all(master, b":exec reload-all\n")
-                    events = selector.select(0.04)
+                    animation_wait = max(0, next_frame-time.monotonic()) if startup or progress.active else 0.04
+                    events = selector.select(min(0.04, animation_wait))
                     # Observe completion events before dealing with terminal
                     # updates from the same refresh. No raw logs are retained.
                     events.sort(key=lambda event: event[0].data != "log")
@@ -476,6 +488,7 @@ def run(args):
                                     finish_at = None
                                 if progress.active and (not was_active or RELOAD_START in line):
                                     frame = 0
+                                    animation_started = time.monotonic()
                                     next_frame = 0
                                     pending_terminal = b""
                             # Bound unfinished diagnostic payloads, e.g. HTML.
@@ -547,12 +560,16 @@ def run(args):
                     cols, rows = os.get_terminal_size(1)
                     wanted_toast = (9 + int(progress.finished) if cols >= 42 and rows >= 12 else 1) if progress.active and not startup else 0
                     if wanted_toast != toast_rows:
+                        if wanted_toast and not toast_rows:
+                            toast_started = now
                         toast_rows = wanted_toast
                         if not toast_rows:
                             # Restore the list underneath the dismissed toast.
                             write_all(nested_master if nested_master is not None else master, b"\x0c")
                         next_frame = 0
                     if (startup or progress.active) and now >= next_frame:
+                        frame = int((now-animation_started)/0.08)
+                        sliding = False
                         label = progress.toast_caption() if progress.active else "setting sail"
                         if startup:
                             write_all(1, renderer.draw(frame, label))
@@ -561,10 +578,13 @@ def run(args):
                             previous_offset = toast_offset
                             if toast_rows == 1:
                                 toast_offset = 0
-                            elif finish_at is not None and now >= finish_at - 0.32:
-                                toast_offset = round(width * (1 - max(0, finish_at-now)/0.32) ** 2)
+                            elif finish_at is not None and now >= finish_at - SLIDE_DURATION:
+                                toast_offset = slide_offset(now-(finish_at-SLIDE_DURATION), width, exiting=True)
+                                sliding = True
                             else:
-                                toast_offset = round(width * max(0, 1-frame/4) ** 3)
+                                elapsed = now-toast_started if toast_started is not None else SLIDE_DURATION
+                                toast_offset = slide_offset(elapsed, width)
+                                sliding = elapsed < SLIDE_DURATION
                             if toast_offset > previous_offset:
                                 # Repaint the newly exposed list behind the
                                 # departing toast, then composite in one update.
@@ -573,8 +593,7 @@ def run(args):
                                 write_all(1, b"\x1b[?2026h" +
                                           renderer.compact(frame, label, cols, rows, toast_rows, toast_offset) +
                                           b"\x1b[?2026l")
-                        frame += 1
-                        next_frame = now + 0.08
+                        next_frame = now + (1/60 if sliding else 0.08)
 
             _, status = os.waitpid(pid, 0)
             pid = None
