@@ -9,7 +9,7 @@ class CommentaryUndoUITests(unittest.TestCase):
    b=root/'.local/lib/newsboat-paged';b.mkdir(parents=True);(b/'newsboat').symlink_to(binary)
    feed=root/'feed.xml';feed.write_text('<rss version="2.0"><channel><title>Source</title><link>https://example.com</link><description>Test</description><item><title>Commentary test article</title><link>https://example.com/article</link><guid>1</guid><description>Saved text</description></item></channel></rss>')
    cfg='\n'.join(l for l in (repo/'newsboat/.newsboat/config').read_text().splitlines() if not l.startswith(('include ','urls-source ','miniflux-')))+'\nurls-source local\n'
-   (home/'config').write_text(cfg);(home/'urls').write_text('"query:📬 New:unread = \\"yes\\""\n"query:📚 All:link = \\"none\\""\n'+feed.as_uri()+'\n')
+   (home/'config').write_text(cfg);(home/'urls').write_text('"query:📬 New:unread = \\"yes\\""\n"query:🌎 All:link = \\"none\\""\n'+feed.as_uri()+'\n')
    env=dict(os.environ,HOME=d,XDG_STATE_HOME=str(root/'state'),NEWSBOAT_CACHE=str(home/'cache.db'),NEWSBOAT_URLS_FILE=str(home/'urls'))
    subprocess.run([str(binary),'-C',str(home/'config'),'-u',str(home/'urls'),'-c',str(home/'cache.db'),'-x','reload'],env=env,check=True,capture_output=True)
    subprocess.run(['python',str(scripts/'newsboat-commentary.py'),'rebuild'],env=env,check=True)
@@ -24,21 +24,21 @@ class CommentaryUndoUITests(unittest.TestCase):
      if check('\n'.join(screen.display)):return
     raise AssertionError('\n'.join(screen.display))
    try:
-    wait(lambda s:'📣 Commentary' in s and '⛵ Newsboat' in s)
+    wait(lambda s:'📣 Commentary' in s and '🚢 Newsboat' in s)
     os.write(fd,b'\n');wait(lambda s:'Commentary test article' in s)
     os.write(fd,b'c');wait(lambda s:'📣' in screen.display[1])
     os.write(fd,b'U');wait(lambda s:'📣' not in screen.display[1] and 'Undid last Commentary' in s)
     os.write(fd,b'c');wait(lambda s:'📣' in screen.display[1])
-    os.write(fd,b'q');wait(lambda s:'⛵ Newsboat' in s)
+    os.write(fd,b'q');wait(lambda s:'🚢 Newsboat' in s)
     os.write(fd,b':2\n\n');wait(lambda s:'Commentary test article' in s)
     os.write(fd,b'C');wait(lambda s:'Commentary test article' not in s)
     os.write(fd,b'U');wait(lambda s:'Commentary test article' in s and '📣' in screen.display[1])
     os.write(fd,b'C');wait(lambda s:'Commentary test article' not in s)
-    os.write(fd,b'q');wait(lambda s:'⛵ Newsboat' in s and '📣 Commentary' in s)
+    os.write(fd,b'q');wait(lambda s:'🚢 Newsboat' in s and '📣 Commentary' in s)
     assert screen.cursor.y==2,screen.cursor.y
     os.write(fd,b'U');wait(lambda s:'Undid last Commentary' in s)
     os.write(fd,b'\n');wait(lambda s:'Commentary test article' in s)
-    os.write(fd,b'q');wait(lambda s:'⛵ Newsboat' in s)
+    os.write(fd,b'q');wait(lambda s:'🚢 Newsboat' in s)
    finally:
     def stop_tree(parent):
      try: children=pathlib.Path(f'/proc/{parent}/task/{parent}/children').read_text().split()

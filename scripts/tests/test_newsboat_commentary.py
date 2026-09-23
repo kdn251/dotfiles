@@ -18,7 +18,7 @@ class CommentaryTests(unittest.TestCase):
         import newsboat_media
         with tempfile.TemporaryDirectory() as directory:
             root=Path(directory); cache=root/'cache';urls=root/'urls';state=root/'state'
-            urls.write_text('\n'.join(json.dumps('query:'+name+':link = "none"',ensure_ascii=False) for name in ['📬 New','⭐ Starred','📥 Downloads','📚 All'])+'\n')
+            urls.write_text('\n'.join(json.dumps('query:'+name+':link = "none"',ensure_ascii=False) for name in ['📬 New','⭐ Starred','📥 Downloads','🌎 All'])+'\n')
             with sqlite3.connect(cache) as db:
                 db.execute('CREATE TABLE rss_feed(rssurl TEXT,title TEXT)')
                 db.execute('CREATE TABLE rss_item(id INTEGER,url TEXT,title TEXT,feedurl TEXT,content TEXT)')
@@ -29,7 +29,7 @@ class CommentaryTests(unittest.TestCase):
                 self.assertEqual(len(commentary.entries()),1)
                 self.assertEqual((state/'starred-urls.txt.commentary.count').read_text(),'1\n')
                 self.assertEqual((state/'starred-urls.txt.commentary').read_text(),'https://example.com/article\n')
-                text=urls.read_text();self.assertLess(text.index('📣 Commentary'),text.index('📚 All'))
+                text=urls.read_text();self.assertLess(text.index('📣 Commentary'),text.index('🌎 All'))
                 with sqlite3.connect(cache) as db:db.execute('DELETE FROM rss_item')
                 self.assertEqual(commentary.entries()[0][1],'Saved title')
                 view=root/'view';view.mkdir();command,config=commentary.prepare_view(view)
