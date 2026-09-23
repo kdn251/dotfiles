@@ -105,7 +105,7 @@ bind-key G end
 bind o everywhere set browser "python3 ~/scripts/newsboat-open.py %u" ; open-in-browser-noninteractively ; set browser "~/scripts/newsboat-brave-app.sh %u" ; toggle-article-read "read" -- "Play YouTube/Twitch in mpv; otherwise Brave; mark read"
 bind O everywhere set browser "python3 ~/scripts/newsboat-open.py %u" ; open-in-browser-noninteractively ; set browser "~/scripts/newsboat-brave-app.sh %u" ; toggle-article-read "read" -- "Play YouTube/Twitch in mpv; otherwise Brave; mark read"
 # Pick up automatically rebuilt Downloaded queries when refreshing feeds.
-bind R feedlist reload-urls ; reload-all -- "Refresh all feeds and reload views"
+bind R feedlist,articlelist,searchresultslist reload-all -- "Refresh all feeds from any list"
 
 # Colors - clean and minimal
 color listfocus          black   cyan    bold

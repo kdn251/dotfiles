@@ -34,6 +34,7 @@ patch -p1 < "$repo/newsboat/patches/all-globe-icon.patch"
 patch -p1 < "$repo/newsboat/patches/list-badge-order.patch"
 patch -p1 < "$repo/newsboat/patches/download-search-read-items.patch"
 patch -p1 < "$repo/newsboat/patches/refresh-total.patch"
+patch -p1 < "$repo/newsboat/patches/refresh-any-list.patch"
 make -j"${NEWSBOAT_BUILD_JOBS:-4}" WARNFLAGS="-Werror -Wall -Wextra -Wunreachable-code -Wno-error=unused-function" newsboat
 install -m 755 newsboat "$install_dir/newsboat.new"
 mv "$install_dir/newsboat.new" "$install_dir/newsboat"

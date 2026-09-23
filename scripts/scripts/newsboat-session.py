@@ -245,6 +245,8 @@ def run(args):
             os.environ['NEWSBOAT_UNDO_FILE'] = str(Path(directory)/'undo')
             os.environ['NEWSBOAT_UNDO_HELPER'] = str(Path(__file__).with_name('newsboat-starred.py'))
             os.environ['NEWSBOAT_COMMENTARY_HELPER'] = str(Path(__file__).with_name('newsboat-commentary.py'))
+        refresh_request = Path(directory)/"refresh-request"
+        os.environ["NEWSBOAT_REFRESH_REQUEST"] = str(refresh_request)
         view_env = nested_view_environment(directory)
         if live_queries:
             view_env["NEWSBOAT_SYNC_VIEW"] = "1"
@@ -330,6 +332,10 @@ def run(args):
                         offline_requested = True
                         os.kill(pid, signal.SIGTERM)
                         break
+                    if refresh_request.exists():
+                        refresh_request.unlink(missing_ok=True)
+                        if not progress.active:
+                            write_all(master, b":exec reload-all\n")
                     events = selector.select(0.04)
                     # Observe completion events before dealing with terminal
                     # updates from the same refresh. No raw logs are retained.

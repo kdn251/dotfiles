@@ -1,0 +1,28 @@
+--- a/src/formaction.cpp
++++ b/src/formaction.cpp
+@@ -5,6 +5,8 @@
+ #include <cstdlib>
+ #include <cinttypes>
+ #include <ncurses.h>
++#include <fstream>
++#include "reloader.h"
+ 
+ #include "config.h"
+ #include "configexception.h"
+@@ -148,6 +150,16 @@
+ 	BindingType bindingType)
+ {
+ 	switch (op) {
++    case OP_RELOADALL:
++        if (std::getenv("NEWSBOAT_SYNC_VIEW")) {
++            if (const char* request = std::getenv("NEWSBOAT_REFRESH_REQUEST")) {
++                std::ofstream(request) << "refresh\n";
++            }
++        } else {
++            v.get_ctrl().reload_urls_file();
++            v.get_ctrl().get_reloader()->start_reload_all_thread();
++        }
++        return true;
+ 	case OP_UNDO_ACTION:
+         v.undo_action();
+         return true;
