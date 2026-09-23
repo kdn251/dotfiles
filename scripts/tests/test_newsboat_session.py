@@ -25,6 +25,16 @@ spec.loader.exec_module(session)
 
 
 class ProgressTests(unittest.TestCase):
+    def test_compact_renderer_stays_in_footer(self):
+        for frame in (0, 6, 22):
+            output = session.Renderer.compact(frame, '2/5 feeds refreshed', 80, 24, 6)
+            self.assertEqual(re.findall(rb'\x1b\[(\d+);1H', output),
+                             [str(row).encode() for row in range(19, 25)])
+            self.assertNotIn(b'\x1b[2J', output)
+            self.assertIn(b'2/5 feeds refreshed', output)
+            self.assertTrue(output.startswith(b'\x1b7'))
+            self.assertTrue(output.endswith(b'\x1b8'))
+
     def test_counts_completions_not_starts_and_defers_queries(self):
         p = session.Progress()
         p.log(session.RELOAD_START)
@@ -167,6 +177,11 @@ class TerminalIntegrationTests(unittest.TestCase):
                             fcntl.ioctl(fd, termios.TIOCSWINSZ, struct.pack('HHHH', 30, 100, 0, 0))
                         os.write(fd, b'R')
                         final = b'7/7 feeds checked (1 failed)' if repeat else b'7/7 feeds refreshed'
+                        until(lambda data: b'feeds refreshed' in data)
+                        os.write(fd, b'?')
+                        until(lambda data: b'Help' in data)
+                        self.assertNotIn(final, captured, 'input was blocked until refresh finished')
+                        os.write(fd, b'q')
                         until(lambda data: final in data)
                         counts = [int(v) for v in re.findall(rb'(\d+)/7 feeds (?:refreshed|checked)', captured)]
                         self.assertTrue(any(0 < count < 7 for count in counts), counts)

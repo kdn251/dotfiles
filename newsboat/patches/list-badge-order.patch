@@ -1,0 +1,33 @@
+--- a/src/itemlistformaction.cpp
++++ b/src/itemlistformaction.cpp
+@@ -1241,14 +1241,23 @@
+ 	fmt.register_fmt('F', item.first->flags());
+ 	fmt.register_fmt('e', item.first->enclosure_url());
+     const auto status = download_status.find(item.first->link());
+-    std::string badges = starred_urls.count(item.first->link()) ? "󰓎" : "";
+-    if (status != download_status.end()) {
++    const std::vector<std::string> markers = {
++        starred_urls.count(item.first->link()) ? "󰓎" : "",
++        status != download_status.end() ? status->second : "",
++        commentary_urls.count(item.first->link()) ? "📣" : ""
++    };
++    size_t primary = 0; // New, All and source feeds: star, download, commentary.
++    if (feed->title() == "📥 Downloads") { primary = 1; }
++    else if (feed->title() == "📣 Commentary") { primary = 2; }
++    std::string badges;
++    const auto append = [&](size_t index) {
++        if (markers[index].empty()) { return; }
+         if (!badges.empty()) { badges += " "; }
+-        badges += status->second;
+-    }
+-    if (commentary_urls.count(item.first->link())) {
+-        if (!badges.empty()) { badges += " "; }
+-        badges += "📣";
++        badges += markers[index];
++    };
++    append(primary);
++    for (size_t i = 0; i < markers.size(); ++i) {
++        if (i != primary) { append(i); }
+     }
+     fmt.register_fmt('p', badges);
+     const auto progress = watched_progress.find(item.first->link());

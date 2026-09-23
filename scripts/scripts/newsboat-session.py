@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Keep Newsboat's native refresh behind the shared boat animation.
+"""Show startup and nonblocking refresh ship animations around Newsboat.
 
 Newsboat 2.44 emits a ScopeMeasure event after each feed reload, and after the
 whole batch. Consume these from a private FIFO, never a persistent debug log.
@@ -17,6 +17,7 @@ import re
 import selectors
 import shlex
 import signal
+import struct
 import subprocess
 import sys
 import tempfile
@@ -110,6 +111,40 @@ class Renderer:
         self.process.wait(timeout=2)
         self.process.stdout.close()
 
+    @staticmethod
+    def compact(frame, caption, cols, rows, height):
+        """Paint only the reserved footer, preserving Newsboat's cursor."""
+        if height == 1:
+            lines = ['🚢  ' + caption[:max(0, cols-5)]]
+        else:
+            smoke = [list(' ' * 18) for _ in range(2)]
+            for stack in (7, 11):
+                for offset in (0, 6):
+                    age = (frame // 2 + offset + (2 if stack == 11 else 0)) % 12
+                    smoke[1-age//6][stack+age//4] = 'o' if 3 <= age < 9 else '.'
+            art = [''.join(line) for line in smoke] + [
+                '      |#| |#|     ',
+                '   ___|[]_[]|___  ',
+                '   \\_o_o_o_o__/   ',
+            ]
+            colors = [244,244,203,255,203]
+            if 6 <= frame % 32 < 22:
+                art = art[1:] + [' ' * 18]
+                colors = colors[1:] + [244]
+            wave = '~^~~-~~^~~-~~^~~-~~^~~-~~'
+            shift = (frame//2) % 6
+            art.append(wave[shift:shift+18])
+            colors.append(38)
+            lines = [f'\x1b[38;5;{color}m{line}\x1b[0m' for color,line in zip(colors,art)]
+            label = caption[:max(0,cols-23)]
+            lines[-1] += '  ' + label
+        output = bytearray(b'\x1b7')
+        for index,line in enumerate(lines):
+            output.extend(f'\x1b[{rows-height+index+1};1H\x1b[2K'.encode())
+            output.extend(line.encode())
+        output.extend(b'\x1b[0m\x1b8')
+        return bytes(output)
+
 
 def write_all(fd, data):
     while data:
@@ -196,6 +231,7 @@ def run(args):
     status = None
     startup_error = b""
     offline_requested = False
+    footer_rows = 0
     previous_signals = {sig: signal.getsignal(sig) for sig in (signal.SIGWINCH, signal.SIGTERM, signal.SIGHUP)}
     with tempfile.TemporaryDirectory(prefix="newsboat-progress-") as directory:
         if live_queries:
@@ -220,6 +256,9 @@ def run(args):
 
             def resize(*_):
                 size = fcntl.ioctl(0, termios.TIOCGWINSZ, b"\0" * 8)
+                height, width, xpixels, ypixels = struct.unpack('HHHH', size)
+                height, width = height or 24, width or 80
+                size = struct.pack('HHHH', max(1, height-footer_rows), width, xpixels, ypixels)
                 fcntl.ioctl(master, termios.TIOCSWINSZ, size)
 
             def forward_signal(signum, _):
@@ -385,10 +424,7 @@ def run(args):
                                     pass
                                 running = False
                                 break
-                            # Avoid navigating invisibly while covered. Ctrl-C
-                            # still reaches Newsboat to interrupt its work.
-                            if not progress.active or b"\x03" in data:
-                                write_all(master, data)
+                            write_all(master, data)
                         else:
                             try:
                                 data = os.read(master, 65536)
@@ -404,10 +440,9 @@ def run(args):
                                 # ncurses entering its screen is the handoff.
                                 if b"\x1b[?1049h" in startup_output or b"\x1b[?47h" in startup_output:
                                     startup = False
-                                    if not progress.active:
-                                        write_all(1, bytes(startup_output))
+                                    write_all(1, bytes(startup_output))
                                     startup_output.clear()
-                            elif not progress.active:
+                            else:
                                 if return_deadline is not None:
                                     return_output.extend(data)
                                 else:
@@ -432,13 +467,19 @@ def run(args):
                         progress.active = False
                         progress.finished = False
                         finish_at = None
-                        # Ask ncurses for a complete repaint after hiding its
-                        # incremental updates; never replay stale screen data.
-                        write_all(1, b"\x1b[?25h\x1b[H\x1b[2J")
+                    cols, rows = os.get_terminal_size(1)
+                    wanted_footer = (6 if cols >= 42 and rows >= 16 else 1) if progress.active and not startup else 0
+                    if wanted_footer != footer_rows:
+                        footer_rows = wanted_footer
+                        resize()
                         write_all(master, b"\x0c")
+                        next_frame = 0
                     if (startup or progress.active) and now >= next_frame:
                         label = progress.caption() if progress.active else "setting sail"
-                        write_all(1, renderer.draw(frame, label))
+                        if startup:
+                            write_all(1, renderer.draw(frame, label))
+                        elif return_deadline is None:
+                            write_all(1, renderer.compact(frame, label, cols, rows, footer_rows))
                         frame += 1
                         next_frame = now + 0.08
 

@@ -1,0 +1,15 @@
+--- a/src/itemlistformaction.cpp
++++ b/src/itemlistformaction.cpp
+@@ -1099,7 +1099,11 @@
+ 	 * (if applicable) whether an items matches the currently active filter.
+ 	 */
+ 
+-	bool show_read = cfg->get_configvalue_as_bool("show-read-articles");
++	// Downloads are a library, and explicit search results should include
++	// matching read items even when ordinary feeds hide them.
++	bool show_read = cfg->get_configvalue_as_bool("show-read-articles") ||
++		feed->is_search_feed() ||
++		feed->rssurl().find("query:📥 Downloads:") == 0;
+ 
+ 	unsigned int i = 0;
+ 	for (const auto& item : items) {

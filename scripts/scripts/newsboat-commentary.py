@@ -115,7 +115,9 @@ def prepare_view(directory):
     ET.ElementTree(rss).write(Path(directory)/'history.xml',encoding='utf-8',xml_declaration=True)
     lines=[line for line in config.read_text().splitlines() if not line.startswith(('bind C ', 'macro C ', 'article-sort-order '))]
     lines=[line.replace('toggle-article-read "read"','toggle-article-read "read" "stay"') if line.startswith(('bind o ','bind O ','macro v ','macro a ')) else line for line in lines]
-    lines += ['article-sort-order date-desc',
+    # Keep search rows consistent with this list (source is in the title).
+    lines += ['articlelist-format " %f  %D  %-9p %t"',
+              'article-sort-order date-desc',
               'bind C articlelist undo-checkpoint commentary ; set browser "python3 ~/scripts/newsboat-commentary.py remove %u" ; open-in-browser-noninteractively ; set browser "~/scripts/newsboat-brave-app.sh %u" ; delete-article ; purge-deleted -- "Remove from Commentary"',
               'bind C article,searchresultslist undo-checkpoint commentary ; set browser "python3 ~/scripts/newsboat-commentary.py remove %u" ; open-in-browser-noninteractively ; set browser "~/scripts/newsboat-brave-app.sh %u" -- "Remove from Commentary"']
     config.write_text('\n'.join(lines)+'\n')

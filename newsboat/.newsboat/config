@@ -60,6 +60,9 @@ macro b set browser "~/scripts/bookmark-article.sh %u '%T'" ; open-in-browser ; 
 macro B set browser "~/scripts/unbookmark-article.sh %u '%T'" ; open-in-browser ; set browser "~/scripts/newsboat-brave-app.sh %u" -- "Remove article bookmark"
 
 reload-threads 100
+# Pick up Miniflux updates automatically while this session is open.
+auto-reload yes
+reload-time 15
 
 # --- cache retention -------------------------------------------------------
 # Without these the cache only ever grows: it had reached 75,557 articles
