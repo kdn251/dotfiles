@@ -49,6 +49,9 @@ def save(url):
                     title, source, content = row['title'], row['feed']['title'], row.get('content','')
                     break
         except (OSError, ValueError): pass
+    if not source:
+        from newsboat_sources import article_sources
+        source = article_sources(CACHE, STATE).get(url, '')
     with closing(database()) as db, db:
         db.execute('INSERT OR IGNORE INTO items VALUES (?,?,?,?,?)', (url,title,source or '',content or '',time.time()))
     rebuild()
@@ -100,10 +103,13 @@ def prepare_view(directory):
     ET.SubElement(channel,'title').text='📣 Commentary'
     ET.SubElement(channel,'link').text='https://localhost/commentary'
     ET.SubElement(channel,'description').text='Saved for commentary. C removes the selected item.'
+    from newsboat_sources import article_sources, source_label
+    sources = article_sources(CACHE, STATE)
     rows = entries()
     for url,title,source,content,saved in rows:
         item=ET.SubElement(channel,'item')
-        ET.SubElement(item,'title').text=title+(' — '+source if source else '')
+        ET.SubElement(item,'title').text=title
+        ET.SubElement(item,'author').text=source_label(url, source or sources.get(url, ''))
         ET.SubElement(item,'link').text=url
         ET.SubElement(item,'guid',isPermaLink='false').text=hashlib.sha256(url.encode()).hexdigest()
         ET.SubElement(item,'description').text=content
@@ -115,8 +121,8 @@ def prepare_view(directory):
     ET.ElementTree(rss).write(Path(directory)/'history.xml',encoding='utf-8',xml_declaration=True)
     lines=[line for line in config.read_text().splitlines() if not line.startswith(('bind C ', 'macro C ', 'article-sort-order '))]
     lines=[line.replace('toggle-article-read "read"','toggle-article-read "read" "stay"') if line.startswith(('bind o ','bind O ','macro v ','macro a ')) else line for line in lines]
-    # Keep search rows consistent with this list (source is in the title).
-    lines += ['articlelist-format " %f  %D  %-9p %t"',
+    # Keep the original source visible in this list and its search results.
+    lines += ['articlelist-format " %f  %D  %-9p %-20a │ %t"',
               'article-sort-order date-desc',
               'bind C articlelist undo-checkpoint commentary ; set browser "python3 ~/scripts/newsboat-commentary.py remove %u" ; open-in-browser-noninteractively ; set browser "~/scripts/newsboat-brave-app.sh %u" ; delete-article ; purge-deleted -- "Remove from Commentary"',
               'bind C article,searchresultslist undo-checkpoint commentary ; set browser "python3 ~/scripts/newsboat-commentary.py remove %u" ; open-in-browser-noninteractively ; set browser "~/scripts/newsboat-brave-app.sh %u" -- "Remove from Commentary"']

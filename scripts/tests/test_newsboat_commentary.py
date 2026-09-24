@@ -49,6 +49,8 @@ class CommentaryTests(unittest.TestCase):
                 view=root/'view';view.mkdir();command,config=commentary.prepare_view(view)
                 self.assertIn('delete-article ; purge-deleted',config.read_text())
                 self.assertIn('Full content',(view/'history.xml').read_text())
+                self.assertIn('<author>Source</author>',(view/'history.xml').read_text())
+                self.assertIn('%-20a │ %t', config.read_text())
                 binary=Path.home()/'.local/lib/newsboat-paged/newsboat'
                 if binary.exists():
                     command[0]=str(binary)

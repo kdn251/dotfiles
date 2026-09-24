@@ -6,6 +6,7 @@ from pathlib import Path
 import sqlite3
 import subprocess
 import tempfile
+from newsboat_sources import feed_titles
 
 
 def prepare(directory, config, urls, cache):
@@ -13,6 +14,9 @@ def prepare(directory, config, urls, cache):
     offline_cache = root/'cache.db'
     with closing(sqlite3.connect(cache.as_uri()+'?mode=ro', uri=True)) as source, closing(sqlite3.connect(offline_cache)) as target:
         source.backup(target)
+        target.executemany('UPDATE rss_feed SET title=? WHERE rssurl=?',
+                           [(title, feed) for feed, title in feed_titles().items()])
+        target.commit()
         feeds = [row[0] for row in source.execute('SELECT rssurl FROM rss_feed')
                  if not row[0].startswith('query:')]
     downloads = next((line for line in urls.read_text().splitlines()

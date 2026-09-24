@@ -21,6 +21,7 @@ from urllib.error import HTTPError
 SCRIPTS = Path(__file__).resolve().parent
 sys.path.insert(0, str(SCRIPTS))
 from newsboat_miniflux import Client
+from newsboat_sources import source_label
 URLS = Path(os.environ.get('NEWSBOAT_URLS_FILE', Path.home()/'.newsboat/urls'))
 STARRED_STATUS = Path(os.environ.get('XDG_STATE_HOME', Path.home()/'.local/state'))/'newsboat/starred-urls.txt'
 CACHE = Path(os.environ.get('NEWSBOAT_CACHE', Path.home()/'.newsboat/cache.db'))
@@ -152,7 +153,8 @@ def write_feed(directory, rows):
         ET.SubElement(channel,key).text=value
     for row in rows:
         item=ET.SubElement(channel,'item')
-        ET.SubElement(item,'title').text=row['title']+' — '+row['feed']['title']
+        ET.SubElement(item,'title').text=row['title']
+        ET.SubElement(item,'author').text=source_label(row['url'], row['feed']['title'])
         ET.SubElement(item,'link').text=row['url']
         ET.SubElement(item,'guid',isPermaLink='false').text=str(row['id'])
         ET.SubElement(item,'description').text=row.get('content','')
@@ -186,9 +188,8 @@ def prepare_view(directory, rows):
              if line.startswith(('bind o ', 'bind O ', 'macro v ', 'macro a ')) else
              line.replace('toggle-article-read ;', 'toggle-article-read "toggle" "stay" ;')
              if line.startswith('macro r ') else line for line in lines]
-    # Searches expose the synthetic feed title; the real source is already
-    # included in each item's title, so omit the redundant feed column.
-    lines += ['articlelist-format " %f  %D  %-9p %t"',
+    # Use the original source in both this list and its search results.
+    lines += ['articlelist-format " %f  %D  %-9p %-20a │ %t"',
               'show-read-articles yes','article-sort-order date-asc',
               'bind S articlelist undo-checkpoint unstar ; set browser "python3 ~/scripts/newsboat-starred.py remove %u" ; open-in-browser-noninteractively ; set browser "~/scripts/newsboat-brave-app.sh %u" ; delete-article ; purge-deleted -- "Unstar item"',
               'bind S article,searchresultslist undo-checkpoint unstar ; set browser "python3 ~/scripts/newsboat-starred.py remove %u" ; open-in-browser-noninteractively ; set browser "~/scripts/newsboat-brave-app.sh %u" -- "Unstar item"',

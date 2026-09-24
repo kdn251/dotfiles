@@ -72,6 +72,8 @@ class StarredTests(unittest.TestCase):
                     text = '\n'.join(screen.display)
                     if all(title in text for title in ['OldestArticle','NewestArticle','MiddleArticle']):
                         break
+                self.assertIn('Source', text)
+                self.assertLess(text.index('Source'), text.index('NewestArticle'))
                 self.assertLess(text.index('NewestArticle'),text.index('MiddleArticle'))
                 self.assertLess(text.index('MiddleArticle'),text.index('OldestArticle'))
             finally:

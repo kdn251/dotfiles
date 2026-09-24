@@ -12,12 +12,15 @@ from urllib.parse import urlparse
 def publish_feed_platforms(client):
     from newsboat_media import atomic_write
     lines = []
+    titles = {}
     for feed in client.request('feeds'):
+        titles[str(feed['id'])] = feed['title']
         hosts = {urlparse(feed.get(key, '')).hostname for key in ('feed_url', 'site_url')}
         icon = ' ' if hosts & {'youtube.com', 'www.youtube.com', 'm.youtube.com', 'youtu.be'} else ' ' if hosts & {'twitch.tv', 'www.twitch.tv', 'twitchrss.appspot.com'} else ''
         if icon:
             lines.append(f'{feed["id"]}\t{icon}\n')
     atomic_write(cleanup.STATE/'download-status.tsv.feeds', ''.join(lines))
+    atomic_write(cleanup.STATE/'feed-titles.json', json.dumps(titles, ensure_ascii=False))
 
 
 def load_starred():
