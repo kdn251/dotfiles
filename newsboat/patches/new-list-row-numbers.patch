@@ -1,0 +1,20 @@
+--- a/src/itemlistformaction.cpp
++++ b/src/itemlistformaction.cpp
+@@ -1241,7 +1241,7 @@
+ 			return StflRichText::from_plaintext("ERROR");
+ 		}
+ 		auto& item = visible_items[line];
+-        const bool numbered = (feed->title() == "⭐ Starred" || feed->title() == "📣 Commentary" || feed->title() == " Favorites") ||
++        const bool numbered = (feed->rssurl().find("query:📬 New:") == 0 || feed->title() == "⭐ Starred" || feed->title() == "📣 Commentary" || feed->title() == " Favorites") ||
+             feed->rssurl().find("query:📥 Downloads:") == 0;
+         const std::string watched = feed->rssurl().find("query:📥 Downloads:") == 0 ? "%4w " : "";
+         const auto format = numbered ? strprintf::fmt("%4u ", line + 1) + watched + itemlist_format : itemlist_format;
+@@ -1630,7 +1630,7 @@
+ 
+ void ItemListFormAction::handle_cmdline_num(unsigned int idx)
+ {
+-    if ((feed->title() == "⭐ Starred" || feed->title() == "📣 Commentary" || feed->title() == " Favorites") || feed->rssurl().find("query:📥 Downloads:") == 0) {
++    if ((feed->rssurl().find("query:📬 New:") == 0 || feed->title() == "⭐ Starred" || feed->title() == "📣 Commentary" || feed->title() == " Favorites") || feed->rssurl().find("query:📥 Downloads:") == 0) {
+         if (idx > 0 && idx <= visible_items.size()) { list.set_position(idx - 1); }
+         else { v.get_statusline().show_error(_("Invalid position!")); }
+         return;

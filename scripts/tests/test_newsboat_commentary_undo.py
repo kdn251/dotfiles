@@ -24,7 +24,11 @@ class CommentaryUndoUITests(unittest.TestCase):
      if check('\n'.join(screen.display)):return
     raise AssertionError('\n'.join(screen.display))
    try:
-    wait(lambda s:'📣 Commentary' in s and '🚢 Newsboat' in s)
+    wait(lambda s:'📣 Commentary' in s and '🚢 Newsboat' in s and screen.cursor.y == 1)
+    # Drain the wrapper's startup commands before sending interactive input.
+    settled=time.monotonic()+.5
+    while time.monotonic()<settled:
+     if select.select([fd],[],[],.05)[0]:stream.feed(os.read(fd,65536))
     os.write(fd,b'\n');wait(lambda s:'Commentary test article' in s)
     os.write(fd,b'R');wait(lambda s:'feeds refreshed' in s)
     wait(lambda s:'feeds refreshed' not in s)
