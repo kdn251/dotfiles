@@ -24,7 +24,7 @@ class DeleteSelectionTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as folder:
             root = Path(folder)
             config, urls, feed = root/'config', root/'urls', root/'feed.xml'
-            config.write_text('article-sort-order title-desc\nshow-read-feeds yes\nshow-read-articles yes\nprepopulate-query-feeds yes\nconfirm-exit no\ncolor listfocus black cyan bold\ncolor listfocus_unread black cyan bold\nhighlight articlelist ".*◆.*" cyan default bold\narticlelist-format "%p %t"\n')
+            config.write_text('article-sort-order title-desc\nshow-read-feeds yes\nshow-read-articles yes\nprepopulate-query-feeds yes\nconfirm-exit no\ncolor listfocus black cyan bold\ncolor listfocus_unread black cyan bold\nhighlight articlelist ".*📌.*" cyan default bold\narticlelist-format "%p %t"\n')
             editor = root/'editor.py'
             editor.write_text('import sys\nfrom pathlib import Path\nPath(sys.argv[1]).write_text("Notes from the editor\\n")\n')
             with config.open('a') as output:
@@ -113,20 +113,20 @@ class DeleteSelectionTests(unittest.TestCase):
                 wait(lambda:(root/'last-opened').exists())
                 self.assertEqual((root/'last-opened').read_text().strip(),'https://example.com/3')
                 os.write(fd,b'q')
-                wait(lambda: any('◆' in row and 'Video03' in row for row in screen.display))
-                row = next(i for i,line in enumerate(screen.display) if '◆' in line and 'Video03' in line)
+                wait(lambda: any('📌' in row and 'Video03' in row for row in screen.display))
+                row = next(i for i,line in enumerate(screen.display) if '📌' in line and 'Video03' in line)
                 column = screen.display[row].index('Video03')
                 self.assertEqual(screen.buffer[row][column].fg, 'black')
                 self.assertEqual(screen.buffer[row][column].bg, 'cyan')
                 os.write(fd,b':1\n')
                 wait(lambda:selected('Video07'))
-                self.assertTrue(any('◆' in row and 'Video03' in row for row in screen.display))
+                self.assertTrue(any('📌' in row and 'Video03' in row for row in screen.display))
                 self.assertEqual(screen.buffer[row][column].fg, 'cyan')
 
                 (root/'last-opened').write_text('https://example.com/2\n')
-                wait(lambda:any('◆' in row and 'Video02' in row for row in screen.display))
+                wait(lambda:any('📌' in row and 'Video02' in row for row in screen.display))
                 self.assertTrue(selected('Video07'))
-                self.assertFalse(any('◆' in row and 'Video03' in row for row in screen.display))
+                self.assertFalse(any('📌' in row and 'Video03' in row for row in screen.display))
 
                 (root/'noted-urls').write_text('https://example.com/3\n')
                 wait(lambda:any('📝' in row and 'Video03' in row for row in screen.display))

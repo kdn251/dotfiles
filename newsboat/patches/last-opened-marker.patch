@@ -52,7 +52,7 @@
          if (i != primary) { append(i); }
      }
 +    if (!last_opened_url.empty() && item.first->link() == last_opened_url) {
-+        badges = "◆ " + badges;
++        badges = "📌 " + badges;
 +    }
      fmt.register_fmt('p', badges);
      const auto progress = watched_progress.find(item.first->link());

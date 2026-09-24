@@ -111,3 +111,7 @@ Reading state is stored in `~/.local/state/newsboat/reading-progress.db` and
 published to `download-status.tsv.read`. It is separate from video progress
 and watched-video cleanup. Restart Newsboat after installing the native
 article-progress patch; reopen an article from Newsboat to enable tracking.
+
+## Favorites
+
+The  Favorites row appears above All. Use `f` to save an item for the long term and `F` to remove it; `U` undoes either action. Favorited items show  on their rows, with the heart first in Favorites. The home row shows the total saved count, including read items. Opening or reading an item does not remove it. Favorites keeps a local snapshot of its title, source, and feed content in `~/.local/state/newsboat/favorites.db`, independent of feed retention, Starred, and Commentary. It does not download the linked page/video or sync to Miniflux/Capy.

@@ -1,0 +1,21 @@
+--- a/src/itemlistformaction.cpp
++++ b/src/itemlistformaction.cpp
+@@ -1478,6 +1478,18 @@
+ 	unsigned int total,
+ 	const std::string& url)
+ {
++    if (s == " Favorites") {
++        // A separately styled heart avoids zero-width emoji selectors, which
++        // STFL's label renderer cannot reliably display with following text.
++        if (f.get("favorite-heart:w").empty()) {
++            f.modify("title", "replace",
++                "{hbox[title] .expand:h .display[showtitle]:1 "
++                "{label[favorite-heart] .expand:v text:\"   \" style_normal:\"fg=red,attr=bold\"} "
++                "{label text[head]:\"Favorites\" .expand:h}}");
++        }
++        set_title("Favorites");
++        return;
++    }
+ 	FmtStrFormatter fmt = setup_head_formatter(s, unread, total, url);
+ 
+ 	const unsigned int width = utils::to_u(f.get("title:w"));

@@ -1,0 +1,25 @@
+--- a/src/feedlistformaction.cpp
++++ b/src/feedlistformaction.cpp
+@@ -1005,7 +1005,21 @@
+ 
+ void FeedListFormAction::register_format_styles()
+ {
+-	const std::string attrstr = rxman.get_attrs_stfl_string(Dialog::FeedList, true);
++	std::string focus_background;
++    std::string focus_foreground;
++	v.get_ctrl().get_colormanager().apply_colors([&](const std::string& name, const std::string& style) {
++		if (name == "listfocus") {
++            const auto fg = style.find("fg=");
++            if (fg != std::string::npos) {
++                focus_foreground = style.substr(fg, style.find(',', fg) - fg);
++            }
++			const auto begin = style.find("bg=");
++			if (begin != std::string::npos) {
++				focus_background = style.substr(begin, style.find(',', begin) - begin);
++			}
++		}
++	});
++	const std::string attrstr = rxman.get_attrs_stfl_string(Dialog::FeedList, true, focus_background, focus_foreground);
+ 	const std::string textview = strprintf::fmt(
+ 			"{!list[feeds] .expand:vh style_normal[listnormal]: "
+ 			"style_focus[listfocus]: "

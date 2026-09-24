@@ -28,7 +28,7 @@ def prepare(directory, config, urls, cache):
         f'include {json.dumps(str(config))}\n'
         'urls-source local\nauto-reload no\nshow-read-feeds yes\nshow-read-articles yes\n'
         'prepopulate-query-feeds yes\nrun-on-startup open\n'
-        'articlelist-title-format "📥 Downloads — offline"\n'
+        'articlelist-title-format " 📥 Downloads — offline"\n'
         'bind R everywhere redraw -- "Offline: restart Newsboat to reconnect"\n'
         'bind r feedlist,articlelist redraw -- "Offline: restart Newsboat to reconnect"\n'
         'bind q articlelist hard-quit -- "Close offline Downloads"\n')

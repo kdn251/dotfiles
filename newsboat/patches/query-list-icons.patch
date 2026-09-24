@@ -1,0 +1,13 @@
+--- a/src/feedlistformaction.cpp
++++ b/src/feedlistformaction.cpp
+@@ -1135,6 +1135,10 @@
+ 	if (title.length() == 0) {
+ 		title = "<no title>";
+ 	}
++    if (feed->rssurl().find("query: Favorites:") == 0) { return "  Favorites"; }
++    // Saved-list query expressions can contain YouTube/Twitch URLs.
++    // Those are item links, not the platform of the list itself.
++    if (feed->rssurl().find("query:") == 0) { return title; }
+     std::string icon;
+     if (const char* status = std::getenv("NEWSBOAT_DOWNLOAD_STATUS")) {
+         static std::map<std::string, std::string> platforms;

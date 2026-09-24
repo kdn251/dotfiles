@@ -18,7 +18,8 @@ articlelist-format " %f  %D  %-9p %?T?%-18T │ ?%t"
 datetime-format "%b %d %H:%M"
 text-width 90
 # Keep list headers focused on the view name (History, Starred, Downloaded, etc.).
-articlelist-title-format "%T"
+articlelist-title-format " %T"
+searchresult-title-format " %N %V - Search results for '%s' (%u unread, %t total)%?F? matching filter '%F'&?"
 # feedlist-format "%?T?║%4i %n %8u (%T) %t &╠═════════════════════════════════════════════════════%t?"
 
 browser "~/scripts/newsboat-brave-app.sh %u"
@@ -77,8 +78,8 @@ max-items 250
 
 show-read-articles no
 show-read-feeds yes
-# Start with the four main views, including when they are empty.
-run-on-startup set-filter "feedtitle = \"📬 New\" or feedtitle = \"⭐ Starred\" or feedtitle = \"📥 Downloads\" or feedtitle = \"📣 Commentary\" or feedtitle = \"🌎 All\""
+# Start with the main views, including when they are empty.
+run-on-startup set-filter "feedtitle = \"📬 New\" or feedtitle = \"⭐ Starred\" or feedtitle = \"📥 Downloads\" or feedtitle = \"📣 Commentary\" or feedtitle = \" Favorites\" or feedtitle = \"🌎 All\""
 
 # Ask before closing from the main feed list; q still goes back inside feeds.
 confirm-exit yes
@@ -91,7 +92,7 @@ bind H everywhere set browser "newsboat-history://show" ; set browser "~/scripts
 bind S articlelist,searchresultslist undo-checkpoint unstar ; set browser "python3 ~/scripts/newsboat-starred.py remove %u" ; open-in-browser-noninteractively ; set browser "~/scripts/newsboat-brave-app.sh %u" ; down -- "Unstar item and advance"
 bind S article undo-checkpoint unstar ; set browser "python3 ~/scripts/newsboat-starred.py remove %u" ; open-in-browser-noninteractively ; set browser "~/scripts/newsboat-brave-app.sh %u" -- "Unstar item"
 bind s articlelist,article,searchresultslist undo-checkpoint star ; set browser "python3 ~/scripts/newsboat-starred.py save %u" ; open-in-browser-noninteractively ; set browser "~/scripts/newsboat-brave-app.sh %u" ; toggle-article-read "read" "group" -- "Star item, mark read, and advance"
-bind U everywhere undo-action -- "Undo recent read, star, or Commentary changes (repeat U)"
+bind U everywhere undo-action -- "Undo recent read, star, Commentary, or Favorites changes (repeat U)"
 bind n articlelist,article,searchresultslist toggle-article-read -- "Toggle read/unread (same as N)"
 bind-key j down
 bind-key k up
@@ -117,8 +118,10 @@ color article            default default
 
 # Color status glyphs without changing the surrounding text or column widths.
 # Style the adjacent cell too so Kitty sizes stars equally on read/unread rows.
-highlight articlelist ".*◆.*" cyan default bold
+highlight articlelist ".*📌.*" cyan default bold
 highlight articlelist "󰓎 " yellow default bold
+highlight articlelist "" red default bold
+highlight feedlist "" red default bold
 
 # Show query feeds
 prepopulate-query-feeds yes
@@ -155,3 +158,7 @@ bind C articlelist,article,searchresultslist undo-checkpoint commentary ; set br
 
 # Per-item notes: return from the editor to update the paper badge.
 bind I articlelist,article,searchresultslist set browser "python3 ~/scripts/newsboat-notes.py %u" ; open-in-browser ; set browser "~/scripts/newsboat-brave-app.sh %u" -- "Edit notes for this item"
+
+# Long-term favorites, independent of Starred and Commentary.
+bind f articlelist,article,searchresultslist undo-checkpoint favorites ; set browser "python3 ~/scripts/newsboat-favorites.py save %u" ; open-in-browser-noninteractively ; set browser "~/scripts/newsboat-brave-app.sh %u" -- "Save to Favorites"
+bind F articlelist,article,searchresultslist undo-checkpoint favorites ; set browser "python3 ~/scripts/newsboat-favorites.py remove %u" ; open-in-browser-noninteractively ; set browser "~/scripts/newsboat-brave-app.sh %u" -- "Remove from Favorites"

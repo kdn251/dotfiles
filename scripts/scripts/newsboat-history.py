@@ -86,7 +86,7 @@ def prepare_view(directory):
     if not source.exists():
         source = SCRIPTS.parents[1]/'newsboat/.newsboat/config'
     allowed = {'color', 'highlight', 'highlight-article', 'articlelist-format',
-               'articlelist-title-format', 'datetime-format', 'text-width',
+               'articlelist-title-format', 'searchresult-title-format', 'datetime-format', 'text-width',
                'browser', 'bind', 'bind-key', 'macro'}
     lines = [line for line in source.read_text().splitlines()
              if line.split() and line.split()[0] in allowed and not line.startswith('bind H ')]

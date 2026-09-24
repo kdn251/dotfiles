@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""A persistent local collection for things saved for commentary."""
+"""A persistent local collection for things saved for favorites."""
 from contextlib import closing
 from email.utils import formatdate
 import hashlib
@@ -23,8 +23,8 @@ URLS = Path(os.environ.get('NEWSBOAT_URLS_FILE', Path.home()/'.newsboat/urls'))
 
 def database():
     STATE.mkdir(parents=True, exist_ok=True)
-    db = sqlite3.connect(STATE/'commentary.db', timeout=3)
-    (STATE/'commentary.db').chmod(0o600)
+    db = sqlite3.connect(STATE/'favorites.db', timeout=3)
+    (STATE/'favorites.db').chmod(0o600)
     db.execute('CREATE TABLE IF NOT EXISTS items(url TEXT PRIMARY KEY,title TEXT,source TEXT,content TEXT,saved REAL)')
     db.execute('CREATE TABLE IF NOT EXISTS removed(url TEXT PRIMARY KEY,title TEXT,source TEXT,content TEXT,saved REAL)')
     return db
@@ -39,9 +39,20 @@ def save(url):
     if urlparse(url).scheme not in {'http', 'https'}:
         return
     title, source, content = url, '', ''
-    with closing(sqlite3.connect(CACHE.as_uri()+'?mode=ro', uri=True)) as cache:
-        row = cache.execute('SELECT i.title,f.title,i.content FROM rss_item i LEFT JOIN rss_feed f ON f.rssurl=i.feedurl WHERE i.url=? ORDER BY i.id DESC LIMIT 1', (url,)).fetchone()
-        if row: title, source, content = row
+    try:
+        with closing(sqlite3.connect(CACHE.as_uri()+'?mode=ro', uri=True)) as cache:
+            row = cache.execute('SELECT i.title,f.title,i.content FROM rss_item i LEFT JOIN rss_feed f ON f.rssurl=i.feedurl WHERE i.url=? ORDER BY i.id DESC LIMIT 1', (url,)).fetchone()
+            if row: title, source, content = row
+    except sqlite3.Error:
+        pass
+    # Commentary can outlive the main feed cache too.
+    if title == url:
+        try:
+            with closing(sqlite3.connect((STATE/'commentary.db').as_uri()+'?mode=ro', uri=True)) as db:
+                row = db.execute('SELECT title,source,content FROM items WHERE url=?', (url,)).fetchone()
+                if row: title, source, content = row
+        except sqlite3.Error:
+            pass
     if title == url:
         try:
             for row in json.loads((STATE/'starred-items.json').read_text()):
@@ -82,14 +93,14 @@ def rebuild():
     from newsboat_media import atomic_write, library_lock
     with library_lock():
         rows = entries()
-        atomic_write(STATE/'starred-urls.txt.commentary.count', str(len(rows))+'\n')
-        atomic_write(STATE/'starred-urls.txt.commentary', ''.join(row[0]+'\n' for row in rows
+        atomic_write(STATE/'starred-urls.txt.favorites.count', str(len(rows))+'\n')
+        atomic_write(STATE/'starred-urls.txt.favorites', ''.join(row[0]+'\n' for row in rows
                      if not any(char in row[0] for char in '\r\n')))
         if not URLS.exists(): return
-        lines = [line for line in URLS.read_text().splitlines() if not line.startswith(('"query:📣 Commentary:', '"query:💬 Commentary:'))]
-        expression = ' or '.join('link = '+json.dumps(row[0]) for row in rows) or 'link = "newsboat-commentary://empty"'
-        query = json.dumps('query:📣 Commentary:'+expression, ensure_ascii=False)
-        index = next((i for i,line in enumerate(lines) if line.startswith(('"query: Favorites:', '"query:🌎 All:'))),len(lines))
+        lines = [line for line in URLS.read_text().splitlines() if not line.startswith(('"query: Favorites:', '"query:❤ Favorites:', '"query:💖 Favorites:', '"query:❤️ Favorites:'))]
+        expression = ' or '.join('link = '+json.dumps(row[0]) for row in rows) or 'link = "newsboat-favorites://empty"'
+        query = json.dumps('query: Favorites:'+expression, ensure_ascii=False)
+        index = next((i for i,line in enumerate(lines) if line.startswith('"query:🌎 All:')),len(lines))
         lines.insert(index,query)
         text = '\n'.join(lines)+'\n'
         if text != URLS.read_text(): atomic_write(URLS,text)
@@ -100,9 +111,9 @@ def prepare_view(directory):
     history=importlib.util.module_from_spec(spec);spec.loader.exec_module(history)
     command,config=history.prepare_view(directory)
     rss=ET.Element('rss',version='2.0');channel=ET.SubElement(rss,'channel')
-    ET.SubElement(channel,'title').text='📣 Commentary'
-    ET.SubElement(channel,'link').text='https://localhost/commentary'
-    ET.SubElement(channel,'description').text='Saved for commentary. C removes the selected item.'
+    ET.SubElement(channel,'title').text=' Favorites'
+    ET.SubElement(channel,'link').text='https://localhost/favorites'
+    ET.SubElement(channel,'description').text='Saved for the long term. F removes the selected item.'
     from newsboat_sources import article_sources, source_label
     sources = article_sources(CACHE, STATE)
     rows = entries()
@@ -116,22 +127,22 @@ def prepare_view(directory):
         ET.SubElement(item,'pubDate').text=formatdate(saved,usegmt=True)
     if not rows:
         item=ET.SubElement(channel,'item')
-        ET.SubElement(item,'title').text='No commentary saved — use c on an article to add it'
-        ET.SubElement(item,'guid',isPermaLink='false').text='empty-commentary'
+        ET.SubElement(item,'title').text='No favorites saved — use f on an article to add it'
+        ET.SubElement(item,'guid',isPermaLink='false').text='empty-favorites'
     ET.ElementTree(rss).write(Path(directory)/'history.xml',encoding='utf-8',xml_declaration=True)
-    lines=[line for line in config.read_text().splitlines() if not line.startswith(('bind C ', 'macro C ', 'article-sort-order '))]
+    lines=[line for line in config.read_text().splitlines() if not line.startswith(('bind F ', 'macro F ', 'macro C ', 'article-sort-order '))]
     lines=[line.replace('toggle-article-read "read"','toggle-article-read "read" "stay"') if line.startswith(('bind o ','bind O ','macro v ','macro a ')) else line for line in lines]
     # Keep the original source visible in this list and its search results.
     lines += ['articlelist-format " %f  %D  %-9p %-20a │ %t"',
               'article-sort-order date-desc',
-              'bind C articlelist undo-checkpoint commentary ; set browser "python3 ~/scripts/newsboat-commentary.py remove %u" ; open-in-browser-noninteractively ; set browser "~/scripts/newsboat-brave-app.sh %u" ; delete-article ; purge-deleted -- "Remove from Commentary"',
-              'bind C article,searchresultslist undo-checkpoint commentary ; set browser "python3 ~/scripts/newsboat-commentary.py remove %u" ; open-in-browser-noninteractively ; set browser "~/scripts/newsboat-brave-app.sh %u" -- "Remove from Commentary"']
+              'bind F articlelist undo-checkpoint favorites ; set browser "python3 ~/scripts/newsboat-favorites.py remove %u" ; open-in-browser-noninteractively ; set browser "~/scripts/newsboat-brave-app.sh %u" ; delete-article ; purge-deleted -- "Remove from Favorites"',
+              'bind F article,searchresultslist undo-checkpoint favorites ; set browser "python3 ~/scripts/newsboat-favorites.py remove %u" ; open-in-browser-noninteractively ; set browser "~/scripts/newsboat-brave-app.sh %u" -- "Remove from Favorites"']
     config.write_text('\n'.join(lines)+'\n')
     return command,config
 
 
 def show():
-    with tempfile.TemporaryDirectory(prefix='newsboat-commentary-') as directory:
+    with tempfile.TemporaryDirectory(prefix='newsboat-favorites-') as directory:
         command,config=prepare_view(directory)
         subprocess.run(command+['-x','reload'],check=True,stdout=subprocess.DEVNULL,stderr=subprocess.PIPE)
         with config.open('a') as out:out.write('run-on-startup open\n')

@@ -258,6 +258,7 @@ def run(args):
     remote = settings.get('urls-source') == 'miniflux'
     if remote:
         subprocess.run([sys.executable, str(Path(__file__).with_name('newsboat-commentary.py')), 'rebuild'], check=False, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        subprocess.run([sys.executable, str(Path(__file__).with_name('newsboat-favorites.py')), 'rebuild'], check=False, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     startup_deadline = time.monotonic() + 5
     if remote:
         try:
@@ -287,6 +288,7 @@ def run(args):
             os.environ['NEWSBOAT_UNDO_FILE'] = str(Path(directory)/'undo')
             os.environ['NEWSBOAT_UNDO_HELPER'] = str(Path(__file__).with_name('newsboat-starred.py'))
             os.environ['NEWSBOAT_COMMENTARY_HELPER'] = str(Path(__file__).with_name('newsboat-commentary.py'))
+            os.environ['NEWSBOAT_FAVORITES_HELPER'] = str(Path(__file__).with_name('newsboat-favorites.py'))
         refresh_request = Path(directory)/"refresh-request"
         os.environ["NEWSBOAT_REFRESH_REQUEST"] = str(refresh_request)
         view_env = nested_view_environment(directory)
@@ -463,6 +465,8 @@ def run(args):
                                     view_script = "newsboat-starred.py"
                                 if b"FeedListFormAction: opening Commentary view" in line:
                                     view_script = "newsboat-commentary.py"
+                                if b"FeedListFormAction: opening Favorites view" in line:
+                                    view_script = "newsboat-favorites.py"
                                 if view_script and not live_queries:
                                     termios.tcsetattr(0, termios.TCSADRAIN, original)
                                     try:

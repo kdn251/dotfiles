@@ -1,0 +1,194 @@
+--- a/src/feedlistformaction.cpp
++++ b/src/feedlistformaction.cpp
+@@ -126,6 +126,11 @@
+                 if (std::getenv("NEWSBOAT_NESTED_VIEWS") && selected &&
+                     selected->rssurl().find("query:📣 Commentary:") == 0) {
+                     LOG(Level::INFO, "FeedListFormAction: opening Commentary view");
++                    break;
++                }
++                if (std::getenv("NEWSBOAT_NESTED_VIEWS") && selected &&
++                    selected->rssurl().find("query: Favorites:") == 0) {
++                    LOG(Level::INFO, "FeedListFormAction: opening Favorites view");
+                     break;
+                 }
+ 				if (std::getenv("NEWSBOAT_NESTED_VIEWS") && selected &&
+@@ -1169,6 +1174,14 @@
+         }
+         return total;
+     }
++    if (feed->rssurl().find("query: Favorites:") == 0) {
++        unsigned int total = 0;
++        if (const char* stars = std::getenv("NEWSBOAT_STARRED_STATUS")) {
++            std::ifstream count_file(std::string(stars) + ".favorites.count");
++            count_file >> total;
++        }
++        return total;
++    }
+     if (feed->rssurl().find("query:📥 Downloads:") == 0) {
+         return static_cast<unsigned int>(feed->total_item_count());
+     }
+@@ -1207,7 +1220,8 @@
+ 		strprintf::fmt("(%u/%u)",
+ 			unread_count,
+ 			static_cast<unsigned int>(feed->total_item_count())));
+-    const bool total_view = feed->rssurl().find("query:📣 Commentary:") == 0 ||
++    const bool total_view = feed->rssurl().find("query: Favorites:") == 0 ||
++        feed->rssurl().find("query:📣 Commentary:") == 0 ||
+         feed->rssurl().find("query:⭐ Starred:") == 0 ||
+         feed->rssurl().find("query:📥 Downloads:") == 0;
+     fmt.register_fmt('v', std::to_string(unread_count));
+--- a/src/itemlistformaction.cpp
++++ b/src/itemlistformaction.cpp
+@@ -37,6 +37,7 @@
+ static std::map<std::string, std::string> download_status;
+ static std::set<std::string> starred_urls;
+ static std::set<std::string> commentary_urls;
++static std::set<std::string> favorites_urls;
+ static std::map<std::string, std::string> watched_progress;
+ static std::map<std::string, double> downloaded_at;
+ static std::string last_opened_url;
+@@ -57,7 +58,8 @@
+     const std::string read_path = path ? std::string(path) + ".read" : "";
+     const std::string order_path = path ? std::string(path) + ".order" : "";
+     const std::string commentary_path = stars ? std::string(stars) + ".commentary" : "";
+-    const auto version = revision(read_path.c_str()) + "|" + revision(notes) + "|" + revision(last_opened) + "|" + revision(order_path.c_str()) + "|" + revision(commentary_path.c_str()) + "|" + revision(path) + "|" + revision(stars) + "|" + revision(watched_path.c_str());
++    const std::string favorites_path = stars ? std::string(stars) + ".favorites" : "";
++    const auto version = revision(favorites_path.c_str()) + "|" + revision(read_path.c_str()) + "|" + revision(notes) + "|" + revision(last_opened) + "|" + revision(order_path.c_str()) + "|" + revision(commentary_path.c_str()) + "|" + revision(path) + "|" + revision(stars) + "|" + revision(watched_path.c_str());
+     static std::string loaded;
+     if (loaded != version) {
+         std::map<std::string, std::string> updated;
+@@ -116,6 +118,9 @@
+         commentary_urls.clear();
+         std::ifstream commentary_input(commentary_path);
+         while (std::getline(commentary_input, line)) { commentary_urls.insert(line); }
++        favorites_urls.clear();
++        std::ifstream favorites_input(favorites_path);
++        while (std::getline(favorites_input, line)) { favorites_urls.insert(line); }
+         loaded = version;
+     }
+     return version;
+@@ -355,7 +360,7 @@
+ 	break;
+     case OP_UNDO_CHECKPOINT:
+         if (!visible_items.empty()) {
+-            const bool commentary = !args.empty() && args[0] == "commentary";
++            const int commentary = args.empty() ? 0 : args[0] == "favorites" ? 2 : args[0] == "commentary" ? 1 : 0;
+             v.remember_action(visible_items[itempos].first, feed,
+                 commentary ? std::nullopt : std::optional<bool>(!args.empty() && args[0] == "star"), commentary);
+         }
+@@ -1236,7 +1241,7 @@
+ 			return StflRichText::from_plaintext("ERROR");
+ 		}
+ 		auto& item = visible_items[line];
+-        const bool numbered = (feed->title() == "⭐ Starred" || feed->title() == "📣 Commentary") ||
++        const bool numbered = (feed->title() == "⭐ Starred" || feed->title() == "📣 Commentary" || feed->title() == " Favorites") ||
+             feed->rssurl().find("query:📥 Downloads:") == 0;
+         const std::string watched = feed->rssurl().find("query:📥 Downloads:") == 0 ? "%4w " : "";
+         const auto format = numbered ? strprintf::fmt("%4u ", line + 1) + watched + itemlist_format : itemlist_format;
+@@ -1331,11 +1336,13 @@
+     const std::vector<std::string> markers = {
+         starred_urls.count(item.first->link()) ? "󰓎" : "",
+         status != download_status.end() ? status->second : "",
+-        commentary_urls.count(item.first->link()) ? "📣" : ""
++        commentary_urls.count(item.first->link()) ? "📣" : "",
++        favorites_urls.count(item.first->link()) ? "" : ""
+     };
+     size_t primary = 0; // New, All and source feeds: star, download, commentary.
+     if (feed->title() == "📥 Downloads") { primary = 1; }
+     else if (feed->title() == "📣 Commentary") { primary = 2; }
++    else if (feed->title() == " Favorites") { primary = 3; }
+     std::string badges;
+     const auto append = [&](size_t index) {
+         if (markers[index].empty()) { return; }
+@@ -1611,7 +1618,7 @@
+ 
+ void ItemListFormAction::handle_cmdline_num(unsigned int idx)
+ {
+-    if ((feed->title() == "⭐ Starred" || feed->title() == "📣 Commentary") || feed->rssurl().find("query:📥 Downloads:") == 0) {
++    if ((feed->title() == "⭐ Starred" || feed->title() == "📣 Commentary" || feed->title() == " Favorites") || feed->rssurl().find("query:📥 Downloads:") == 0) {
+         if (idx > 0 && idx <= visible_items.size()) { list.set_position(idx - 1); }
+         else { v.get_statusline().show_error(_("Invalid position!")); }
+         return;
+--- a/include/view.h
++++ b/include/view.h
+@@ -36,13 +36,15 @@
+ 	explicit View(Controller&);
+ 	~View();
+     void remember_action(std::shared_ptr<RssItem> item, std::shared_ptr<RssFeed> feed,
+-        std::optional<bool> target_star = std::nullopt, bool commentary_action = false);
++        std::optional<bool> target_star = std::nullopt, int commentary_action = 0);
+     void undo_action();
+     void sync_undoable_read(std::shared_ptr<RssItem> item, bool read);
+     struct UndoState {
+         std::string token, guid, url;
+         bool unread = false, deleted = false, has_star = false, star = false, target_star = false;
+-        bool has_commentary = false, commentary = false;
++        // Collection kind: 0 none, 1 Commentary, 2 Favorites (journal-compatible).
++        int has_commentary = 0;
++        bool commentary = false;
+         std::shared_ptr<RssItem> item;
+         std::shared_ptr<RssFeed> feed;
+         size_t index = 0;
+--- a/src/view.cpp
++++ b/src/view.cpp
+@@ -1079,7 +1079,7 @@
+ }
+ 
+ void View::remember_action(std::shared_ptr<RssItem> item, std::shared_ptr<RssFeed> feed,
+-    std::optional<bool> target_star, bool commentary_action)
++    std::optional<bool> target_star, int commentary_action)
+ {
+     UndoState state;
+     state.token = std::to_string(getpid()) + ":" + std::to_string(
+@@ -1113,9 +1113,9 @@
+         star_intents[state.url] = *target_star;
+     }
+     if (commentary_action) {
+-        state.has_commentary = true;
++        state.has_commentary = commentary_action;
+         if (const char* path = std::getenv("NEWSBOAT_STARRED_STATUS")) {
+-            std::ifstream input(std::string(path) + ".commentary");
++            std::ifstream input(std::string(path) + (commentary_action == 2 ? ".favorites" : ".commentary"));
+             std::string url;
+             while (std::getline(input, url)) { if (url == state.url) { state.commentary = true; break; } }
+         }
+@@ -1156,14 +1156,14 @@
+         [&](const auto& item) { return item.token == state.token; });
+     if (local != undo_history.end()) { state = *local; }
+     if (state.has_commentary) {
+-        const char* helper = std::getenv("NEWSBOAT_COMMENTARY_HELPER");
+-        if (!helper) { status_line.show_error("Restart Newsboat to undo Commentary changes"); return; }
++        const char* helper = std::getenv(state.has_commentary == 2 ? "NEWSBOAT_FAVORITES_HELPER" : "NEWSBOAT_COMMENTARY_HELPER");
++        if (!helper) { status_line.show_error("Restart Newsboat to undo collection changes"); return; }
+         const auto browser = cfg->get_configvalue("browser");
+         cfg->set_configvalue("browser", "python3 " + utils::quote(helper) + " restore %u " +
+             (state.commentary ? "saved" : "removed"));
+         const auto result = open_in_browser(state.url, "", "", "", false);
+         cfg->set_configvalue("browser", browser);
+-        if (!result || *result != 0) { status_line.show_error("Could not undo Commentary change"); return; }
++        if (!result || *result != 0) { status_line.show_error("Could not undo collection change"); return; }
+     } else {
+     // Enqueue compensation after pending star changes, never wait for HTTP here.
+     if (const char* helper = std::getenv("NEWSBOAT_UNDO_HELPER")) {
+@@ -1206,7 +1206,7 @@
+     if (state.has_star) { star_intents[state.url] = state.star; }
+     undo_history.erase(std::remove_if(undo_history.begin(), undo_history.end(),
+         [&](const auto& item) { return item.token == state.token; }), undo_history.end());
+-    status_line.show_message(state.has_commentary ? "Undid last Commentary change" : "Undid last read/star change");
++    status_line.show_message(state.has_commentary == 2 ? "Undid last Favorites change" : state.has_commentary ? "Undid last Commentary change" : "Undid last read/star change");
+ }
+ 
+ void View::force_redraw()
+--- a/src/itemviewformaction.cpp
++++ b/src/itemviewformaction.cpp
+@@ -431,8 +431,8 @@
+ 		break;
+     case OP_UNDO_CHECKPOINT:
+         v.remember_action(item, feed,
+-            !args.empty() && args[0] == "commentary" ? std::nullopt : std::optional<bool>(!args.empty() && args[0] == "star"),
+-            !args.empty() && args[0] == "commentary");
++            !args.empty() && (args[0] == "commentary" || args[0] == "favorites") ? std::nullopt : std::optional<bool>(!args.empty() && args[0] == "star"),
++            args.empty() ? 0 : args[0] == "favorites" ? 2 : args[0] == "commentary" ? 1 : 0);
+         break;
+ 	case OP_TOGGLEITEMREAD: {
+         if (!(args.size() > 1 && args[1] == "group")) {
