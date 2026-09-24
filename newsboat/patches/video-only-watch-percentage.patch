@@ -1,0 +1,12 @@
+--- a/src/itemlistformaction.cpp
++++ b/src/itemlistformaction.cpp
+@@ -1347,7 +1347,8 @@
+     }
+     fmt.register_fmt('p', badges);
+     const auto progress = watched_progress.find(item.first->link());
+-    fmt.register_fmt('w', progress == watched_progress.end() ? "0%" : progress->second);
++    fmt.register_fmt('w', media_platform_icon(item.first->link()).empty() ? "" :
++        (progress == watched_progress.end() ? "0%" : progress->second));
+ 
+ 	using namespace std::chrono;
+ 	const auto article_time_point = system_clock::from_time_t(

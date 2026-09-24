@@ -5,7 +5,7 @@ from pathlib import Path
 import os
 import sqlite3
 from contextlib import closing
-from newsboat_media import identity, atomic_write, start_time
+from newsboat_media import library_identity as identity, atomic_write, start_time
 
 
 def publish(state):

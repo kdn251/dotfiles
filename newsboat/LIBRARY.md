@@ -52,3 +52,45 @@ downloader retries once using Brave's existing session with GNOME Keyring and
 uses the same session for the download. Cookies are not exported to a file.
 `NEWSBOAT_YOUTUBE_BROWSER` can override `brave+gnomekeyring`. Other failures and
 Twitch downloads do not trigger this authentication fallback.
+
+## Offline articles
+
+Use `,d` on an HTTP article to save a clean, dark reading page. The download
+runs in the background and shares the existing notifications, Waybar status,
+row badge, and Downloads list. `o` or `O` opens the saved HTML in Brave while
+history records the original article URL. `,D` deletes the saved copy.
+
+Text and supported images are stored in one HTML file under
+`~/Videos/newsboat/articles`. Links remain clickable and an **Open original**
+link appears above the article. The original site's layout, scripts, and embedded players are not preserved.
+Reddit comments are handled separately as described below. Short extracts and recognized paywall
+prompts fail with an explanation; other extraction omissions cannot always be
+detected. Missing images are marked in the saved page and completion notice.
+Articles are not subject to the watched-video automatic cleanup policy.
+
+On another machine, run `~/scripts/newsboat-article-setup.sh` once to install
+Trafilatura in an isolated Python environment. Article downloads do not use
+browser cookies or unlock subscription content.
+
+Reddit post downloads use the post body cached by Newsboat (or its Starred
+snapshot). Crossposts resolve to the original post, using its RSS entry if
+necessary. Link-only feed entries are rejected when the original body cannot
+be obtained; they are never reported as complete downloads. Short posts do
+not fail the article-length check and Reddit's JavaScript page is not required. Downloads also request a snapshot of the top comments and nested replies
+(up to 200 comments, ten levels deep). They label omitted replies and report
+blocked comment requests as a partial copy. Use **Open original** for the
+complete, current discussion.
+
+Saved pages provide their own keyboard shortcuts: `j`/`k` scroll smoothly (including
+held keys), `gg`/`G` go
+to the beginning/end, `Ctrl+d`/`Ctrl+u` scroll half a page, and `q` closes the
+reading window. Reload an already open page after a shortcut update. Only the
+bundled keyboard script is allowed by the saved page's content security policy;
+scripts from the original article remain removed.
+
+Downloads retain their row order while deletion updates are applied, so `,D`
+selects the next remaining row (or the preceding row at the end of the list).
+Restart Newsboat after installing the native deletion-order fix.
+
+The watched-percentage column is only populated for YouTube/Twitch videos.
+Articles have no reading percentage because reading positions are not tracked.

@@ -31,6 +31,7 @@ class DeleteSelectionTests(unittest.TestCase):
                 helper = Path(__file__).resolve().parents[1]/'scripts/newsboat-notes.py'
                 output.write(f'bind I articlelist set browser "python3 {helper} %u" ; open-in-browser ; set browser "true"\n')
             feed.write_text('<rss version="2.0"><channel><title>Source</title><link>https://example.com</link><description>Test</description>'+''.join(f'<item><title>Video{i:02}</title><link>https://example.com/{i}</link><guid>{i}</guid></item>' for i in [3,7,1,5,2,6,4])+'</channel></rss>')
+            feed.write_text(feed.read_text().replace('https://example.com/1</link>', 'https://youtu.be/abc123DEF45</link>'))
             remaining = list(range(1,8))
             def update():
                 expr = ' or '.join(f'title = "Video{i:02}"' for i in remaining) or 'title = "none"'
@@ -38,6 +39,7 @@ class DeleteSelectionTests(unittest.TestCase):
                 temporary.write_text('"query:📥 Downloads:'+expr.replace('"','\\"')+'"\n'+feed.as_uri()+'\n')
                 temporary.replace(urls)
             update()
+            (root/'status.tsv.order').write_text(''.join(f'https://example.com/{i}\t{i*100}\n' for i in remaining))
             args=[str(BINARY),'-q','-C',str(config),'-u',str(urls),'-c',str(root/'cache')]
             subprocess.run(args+['-x','reload'],check=True,capture_output=True)
             pid,fd=pty.fork()
@@ -58,12 +60,22 @@ class DeleteSelectionTests(unittest.TestCase):
                 wait(lambda:'Downloads' in '\n'.join(screen.display))
                 os.write(fd,b':1\n\n')
                 wait(lambda:selected('Video07'))
+                self.assertNotIn('0%', screen.display[1])
+                self.assertIn('0%', screen.display[7])
                 os.write(fd,b':3\n')
                 wait(lambda:selected('Video05'))
                 # Ordinary refresh must not advance the cursor.
                 reload()
                 time.sleep(.2)
                 wait(lambda:selected('Video05'))
+                # Deletion publishes status before reload-urls runs. Losing
+                # the removed row's timestamp must not send it to the bottom
+                # and change which row counts as its next neighbour.
+                (root/'status.tsv.order').write_text(''.join(f'https://example.com/{i}\t{i*100}\n' for i in remaining if i != 5))
+                time.sleep(1.2)
+                os.write(fd,b':exec redraw\n')
+                time.sleep(.2)
+                wait(lambda:selected('Video05') and 'Video05' in screen.display[3])
                 remaining.remove(5);update();reload()
                 wait(lambda:'Video05' not in '\n'.join(screen.display) and selected('Video04'))
                 displayed=[line.split('Video')[1][:2] for line in screen.display if 'Video' in line]

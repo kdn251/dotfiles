@@ -1,0 +1,14 @@
+--- a/src/itemlistformaction.cpp
++++ b/src/itemlistformaction.cpp
+@@ -89,7 +89,10 @@
+             std::ifstream input(last_opened);
+             std::getline(input, last_opened_url);
+         }
+-        downloaded_at.clear();
++        // Status is published before reload-urls removes a deleted item.
++        // Retain its last known sort key during that interval, otherwise the
++        // selected row moves to the bottom before choosing its next survivor.
++        // New downloads overwrite these process-local timestamps below.
+         std::ifstream order_input(order_path);
+         while (std::getline(order_input, line)) {
+             const auto split = line.find('\t');

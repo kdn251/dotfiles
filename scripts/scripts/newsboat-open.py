@@ -28,4 +28,10 @@ def launcher_for(url):
 if __name__ == '__main__':
     url = sys.argv[1]
     launcher = Path(__file__).resolve().with_name(launcher_for(url))
+    if launcher.name == 'newsboat-brave-app.sh':
+        from newsboat_articles import find
+        local = find(url)
+        if local:
+            os.environ['NEWSBOAT_HISTORY_URL'] = url
+            url = local.as_uri()
     os.execv(str(launcher), [str(launcher), url])

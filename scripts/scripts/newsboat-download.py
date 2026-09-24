@@ -39,7 +39,8 @@ def canonical_url(url):
         return 'youtube', f'https://www.youtube.com/watch?v={video}'
     if host in {'twitch.tv', 'www.twitch.tv', 'm.twitch.tv', 'clips.twitch.tv'} and parsed.path.strip('/'):
         return 'twitch', f'https://{host.removeprefix("www.").removeprefix("m.")}{parsed.path.rstrip("/")}'
-    raise ValueError('Only YouTube and Twitch URLs are supported')
+    from newsboat_articles import canonical
+    return 'article', canonical(url)
 
 
 def job_key(url):
@@ -108,7 +109,7 @@ def failure_notification(key):
             '-t', '5000', '-u', 'normal', '--wait', '-A', 'retry=Retry']
     if job.get('icon'):
         args += ['-i', job['icon']]
-    args += ['--', f'Download failed: {job["title"]}']
+    args += ['--', f'Download failed: {job["title"]}', html.escape(job.get('error', ''))]
     try:
         result = subprocess.run(args, capture_output=True, text=True, timeout=12)
         if 'retry' in result.stdout.splitlines():
@@ -188,6 +189,28 @@ def download(url, title=''):
     if not os.access(ytdlp, os.X_OK):
         ytdlp = 'yt-dlp'
     try:
+        if platform == 'article':
+            from newsboat_media import cached_title
+            job.update(title=title or cached_title(url) or urlparse(url).hostname, status='downloading')
+            save(job)
+            notify(job, 'Downloading')
+            python = Path(os.environ.get('XDG_DATA_HOME', Path.home()/'.local/share'))/'newsboat/article-venv/bin/python'
+            if not python.exists():
+                raise RuntimeError('Run ~/scripts/newsboat-article-setup.sh to install the article extractor')
+            process = subprocess.Popen([str(python), str(SCRIPTS/'newsboat_articles.py'), url, job['title']],
+                                       stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, start_new_session=True)
+            try:
+                output, errors = process.communicate(timeout=180)
+            except subprocess.TimeoutExpired:
+                raise RuntimeError('Article download timed out')
+            if process.returncode:
+                raise RuntimeError(errors.strip() or 'Could not extract the article')
+            result = json.loads(output)
+            job.update(result, status='done', percent=100)
+            save(job)
+            rebuild()
+            notify(job, 'Download complete (partial copy)' if result.get('warnings') else 'Download complete')
+            return 0
         with tempfile.TemporaryDirectory(prefix='newsboat-video-') as temp, open(job['log'], 'w') as log:
             os.chmod(job['log'], 0o600)
             process = subprocess.Popen([ytdlp, '--no-playlist', '--dump-single-json', '-f', FORMAT,
@@ -273,14 +296,18 @@ def download(url, title=''):
         return 130
     except (OSError, ValueError, RuntimeError) as error:
         stop(process)
+        with open(job['log'], 'a') as log:
+            log.write(str(error)+'\n')
         job.update(status='failed', error=str(error), percent=None)
         save(job)
         notify(job, 'Download failed')
         return 1
     finally:
         stop(process)
-        if process is not None and process.stdout is not None:
-            process.stdout.close()
+        if process is not None:
+            for stream in (process.stdout, process.stderr):
+                if stream is not None:
+                    stream.close()
         for sig, handler in previous_handlers.items():
             signal.signal(sig, handler)
         lock.close()

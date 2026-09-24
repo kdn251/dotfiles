@@ -38,6 +38,27 @@ def identity(url):
     return None
 
 
+def library_identity(url):
+    """Articles share the library without being mistaken for playable videos."""
+    video = identity(url)
+    if video:
+        return video
+    from newsboat_articles import canonical
+    try:
+        return 'article', canonical(url)
+    except ValueError:
+        return None
+
+
+def articles():
+    from newsboat_articles import find
+    for _, job in records():
+        if job.get('platform') == 'article' and job.get('status') == 'done':
+            path = find(job['url'])
+            if path:
+                yield library_identity(job['url']), path
+
+
 def filename_identity(path):
     stem = path.stem
     bracket = re.search(r'\[([^\[\]]+)\]$', stem)
@@ -181,7 +202,7 @@ def duplicate_download_guids(keys):
     try:
         with contextlib.closing(sqlite3.connect(cache.as_uri() + '?mode=ro', uri=True)) as db:
             for guid, url in db.execute('SELECT guid, url FROM rss_item WHERE deleted=0 ORDER BY id DESC'):
-                key = identity(url)
+                key = library_identity(url)
                 if key not in keys:
                     continue
                 if key in seen:
@@ -225,7 +246,11 @@ def rebuild_unlocked():
     if clips:
         patterns.append(r'^https?://(clips[.]twitch[.]tv/|(www[.])?twitch[.]tv/[^/]+/clip/)('
                         + '|'.join(clips) + r')([?&#/]|$)')
-    expression = ' or '.join('link =~ ' + json.dumps(pattern) for pattern in patterns) or 'link = ""'
+    terms = ['link =~ ' + json.dumps(pattern) for pattern in patterns]
+    for key, path in articles():
+        keys.add(key)
+        terms.append('link = ' + json.dumps(key[1]))
+    expression = ' or '.join(terms) or 'link = ""'
     exclusions = ''.join(' and guid != ' + json.dumps(guid)
                          for guid in duplicate_download_guids(keys))
     query = json.dumps('query:📥 Downloads:(' + expression + ') and feedtitle !~ "Starred"' + exclusions, ensure_ascii=False) + ' downloaded'
@@ -250,16 +275,16 @@ def rebuild():
 
 
 def delete(url):
-    key = identity(url)
+    key = library_identity(url)
     if not key:
-        raise ValueError('Could not identify the selected video')
+        raise ValueError('Could not identify the selected download')
     with library_lock():
         for _, job in records():
-            if identity(job['url']) == key and job.get('status') in {'preparing', 'downloading', 'processing'}:
+            if library_identity(job['url']) == key and job.get('status') in {'preparing', 'downloading', 'processing'}:
                 if job.get('process_start') and start_time(job.get('pid', 0)) == job['process_start']:
                     raise ValueError('Cancel this video download before deleting it')
         # No shell glob or substring match: every candidate has a parsed ID.
-        paths = [p for k, p in candidates() if k == key]
+        paths = [p for k, p in (articles() if key[0] == 'article' else candidates()) if k == key]
         for path in paths:
             path.unlink()
             for suffix in ('.meta', '.info.json'):
@@ -267,7 +292,7 @@ def delete(url):
                 if sidecar.is_file() and inside(sidecar):
                     sidecar.unlink()
         for state_path, job in records():
-            if identity(job['url']) == key:
+            if library_identity(job['url']) == key:
                 job.update(status='deleted', files=[])
                 atomic_write(state_path, json.dumps(job))
         archive = ROOT / '.downloaded-twitch-vods'

@@ -219,7 +219,9 @@ class DownloadTests(unittest.TestCase):
 
     def test_url_validation(self):
         self.assertEqual(module.canonical_url('https://youtu.be/abc123DEF45?list=ignore')[1],URL)
-        for bad in ('--exec=bad','https://evil-youtube.com/watch?v=abc123DEF45','file:///tmp/video'):
+        self.assertEqual(module.canonical_url('https://example.com/article#section'), ('article', 'https://example.com/article'))
+        self.assertEqual(module.canonical_url('https://evil-youtube.com/watch?v=abc123DEF45')[0], 'article')
+        for bad in ('--exec=bad','https://youtube.com/@channel','file:///tmp/video'):
             with self.assertRaises(ValueError):module.canonical_url(bad)
 
 
