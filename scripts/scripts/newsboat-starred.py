@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """Display and change Miniflux stars directly; no separate saved-item database."""
 from contextlib import closing
-from email.utils import formatdate
+from datetime import datetime, timezone
+from email.utils import format_datetime
 import importlib.util
 import fcntl
 import hashlib
@@ -149,13 +150,23 @@ def write_feed(directory, rows):
     rss=ET.Element('rss',version='2.0');channel=ET.SubElement(rss,'channel')
     for key,value in [('title','⭐ Starred'),('link','https://localhost/starred'),('description','Your Miniflux stars. Press S to unstar an item.')]:
         ET.SubElement(channel,key).text=value
-    for index,row in enumerate(rows):
+    for row in rows:
         item=ET.SubElement(channel,'item')
         ET.SubElement(item,'title').text=row['title']+' — '+row['feed']['title']
         ET.SubElement(item,'link').text=row['url']
         ET.SubElement(item,'guid',isPermaLink='false').text=str(row['id'])
         ET.SubElement(item,'description').text=row.get('content','')
-        ET.SubElement(item,'pubDate').text=formatdate(time.time()-index,usegmt=True)
+        # Keep the source publication date; opening this generated view must
+        # never turn every saved article into a newly published item.
+        for field in ('published_at', 'created_at'):
+            try:
+                published = datetime.fromisoformat(row.get(field, '').replace('Z', '+00:00'))
+                if published.tzinfo is None:
+                    published = published.replace(tzinfo=timezone.utc)
+                ET.SubElement(item,'pubDate').text = format_datetime(published.astimezone(timezone.utc), usegmt=True)
+                break
+            except (TypeError, ValueError, AttributeError):
+                continue
     if not rows:
         item=ET.SubElement(channel,'item')
         ET.SubElement(item,'title').text='No starred items — press q to return, then s to star an item'

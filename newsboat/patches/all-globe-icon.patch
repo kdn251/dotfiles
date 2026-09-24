@@ -13,7 +13,7 @@
  					tag.clear();
  					apply_filter("rssurl !~ \"^query:\"");
 -					cfg->set_configvalue("feedlist-title-format", " 📚 All — q: Home");
-+					cfg->set_configvalue("feedlist-title-format", " 🌎 All — q: Home");
++					cfg->set_configvalue("feedlist-title-format", " 🌎 All");
  					break;
  				}
  				v.push_itemlist(pos);

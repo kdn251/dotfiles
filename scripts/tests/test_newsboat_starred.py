@@ -6,6 +6,8 @@ import sqlite3
 import subprocess
 import tempfile
 import unittest
+import xml.etree.ElementTree as ET
+from email.utils import parsedate_to_datetime
 from unittest.mock import patch
 
 SCRIPTS=Path(__file__).resolve().parents[1]/'scripts'
@@ -22,6 +24,21 @@ class Server:
         else:return copy.deepcopy(self.rows[int(path.split('/')[-1])])
 
 class StarredTests(unittest.TestCase):
+    def test_view_retains_distinct_publication_dates_across_reopens(self):
+        with tempfile.TemporaryDirectory() as directory:
+            base = Server().rows[1]
+            rows = [dict(base, id=1, published_at='2026-08-10T14:30:00-04:00'),
+                    dict(base, id=2, published_at='2026-09-21T09:15:00Z'),
+                    dict(base, id=3, published_at='invalid', created_at='2026-07-01T12:00:00Z')]
+            def dates():
+                starred.write_feed(directory, rows)
+                return [parsedate_to_datetime(item.findtext('pubDate')).isoformat()
+                        for item in ET.parse(Path(directory)/'history.xml').findall('./channel/item')]
+            expected = ['2026-08-10T18:30:00+00:00', '2026-09-21T09:15:00+00:00', '2026-07-01T12:00:00+00:00']
+            self.assertEqual(dates(), expected)
+            with patch.object(starred.time, 'time', return_value=2000000000):
+                self.assertEqual(dates(), expected)
+
     def test_direct_idempotent_stars_leave_read_status_unchanged(self):
         with tempfile.TemporaryDirectory() as d:
             root=Path(d);server=Server()
