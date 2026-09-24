@@ -1,0 +1,38 @@
+--- a/src/itemlistformaction.cpp
++++ b/src/itemlistformaction.cpp
+@@ -54,9 +54,10 @@
+             std::to_string(info.st_mtim.tv_nsec) + ":" + std::to_string(info.st_size);
+     };
+     const std::string watched_path = path ? std::string(path) + ".watched" : "";
++    const std::string read_path = path ? std::string(path) + ".read" : "";
+     const std::string order_path = path ? std::string(path) + ".order" : "";
+     const std::string commentary_path = stars ? std::string(stars) + ".commentary" : "";
+-    const auto version = revision(notes) + "|" + revision(last_opened) + "|" + revision(order_path.c_str()) + "|" + revision(commentary_path.c_str()) + "|" + revision(path) + "|" + revision(stars) + "|" + revision(watched_path.c_str());
++    const auto version = revision(read_path.c_str()) + "|" + revision(notes) + "|" + revision(last_opened) + "|" + revision(order_path.c_str()) + "|" + revision(commentary_path.c_str()) + "|" + revision(path) + "|" + revision(stars) + "|" + revision(watched_path.c_str());
+     static std::string loaded;
+     if (loaded != version) {
+         std::map<std::string, std::string> updated;
+@@ -74,6 +75,13 @@
+         watched_progress.clear();
+         std::ifstream progress_input(watched_path);
+         while (std::getline(progress_input, line)) {
++            const auto split = line.find('\t');
++            if (split != std::string::npos) {
++                watched_progress[line.substr(0, split)] = line.substr(split + 1);
++            }
++        }
++        std::ifstream reading_input(read_path);
++        while (std::getline(reading_input, line)) {
+             const auto split = line.find('\t');
+             if (split != std::string::npos) {
+                 watched_progress[line.substr(0, split)] = line.substr(split + 1);
+@@ -1347,8 +1355,7 @@
+     }
+     fmt.register_fmt('p', badges);
+     const auto progress = watched_progress.find(item.first->link());
+-    fmt.register_fmt('w', media_platform_icon(item.first->link()).empty() ? "" :
+-        (progress == watched_progress.end() ? "0%" : progress->second));
++    fmt.register_fmt('w', progress == watched_progress.end() ? "0%" : progress->second);
+ 
+ 	using namespace std::chrono;
+ 	const auto article_time_point = system_clock::from_time_t(

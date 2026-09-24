@@ -56,7 +56,15 @@ class ArticleTests(unittest.TestCase):
             self.assertIn(url+'\t📥',(root/'state/newsboat/download-status.tsv').read_text())
             # Server is stopped: opening must still select the saved file.
             subprocess.run([sys.executable,str(SCRIPTS/'newsboat-open.py'),url],env=env,check=True,timeout=10)
-            self.assertEqual((root/'opened').read_text().strip(),'--app='+saved.as_uri())
+            opened=(root/'opened').read_text().strip()
+            self.assertTrue(opened.startswith('--app=http://127.0.0.1:'))
+            self.assertIn('/article/',opened)
+            from urllib.request import urlopen
+            with urlopen(opened.removeprefix('--app=')) as response:
+                self.assertIn('Offline test article', response.read().decode())
+            server=json.loads((root/'state/newsboat/article-server.json').read_text())
+            import signal
+            os.kill(server['pid'],signal.SIGTERM)
             subprocess.run([sys.executable,str(SCRIPTS/'newsboat_media.py'),'delete',url],env=env,check=True,timeout=15)
             self.assertFalse(saved.exists())
             self.assertNotIn(url,(root/'urls').read_text())

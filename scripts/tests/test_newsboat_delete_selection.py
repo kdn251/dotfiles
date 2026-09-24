@@ -60,7 +60,7 @@ class DeleteSelectionTests(unittest.TestCase):
                 wait(lambda:'Downloads' in '\n'.join(screen.display))
                 os.write(fd,b':1\n\n')
                 wait(lambda:selected('Video07'))
-                self.assertNotIn('0%', screen.display[1])
+                self.assertIn('0%', screen.display[1])
                 self.assertIn('0%', screen.display[7])
                 os.write(fd,b':3\n')
                 wait(lambda:selected('Video05'))
@@ -100,6 +100,12 @@ class DeleteSelectionTests(unittest.TestCase):
                 wait(lambda:order()==['07','02','03'] and selected('Video03'))
                 (root/'status.tsv.watched').write_text('')
                 wait(lambda:order()==['07','03','02'] and selected('Video03'))
+
+                (root/'status.tsv.read').write_text('https://example.com/3\t65%\n')
+                wait(lambda:any('65%' in row and 'Video03' in row for row in screen.display))
+                self.assertTrue(selected('Video03'))
+                (root/'status.tsv.read').write_text('')
+                wait(lambda:order()==['07','03','02'])
 
                 # Opening an article marks it even after returning and moving
                 # away. An external browser/player open replaces the marker.

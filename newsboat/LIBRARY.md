@@ -92,5 +92,22 @@ Downloads retain their row order while deletion updates are applied, so `,D`
 selects the next remaining row (or the preceding row at the end of the list).
 Restart Newsboat after installing the native deletion-order fix.
 
-The watched-percentage column is only populated for YouTube/Twitch videos.
-Articles have no reading percentage because reading positions are not tracked.
+Downloaded articles now show reading progress in the same column as video
+watch progress. This estimates progress from scrolling through the article;
+it does not measure comprehension. The percentage keeps the furthest point
+reached, while the saved position records the most recent location. Reddit
+comments do not contribute to the post percentage, but positions inside them
+are still restored.
+
+Open a downloaded article with `o`/`O` to use the local reader. It starts a
+small Python HTTP service bound only to 127.0.0.1, serving registered downloads
+under a random access token. No internet connection is required. Positions
+are saved during scrolling and on exit; `q` saves before closing. Reopening
+restores the paragraph and offset after images load. Existing saved files
+also work without downloading them again. Opening the HTML directly from a
+file manager does not use this tracking service.
+
+Reading state is stored in `~/.local/state/newsboat/reading-progress.db` and
+published to `download-status.tsv.read`. It is separate from video progress
+and watched-video cleanup. Restart Newsboat after installing the native
+article-progress patch; reopen an article from Newsboat to enable tracking.

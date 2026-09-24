@@ -247,7 +247,12 @@ KEYS = """(() => {
       if (event.key === 'd') distance = innerHeight / 2;
       if (event.key === 'u') distance = -innerHeight / 2;
     } else {
-      if (event.key === 'q') { event.preventDefault(); window.close(); return; }
+      if (event.key === 'q') {
+        event.preventDefault();
+        if (window.newsboatSaveReading) window.newsboatSaveReading().finally(() => window.close());
+        else window.close();
+        return;
+      }
       if (event.key === 'j' || event.key === 'k') {
         event.preventDefault();
         if (reducedMotion.matches) {
@@ -292,7 +297,7 @@ td,th {border:1px solid #39434d;padding:8px} @media(max-width:600px){main{margin
 '''
 
 
-def render(raw, url, title='', fetch_image=fetch, reddit=False):
+def render(raw, url, title='', fetch_image=fetch, reddit=False, comments=''):
     import trafilatura
     from trafilatura.metadata import extract_metadata
     from lxml import html as lhtml
@@ -374,7 +379,9 @@ def render(raw, url, title='', fetch_image=fetch, reddit=False):
         content = html.escape(element.text or '')+''.join(node(child)+html.escape(child.tail or '') for child in element)
         return f'<{out}{attrs}>{content}</{out}>'
 
-    content = node(body)
+    content = '<article id="article-content">'+node(body)+'</article>'
+    if comments:
+        content += '<section id="article-comments">'+node(post_body(comments))+'</section>'
     meta = ' · '.join(str(value) for value in (metadata.author if metadata else '', metadata.date if metadata else '', urlparse(url).hostname) if value)
     warning = '<p class="notice">Some images could not be saved. Missing images are marked below.</p>' if warnings else ''
     kind = 'Reddit post' if reddit else 'article'
@@ -394,7 +401,7 @@ def download(url, title=''):
         title, raw = reddit_snapshot(url)
         final_url = url
         comments, comment_warnings = reddit_comments(url)
-        page, title, warnings = render(raw+comments, url, title, reddit=True)
+        page, title, warnings = render(raw, url, title, reddit=True, comments=comments)
         warnings.extend(comment_warnings)
     else:
         raw, mime, final_url = fetch(url, 12*1024*1024, 'text/html,application/xhtml+xml')

@@ -33,5 +33,6 @@ if __name__ == '__main__':
         local = find(url)
         if local:
             os.environ['NEWSBOAT_HISTORY_URL'] = url
-            url = local.as_uri()
+            from newsboat_reading import reader_url
+            url = reader_url(url)
     os.execv(str(launcher), [str(launcher), url])
