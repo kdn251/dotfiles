@@ -189,7 +189,7 @@ def prepare_view(directory, rows):
     # Searches expose the synthetic feed title; the real source is already
     # included in each item's title, so omit the redundant feed column.
     lines += ['articlelist-format " %f  %D  %-9p %t"',
-              'show-read-articles yes','article-sort-order date-desc',
+              'show-read-articles yes','article-sort-order date-asc',
               'bind S articlelist undo-checkpoint unstar ; set browser "python3 ~/scripts/newsboat-starred.py remove %u" ; open-in-browser-noninteractively ; set browser "~/scripts/newsboat-brave-app.sh %u" ; delete-article ; purge-deleted -- "Unstar item"',
               'bind S article,searchresultslist undo-checkpoint unstar ; set browser "python3 ~/scripts/newsboat-starred.py remove %u" ; open-in-browser-noninteractively ; set browser "~/scripts/newsboat-brave-app.sh %u" -- "Unstar item"',
               'macro C clear-filter ; delete-all-articles -- "Unstar all displayed items (asks for confirmation)"']

@@ -219,6 +219,9 @@ def run(args):
         last_opened = Path(os.environ.get('XDG_STATE_HOME', Path.home()/'.local/state'))/'newsboat/last-opened'
         last_opened.parent.mkdir(parents=True, exist_ok=True)
         os.environ['NEWSBOAT_LAST_OPENED'] = str(last_opened)
+        os.environ['NEWSBOAT_NOTES_STATUS'] = str(last_opened.parent/'noted-urls.txt')
+        subprocess.run([sys.executable, str(Path(__file__).with_name('newsboat-notes.py')), '--refresh'],
+                       stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=False)
         os.environ['NEWSBOAT_DOWNLOAD_STATUS'] = str(Path(os.environ.get('XDG_STATE_HOME', Path.home()/'.local/state'))/'newsboat/download-status.tsv')
         os.environ['NEWSBOAT_STARRED_STATUS'] = str(Path(os.environ.get('XDG_STATE_HOME', Path.home()/'.local/state'))/'newsboat/starred-urls.txt')
     # Preserve CLI/debug modes, which do not run the interactive feed list.

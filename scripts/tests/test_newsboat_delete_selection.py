@@ -25,6 +25,11 @@ class DeleteSelectionTests(unittest.TestCase):
             root = Path(folder)
             config, urls, feed = root/'config', root/'urls', root/'feed.xml'
             config.write_text('article-sort-order title-desc\nshow-read-feeds yes\nshow-read-articles yes\nprepopulate-query-feeds yes\nconfirm-exit no\ncolor listfocus black cyan bold\ncolor listfocus_unread black cyan bold\nhighlight articlelist ".*◆.*" cyan default bold\narticlelist-format "%p %t"\n')
+            editor = root/'editor.py'
+            editor.write_text('import sys\nfrom pathlib import Path\nPath(sys.argv[1]).write_text("Notes from the editor\\n")\n')
+            with config.open('a') as output:
+                helper = Path(__file__).resolve().parents[1]/'scripts/newsboat-notes.py'
+                output.write(f'bind I articlelist set browser "python3 {helper} %u" ; open-in-browser ; set browser "true"\n')
             feed.write_text('<rss version="2.0"><channel><title>Source</title><link>https://example.com</link><description>Test</description>'+''.join(f'<item><title>Video{i:02}</title><link>https://example.com/{i}</link><guid>{i}</guid></item>' for i in [3,7,1,5,2,6,4])+'</channel></rss>')
             remaining = list(range(1,8))
             def update():
@@ -37,7 +42,7 @@ class DeleteSelectionTests(unittest.TestCase):
             subprocess.run(args+['-x','reload'],check=True,capture_output=True)
             pid,fd=pty.fork()
             if pid==0:
-                os.environ.update(TERM='xterm-256color',HOME=folder,NEWSBOAT_DOWNLOAD_STATUS=str(root/'status.tsv'),NEWSBOAT_LAST_OPENED=str(root/'last-opened'))
+                os.environ.update(TERM='xterm-256color',HOME=folder,NEWSBOAT_DOWNLOAD_STATUS=str(root/'status.tsv'),NEWSBOAT_LAST_OPENED=str(root/'last-opened'),NEWSBOAT_NOTES_STATUS=str(root/'noted-urls'),XDG_DATA_HOME=str(root/'data'),VISUAL='python3 '+str(editor))
                 os.execv(str(BINARY),args)
             fcntl.ioctl(fd,termios.TIOCSWINSZ,struct.pack('HHHH',24,100,0,0))
             screen=pyte.Screen(100,24);stream=pyte.ByteStream(screen)
@@ -104,6 +109,20 @@ class DeleteSelectionTests(unittest.TestCase):
                 wait(lambda:any('◆' in row and 'Video02' in row for row in screen.display))
                 self.assertTrue(selected('Video07'))
                 self.assertFalse(any('◆' in row and 'Video03' in row for row in screen.display))
+
+                (root/'noted-urls').write_text('https://example.com/3\n')
+                wait(lambda:any('📝' in row and 'Video03' in row for row in screen.display))
+                self.assertTrue(selected('Video07'))
+                (root/'noted-urls').write_text('')
+                wait(lambda:all('📝' not in row for row in screen.display))
+                self.assertTrue(selected('Video07'))
+
+                os.write(fd,b'I')
+                wait(lambda:any('📝' in row and 'Video07' in row for row in screen.display))
+                self.assertTrue(selected('Video07'))
+                note_files = list((root/'data/newsboat/notes').glob('*.txt'))
+                self.assertEqual(len(note_files),1)
+                self.assertEqual(note_files[0].read_text(),'Notes from the editor\n')
 
             finally:
                 os.kill(pid,signal.SIGTERM);os.waitpid(pid,0);os.close(fd)

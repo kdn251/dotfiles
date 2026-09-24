@@ -1,0 +1,46 @@
+--- a/src/itemlistformaction.cpp
++++ b/src/itemlistformaction.cpp
+@@ -40,9 +40,11 @@
+ static std::map<std::string, std::string> watched_progress;
+ static std::map<std::string, double> downloaded_at;
+ static std::string last_opened_url;
++static std::set<std::string> noted_urls;
+ static std::string download_revision()
+ {
+     const char* path = std::getenv("NEWSBOAT_DOWNLOAD_STATUS");
++    const char* notes = std::getenv("NEWSBOAT_NOTES_STATUS");
+     const char* last_opened = std::getenv("NEWSBOAT_LAST_OPENED");
+     const char* stars = std::getenv("NEWSBOAT_STARRED_STATUS");
+     const auto revision = [](const char* filename) {
+@@ -54,7 +56,7 @@
+     const std::string watched_path = path ? std::string(path) + ".watched" : "";
+     const std::string order_path = path ? std::string(path) + ".order" : "";
+     const std::string commentary_path = stars ? std::string(stars) + ".commentary" : "";
+-    const auto version = revision(last_opened) + "|" + revision(order_path.c_str()) + "|" + revision(commentary_path.c_str()) + "|" + revision(path) + "|" + revision(stars) + "|" + revision(watched_path.c_str());
++    const auto version = revision(notes) + "|" + revision(last_opened) + "|" + revision(order_path.c_str()) + "|" + revision(commentary_path.c_str()) + "|" + revision(path) + "|" + revision(stars) + "|" + revision(watched_path.c_str());
+     static std::string loaded;
+     if (loaded != version) {
+         std::map<std::string, std::string> updated;
+@@ -76,6 +78,11 @@
+             if (split != std::string::npos) {
+                 watched_progress[line.substr(0, split)] = line.substr(split + 1);
+             }
++        }
++        noted_urls.clear();
++        if (notes) {
++            std::ifstream input(notes);
++            while (std::getline(input, line)) { noted_urls.insert(line); }
+         }
+         last_opened_url.clear();
+         if (last_opened) {
+@@ -1328,6 +1335,10 @@
+     for (size_t i = 0; i < markers.size(); ++i) {
+         if (i != primary) { append(i); }
+     }
++    if (noted_urls.count(item.first->link())) {
++        if (!badges.empty()) { badges += " "; }
++        badges += "📝";
++    }
+     if (!last_opened_url.empty() && item.first->link() == last_opened_url) {
+         badges = "◆ " + badges;
+     }

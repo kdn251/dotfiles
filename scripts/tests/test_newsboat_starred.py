@@ -39,6 +39,46 @@ class StarredTests(unittest.TestCase):
             with patch.object(starred.time, 'time', return_value=2000000000):
                 self.assertEqual(dates(), expected)
 
+    def test_native_starred_view_displays_newest_publication_first(self):
+        import os, pty, select, signal, time
+        try:
+            import pyte
+        except ImportError:
+            self.skipTest('requires pyte')
+        binary = Path.home()/'.local/lib/newsboat-paged/newsboat'
+        if not binary.exists():
+            self.skipTest('requires native Newsboat')
+        with tempfile.TemporaryDirectory() as directory:
+            base = Server().rows[1]
+            rows = [dict(base, id=1, title='OldestArticle', published_at='2026-07-01T12:00:00Z'),
+                    dict(base, id=2, title='NewestArticle', published_at='2026-09-23T12:00:00Z'),
+                    dict(base, id=3, title='MiddleArticle', published_at='2026-08-01T12:00:00Z')]
+            command, config = starred.prepare_view(directory, rows)
+            command[0] = str(binary)
+            subprocess.run(command+['-x','reload'],check=True,capture_output=True)
+            with config.open('a') as output:
+                output.write('run-on-startup open\n')
+            pid, fd = pty.fork()
+            if pid == 0:
+                os.environ['TERM'] = 'xterm-256color'
+                os.execv(str(binary), command)
+            screen = pyte.Screen(100,24)
+            stream = pyte.ByteStream(screen)
+            try:
+                end = time.monotonic()+5
+                while time.monotonic()<end:
+                    if select.select([fd],[],[],.05)[0]:
+                        stream.feed(os.read(fd,65536))
+                    text = '\n'.join(screen.display)
+                    if all(title in text for title in ['OldestArticle','NewestArticle','MiddleArticle']):
+                        break
+                self.assertLess(text.index('NewestArticle'),text.index('MiddleArticle'))
+                self.assertLess(text.index('MiddleArticle'),text.index('OldestArticle'))
+            finally:
+                os.kill(pid,signal.SIGTERM)
+                os.waitpid(pid,0)
+                os.close(fd)
+
     def test_direct_idempotent_stars_leave_read_status_unchanged(self):
         with tempfile.TemporaryDirectory() as d:
             root=Path(d);server=Server()

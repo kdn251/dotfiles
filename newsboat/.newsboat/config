@@ -152,3 +152,6 @@ user-agent "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML,
 # Collect items for commentary independently of Starred.
 bind c articlelist,article,searchresultslist undo-checkpoint commentary ; set browser "python3 ~/scripts/newsboat-commentary.py save %u" ; open-in-browser-noninteractively ; set browser "~/scripts/newsboat-brave-app.sh %u" -- "Save to Commentary"
 bind C articlelist,article,searchresultslist undo-checkpoint commentary ; set browser "python3 ~/scripts/newsboat-commentary.py remove %u" ; open-in-browser-noninteractively ; set browser "~/scripts/newsboat-brave-app.sh %u" -- "Remove from Commentary"
+
+# Per-item notes: return from the editor to update the paper badge.
+bind I articlelist,article,searchresultslist set browser "python3 ~/scripts/newsboat-notes.py %u" ; open-in-browser ; set browser "~/scripts/newsboat-brave-app.sh %u" -- "Edit notes for this item"
