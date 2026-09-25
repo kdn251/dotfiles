@@ -62,6 +62,8 @@ macro b set browser "~/scripts/bookmark-article.sh %u '%T'" ; open-in-browser ; 
 # Unbookmark article (,B) - removes from list
 macro B set browser "~/scripts/unbookmark-article.sh %u '%T'" ; open-in-browser ; set browser "~/scripts/newsboat-brave-app.sh %u" -- "Remove article bookmark"
 
+# Fail stalled API requests promptly when Wi-Fi/Tailscale recovers after sleep.
+download-timeout 8
 reload-threads 100
 # Pick up Miniflux updates automatically while this session is open.
 auto-reload yes

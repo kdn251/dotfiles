@@ -1,0 +1,201 @@
+--- a/include/controller.h
++++ b/include/controller.h
+@@ -55,7 +55,7 @@
+ 	}
+ 	EnqueueResult enqueue_url(RssItem& item, RssFeed& feed);
+ 
+-	void reload_urls_file();
++	void reload_urls_file(bool local_only = false);
+ 	void edit_urls_file();
+ 	void edit_urls_file(const std::string& cmdline);
+ 	Filepath get_urls_file();
+--- a/include/minifluxapi.h
++++ b/include/minifluxapi.h
+@@ -18,6 +18,7 @@
+ 	~MinifluxApi() override = default;
+ 	bool authenticate() override;
+ 	std::vector<TaggedFeedUrl> get_subscribed_urls() override;
++    bool subscriptions_available() const { return subscriptions_ok; }
+ 	bool mark_all_read(const std::string& feedurl) override;
+ 	bool mark_article_read(const std::string& guid, bool read) override;
+ 	bool update_article_flags(const std::string& oldflags,
+@@ -27,6 +28,7 @@
+ 	rsspp::Feed fetch_feed(const std::string& id, CurlHandle& easyhandle);
+ 
+ private:
++    bool subscriptions_ok = false;
+ 	virtual nlohmann::json run_op(const std::string& path,
+ 		const nlohmann::json& req_data,
+ 		const HTTPMethod method = HTTPMethod::GET);
+--- a/include/minifluxurlreader.h
++++ b/include/minifluxurlreader.h
+@@ -2,6 +2,7 @@
+ #define NEWSBOAT_MINIFLUXURLREADER_H_
+ 
+ #include "urlreader.h"
++#include "remoteapi.h"
+ 
+ namespace newsboat {
+ 
+@@ -12,9 +13,11 @@
+ 	MinifluxUrlReader(ConfigContainer* c, const Filepath& url_file, RemoteApi* a);
+ 	~MinifluxUrlReader() override;
+ 	std::optional<utils::ReadTextFileError> reload() override;
++    std::optional<utils::ReadTextFileError> reload_local() override;
+ 	std::string get_source() const override;
+ 
+ private:
++    std::vector<TaggedFeedUrl> subscribed_urls;
+ 	ConfigContainer* cfg;
+ 	Filepath file;
+ 	RemoteApi* api;
+--- a/include/urlreader.h
++++ b/include/urlreader.h
+@@ -23,6 +23,8 @@
+ 	/// \note This overwrites the contents of `urls` and `tags`, so
+ 	/// make sure to save your modifications with `write_config()`.
+ 	virtual std::optional<utils::ReadTextFileError> reload() = 0;
++    // Generated library queries change locally; do not reconnect remote APIs.
++    virtual std::optional<utils::ReadTextFileError> reload_local() { return reload(); }
+ 
+ 	/// \brief User-visible description of where URLs come from.
+ 	///
+--- a/src/controller.cpp
++++ b/src/controller.cpp
+@@ -818,9 +818,9 @@
+ 	return queueManager.enqueue_url(item, feed);
+ }
+ 
+-void Controller::reload_urls_file()
+-{
+-	const auto error_message = urlcfg->reload();
++void Controller::reload_urls_file(bool local_only)
++{
++	const auto error_message = local_only ? urlcfg->reload_local() : urlcfg->reload();
+ 	if (error_message.has_value()) {
+ 		v->get_statusline().show_message(error_message.value().message);
+ 		return;
+--- a/src/feedlistformaction.cpp
++++ b/src/feedlistformaction.cpp
+@@ -92,7 +92,7 @@
+ 			const bool changed = !previous.empty() && previous != version;
+ 			previous = version;
+ 			if (changed) {
+-				v.get_ctrl().reload_urls_file();
++				v.get_ctrl().reload_urls_file(true);
+ 				do_redraw = true;
+ 			}
+ 		}
+@@ -193,7 +193,7 @@
+ 	}
+ 	break;
+ 	case OP_RELOADURLS:
+-		v.get_ctrl().reload_urls_file();
++		v.get_ctrl().reload_urls_file(true);
+ 		break;
+ 	case OP_SORT: {
+ 		// i18n: This string is related to the letters in parentheses in the
+--- a/src/itemlistformaction.cpp
++++ b/src/itemlistformaction.cpp
+@@ -327,7 +327,7 @@
+                 selection_candidates.push_back(visible_items[i - 1].first->guid());
+             }
+         }
+-        v.get_ctrl().reload_urls_file();
++        v.get_ctrl().reload_urls_file(true);
+         if (downloads) {
+             for (const auto& updated : v.get_ctrl().get_feedcontainer()->get_all_feeds()) {
+                 if (updated->rssurl().find(library_prefix) == 0) {
+--- a/src/minifluxapi.cpp
++++ b/src/minifluxapi.cpp
+@@ -84,9 +84,11 @@
+ 
+ std::vector<TaggedFeedUrl> MinifluxApi::get_subscribed_urls()
+ {
++    subscriptions_ok = false;
+ 	std::vector<TaggedFeedUrl> feeds;
+ 
+ 	const json categories = run_op("/v1/categories", json());
++    if (!categories.is_array()) { return feeds; }
+ 	std::map<int, std::string> category_names;
+ 	for (const auto& category : categories) {
+ 		const std::string name = category["title"];
+@@ -95,7 +97,7 @@
+ 	}
+ 
+ 	const json feed_list = run_op("/v1/feeds", json());
+-	if (feed_list.is_null()) {
++	if (!feed_list.is_array()) {
+ 		LOG(Level::ERROR,
+ 			"MinifluxApi::get_subscribed_urls: Failed to "
+ 			"retrieve feedlist");
+@@ -111,6 +113,7 @@
+ 		feeds.push_back(feed_from_json(feed, tags));
+ 	}
+ 
++    subscriptions_ok = true;
+ 	return feeds;
+ }
+ 
+@@ -314,6 +317,12 @@
+ 	CurlHandle& easyhandle,
+ 	const HTTPMethod method /* = GET */)
+ {
++    // Bound reconnects after suspend; do not reuse long-idle TCP connections.
++    curl_easy_setopt(easyhandle.ptr(), CURLOPT_CONNECTTIMEOUT, 3L);
++    curl_easy_setopt(easyhandle.ptr(), CURLOPT_MAXAGE_CONN, 10L);
++    curl_easy_setopt(easyhandle.ptr(), CURLOPT_TCP_KEEPALIVE, 1L);
++    curl_easy_setopt(easyhandle.ptr(), CURLOPT_TCP_KEEPIDLE, 10L);
++    curl_easy_setopt(easyhandle.ptr(), CURLOPT_TCP_KEEPINTVL, 5L);
+ 	// follow redirects and keep the same request type
+ 	curl_easy_setopt(easyhandle.ptr(), CURLOPT_FOLLOWLOCATION, 1);
+ 	curl_easy_setopt(easyhandle.ptr(), CURLOPT_POSTREDIR, CURL_REDIR_POST_ALL);
+--- a/src/minifluxurlreader.cpp
++++ b/src/minifluxurlreader.cpp
+@@ -4,6 +4,7 @@
+ #include "configcontainer.h"
+ #include "logger.h"
+ #include "remoteapi.h"
++#include "minifluxapi.h"
+ #include "utils.h"
+ 
+ namespace newsboat {
+@@ -21,6 +22,18 @@
+ 
+ std::optional<utils::ReadTextFileError> MinifluxUrlReader::reload()
+ {
++    auto refreshed = api->get_subscribed_urls();
++    const auto miniflux = dynamic_cast<MinifluxApi*>(api);
++    // A successful empty result means all subscriptions were removed. A failed
++    // request after waking must leave the known subscriptions available.
++    if (!miniflux || miniflux->subscriptions_available()) {
++        subscribed_urls = std::move(refreshed);
++    }
++    return reload_local();
++}
++
++std::optional<utils::ReadTextFileError> MinifluxUrlReader::reload_local()
++{
+ 	urls.clear();
+ 	tags.clear();
+ 
+@@ -35,7 +48,7 @@
+ 
+ 	load_query_urls_from_file(file);
+ 
+-	const std::vector<TaggedFeedUrl> feedurls = api->get_subscribed_urls();
++	const auto& feedurls = subscribed_urls;
+ 
+ 	for (const auto& url : feedurls) {
+ 		LOG(Level::INFO, "added %s to URL list", url.first);
+--- a/src/view.cpp
++++ b/src/view.cpp
+@@ -1230,7 +1230,7 @@
+         const auto result = open_in_browser(state.url, "", "", "", false);
+         cfg->set_configvalue("browser", browser);
+         if (!result || *result != 0) { status_line.show_error("Could not restore deleted download"); return false; }
+-        ctrl.reload_urls_file();
++        ctrl.reload_urls_file(true);
+         for (const auto& form : formaction_stack) {
+             if (const auto list = std::dynamic_pointer_cast<ItemListFormAction>(form)) {
+                 list->process_op(OP_RELOADURLS, {});

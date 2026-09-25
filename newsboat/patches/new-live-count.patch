@@ -1,0 +1,20 @@
+--- a/src/feedlistformaction.cpp
++++ b/src/feedlistformaction.cpp
+@@ -1245,6 +1245,17 @@
+         }
+         return total;
+     }
++    if (feed->rssurl().find("query:📬 New:") == 0) {
++        unsigned int total = 0;
++        for (const auto& source : v.get_ctrl().get_feedcontainer()->get_all_feeds()) {
++            if (source->is_query_feed()) { continue; }
++            std::lock_guard<std::mutex> lock(source->item_mutex);
++            for (const auto& item : source->items()) {
++                if (item->unread() && !item->deleted()) { ++total; }
++            }
++        }
++        return total;
++    }
+     if (feed->rssurl().find("query:🌎 All:") == 0) {
+         unread_count = 0;
+         for (const auto& source : v.get_ctrl().get_feedcontainer()->get_all_feeds()) {

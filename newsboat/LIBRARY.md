@@ -206,3 +206,24 @@ changes undoable.
 Search checks titles, article contents, and author/source labels. Starred's
 channel names are stored as source labels, so `/` can now find those as well as
 read and unread article titles. Visual selection also works in search results.
+
+## Reconnecting after suspend
+
+Local query updates (including saved-list changes, Downloads reloads, and file
+undo) reuse the current Miniflux subscription list. They do not synchronously
+request `/v1/categories` and `/v1/feeds` on the UI thread. Explicit `R` still
+retrieves the current subscriptions before starting the background feed refresh.
+If that subscription request fails, the known list remains available; a valid
+empty response still removes subscriptions normally.
+
+Miniflux connections have a three-second connection timeout, discard connections
+idle for more than ten seconds, and use TCP keepalives. The configured total
+request timeout is eight seconds instead of the default thirty. These limits
+bound stalled requests while Wi-Fi or Tailscale recovers. They do not change
+the fifteen-minute automatic refresh interval.
+
+The home screen's New count reads the current unread, non-deleted items in source
+feeds, excluding aggregate query feeds. It updates as each feed finishes, instead
+of waiting for the New query to rebuild at the end of the whole refresh.
+
+Aggregate query lists, Starred and searches show each exact destination URL once. Different URLs remain separate even with identical titles. Reading a destination updates its loaded source copies together, including undo; New and All unread counts use unique URLs. Individual source feeds remain available.

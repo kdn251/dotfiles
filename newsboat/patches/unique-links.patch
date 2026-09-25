@@ -1,0 +1,230 @@
+--- a/include/controller.h
++++ b/include/controller.h
+@@ -43,6 +43,7 @@
+ 	void update_visible_feeds();
+ 	void mark_all_read(unsigned int pos);
+ 	void mark_article_read(const std::string& guid, bool read);
++    void sync_duplicate_read(const std::string& url, bool read);
+ 	void mark_all_read(const std::string& feedurl);
+ 	void mark_all_read(RssFeed& feed)
+ 	{
+--- a/src/controller.cpp
++++ b/src/controller.cpp
+@@ -648,11 +648,47 @@
+ 	}
+ }
+ 
++void Controller::sync_duplicate_read(const std::string& url, bool read)
++{
++    if (url.empty()) { return; }
++    std::vector<std::shared_ptr<RssItem>> matches;
++    for (const auto& feed : feedcontainer.get_all_feeds()) {
++        if (feed->is_query_feed()) { continue; }
++        std::lock_guard<std::mutex> lock(feed->item_mutex);
++        for (const auto& item : feed->items()) {
++            if (item->link() == url) { matches.push_back(item); }
++        }
++    }
++    // set_unread notifies the source feed; release its mutex before doing so.
++    for (const auto& item : matches) {
++        if (item->unread() == read) { item->set_unread(!read); }
++    }
++    update_feedlist();
++}
++
+ void Controller::mark_article_read(const std::string& guid, bool read)
+ {
+-	if (api) {
+-		api->mark_article_read(guid, read);
+-	}
++    std::string url;
++    for (const auto& feed : feedcontainer.get_all_feeds()) {
++        if (feed->is_query_feed()) { continue; }
++        std::lock_guard<std::mutex> lock(feed->item_mutex);
++        for (const auto& item : feed->items()) {
++            if (item->guid() == guid) { url = item->link(); break; }
++        }
++        if (!url.empty()) { break; }
++    }
++    sync_duplicate_read(url, read);
++    std::set<std::string> guids{guid};
++    if (!url.empty()) {
++        for (const auto& feed : feedcontainer.get_all_feeds()) {
++            if (feed->is_query_feed()) { continue; }
++            std::lock_guard<std::mutex> lock(feed->item_mutex);
++            for (const auto& item : feed->items()) {
++                if (item->link() == url) { guids.insert(item->guid()); }
++            }
++        }
++    }
++    if (api) { for (const auto& id : guids) { api->mark_article_read(id, read); } }
+ }
+ 
+ void Controller::mark_all_read(unsigned int pos)
+@@ -663,23 +699,11 @@
+ 		return;
+ 	}
+ 
+-	if (feed->is_query_feed()) {
+-		if (api) {
+-			std::vector<std::string> item_guids;
+-			for (const auto& item : feed->items()) {
+-				if (item->unread()) {
+-					item_guids.push_back(item->guid());
+-				}
+-			}
+-			api->mark_articles_read(item_guids);
+-		}
+-		rsscache->mark_all_read(*feed);
+-	} else {
+-		rsscache->mark_all_read(feed->rssurl());
+-		if (api) {
+-			api->mark_all_read(feed->rssurl());
+-		}
+-	}
++    std::vector<std::string> selected;
++    for (const auto& item : feed->items()) {
++        if (item->unread()) { selected.push_back(item->guid()); }
++    }
++    mark_all_read(selected);
+ 	m.stopover(
+ 		"after rsscache->mark_all_read, before iteration over "
+ 		"items");
+@@ -689,10 +713,24 @@
+ 
+ void Controller::mark_all_read(const std::vector<std::string>& item_guids)
+ {
+-	ScopeMeasure m("Controller::mark_all_read");
+-	if (api) {
+-		api->mark_articles_read(item_guids);
+-	}
++    std::set<std::string> selected(item_guids.begin(), item_guids.end()), links;
++    std::vector<std::shared_ptr<RssItem>> items;
++    for (const auto& feed : feedcontainer.get_all_feeds()) {
++        if (feed->is_query_feed()) { continue; }
++        std::lock_guard<std::mutex> lock(feed->item_mutex);
++        for (const auto& item : feed->items()) {
++            items.push_back(item);
++            if (selected.count(item->guid()) && !item->link().empty()) { links.insert(item->link()); }
++        }
++    }
++    for (const auto& item : items) {
++        if (selected.count(item->guid()) || links.count(item->link())) {
++            item->set_unread(false);
++            selected.insert(item->guid());
++        }
++    }
++    if (api) { api->mark_articles_read(std::vector<std::string>(selected.begin(), selected.end())); }
++    update_feedlist();
+ }
+ 
+ void Controller::replace_feed(RssFeed& oldfeed, RssFeed& newfeed, unsigned int pos,
+@@ -810,6 +848,10 @@
+ 				feedcontainer.get_feed_by_url(item->feedurl()));
+ 		}
+ 	}
++    std::set<std::string> links;
++    items.erase(std::remove_if(items.begin(), items.end(), [&](const auto& item) {
++        return !links.insert(item->link().empty() ? "guid:" + item->guid() : "url:" + item->link()).second;
++    }), items.end());
+ 	return items;
+ }
+ 
+--- a/src/feedlistformaction.cpp
++++ b/src/feedlistformaction.cpp
+@@ -6,6 +6,7 @@
+ #include <cstdlib>
+ #include <fstream>
+ #include <map>
++#include <set>
+ #include <sys/stat.h>
+ #include <cstring>
+ #include <langinfo.h>
+@@ -1245,25 +1246,18 @@
+         }
+         return total;
+     }
+-    if (feed->rssurl().find("query:📬 New:") == 0) {
+-        unsigned int total = 0;
++    if (feed->rssurl().find("query:📬 New:") == 0 || feed->rssurl().find("query:🌎 All:") == 0) {
++        std::set<std::string> links;
+         for (const auto& source : v.get_ctrl().get_feedcontainer()->get_all_feeds()) {
+             if (source->is_query_feed()) { continue; }
+             std::lock_guard<std::mutex> lock(source->item_mutex);
+             for (const auto& item : source->items()) {
+-                if (item->unread() && !item->deleted()) { ++total; }
++                if (item->unread() && !item->deleted()) {
++                    links.insert(item->link().empty() ? "guid:" + item->guid() : "url:" + item->link());
++                }
+             }
+         }
+-        return total;
+-    }
+-    if (feed->rssurl().find("query:🌎 All:") == 0) {
+-        unread_count = 0;
+-        for (const auto& source : v.get_ctrl().get_feedcontainer()->get_all_feeds()) {
+-            // Match the All sources view, excluding other aggregate queries.
+-            if (source->rssurl().find("query:") != 0) {
+-                unread_count += source->unread_item_count();
+-            }
+-        }
++        return static_cast<unsigned int>(links.size());
+     }
+ 
+     return unread_count;
+--- a/src/itemlistformaction.cpp
++++ b/src/itemlistformaction.cpp
+@@ -529,6 +529,8 @@
+ 					.first->set_unread(!unread);
+ 					if (!(args.size() > 1 && args[1] == "group")) v.sync_undoable_read(visible_items[itempos].first, unread);
+ 				}
++                v.get_ctrl().sync_duplicate_read(visible_items[itempos].first->link(),
++                    !visible_items[itempos].first->unread());
+ 			} catch (const DbException& e) {
+ 				v.get_statusline().show_error(strprintf::fmt(
+ 						_("Error while toggling read flag: %s"),
+--- a/src/rssfeed.cpp
++++ b/src/rssfeed.cpp
+@@ -6,6 +6,7 @@
+ #include <curl/curl.h>
+ #include <langinfo.h>
+ #include <random>
++#include <set>
+ #include <string.h>
+ #include <sys/utsname.h>
+ #include <time.h>
+@@ -234,6 +235,7 @@
+ 	items_.clear();
+ 	items_guid_map.clear();
+ 
++    std::set<std::string> links;
+ 	for (const auto& feed : feeds) {
+ 		if (feed->is_query_feed()) {
+ 			// don't fetch items from other query feeds!
+@@ -241,6 +243,8 @@
+ 		}
+ 		for (const auto& item : feed->items()) {
+ 			if (!item->deleted() && m.matches(item.get())) {
++                const auto key = item->link().empty() ? "guid:" + item->guid() : "url:" + item->link();
++                if (!links.insert(key).second) { continue; }
+ 				LOG(Level::DEBUG, "RssFeed::update_items: Matcher matches!");
+ 				item->set_feedptr(feed);
+ 				items_.push_back(item);
+--- a/src/view.cpp
++++ b/src/view.cpp
+@@ -1177,6 +1177,7 @@
+ 
+ void View::sync_undoable_read(std::shared_ptr<RssItem> item, bool read)
+ {
++    ctrl.sync_duplicate_read(item->link(), read);
+     if (const char* helper = std::getenv("NEWSBOAT_UNDO_HELPER")) {
+         const auto browser = cfg->get_configvalue("browser");
+         cfg->set_configvalue("browser", "python3 " + utils::quote(helper) +
+@@ -1263,6 +1264,7 @@
+         rsscache->mark_item_deleted(item->guid(), state.deleted);
+     };
+     if (state.item) { restore_item(state.item); }
++    ctrl.sync_duplicate_read(state.url, !state.unread);
+     if (state.feed && state.item) {
+         auto& items = state.feed->items();
+         if (std::none_of(items.begin(), items.end(), [&](const auto& i) { return i->guid() == state.guid; })) {

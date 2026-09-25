@@ -36,7 +36,7 @@ def rebuild_query(rows):
     from newsboat_media import atomic_write
     STARRED_STATUS.parent.mkdir(parents=True,exist_ok=True)
     atomic_write(STARRED_STATUS.with_name('starred-items.json'), json.dumps(rows))
-    atomic_write(Path(str(STARRED_STATUS)+'.count'), str(len(rows))+'\n')
+    atomic_write(Path(str(STARRED_STATUS)+'.count'), str(len({row['url'] for row in rows}))+'\n')
     content = ''.join(url+'\n' for url in sorted({row['url'] for row in rows}) if not any(c in url for c in '\r\n'))
     if not STARRED_STATUS.exists() or STARRED_STATUS.read_text() != content:
         STARRED_STATUS.parent.mkdir(parents=True,exist_ok=True)
@@ -151,7 +151,11 @@ def write_feed(directory, rows):
     rss=ET.Element('rss',version='2.0');channel=ET.SubElement(rss,'channel')
     for key,value in [('title','⭐ Starred'),('link','https://localhost/starred'),('description','Your Miniflux stars. Press S to unstar an item.')]:
         ET.SubElement(channel,key).text=value
+    seen = set()
     for row in rows:
+        if row['url'] in seen:
+            continue
+        seen.add(row['url'])
         item=ET.SubElement(channel,'item')
         ET.SubElement(item,'title').text=row['title']
         ET.SubElement(item,'author').text=source_label(row['url'], row['feed']['title'])
