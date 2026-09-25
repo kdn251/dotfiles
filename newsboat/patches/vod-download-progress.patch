@@ -1,0 +1,53 @@
+--- a/src/itemlistformaction.cpp
++++ b/src/itemlistformaction.cpp
+@@ -54,12 +54,13 @@
+         return std::to_string(info.st_mtim.tv_sec) + ":" +
+             std::to_string(info.st_mtim.tv_nsec) + ":" + std::to_string(info.st_size);
+     };
++    const std::string vod_path = path ? std::string(path) + ".vods" : "";
+     const std::string watched_path = path ? std::string(path) + ".watched" : "";
+     const std::string read_path = path ? std::string(path) + ".read" : "";
+     const std::string order_path = path ? std::string(path) + ".order" : "";
+     const std::string commentary_path = stars ? std::string(stars) + ".commentary" : "";
+     const std::string favorites_path = stars ? std::string(stars) + ".favorites" : "";
+-    const auto version = revision(favorites_path.c_str()) + "|" + revision(read_path.c_str()) + "|" + revision(notes) + "|" + revision(last_opened) + "|" + revision(order_path.c_str()) + "|" + revision(commentary_path.c_str()) + "|" + revision(path) + "|" + revision(stars) + "|" + revision(watched_path.c_str());
++    const auto version = revision(vod_path.c_str()) + "|" + revision(favorites_path.c_str()) + "|" + revision(read_path.c_str()) + "|" + revision(notes) + "|" + revision(last_opened) + "|" + revision(order_path.c_str()) + "|" + revision(commentary_path.c_str()) + "|" + revision(path) + "|" + revision(stars) + "|" + revision(watched_path.c_str());
+     static std::string loaded;
+     if (loaded != version) {
+         std::map<std::string, std::string> updated;
+@@ -71,6 +72,13 @@
+                 if (split != std::string::npos) {
+                     updated[line.substr(0, split)] = line.substr(split + 1);
+                 }
++            }
++        }
++        std::ifstream vod_input(vod_path);
++        while (std::getline(vod_input, line)) {
++            const auto split = line.find('\t');
++            if (split != std::string::npos) {
++                updated[line.substr(0, split)] = line.substr(split + 1);
+             }
+         }
+         download_status = std::move(updated);
+--- a/src/feedlistformaction.cpp
++++ b/src/feedlistformaction.cpp
+@@ -69,6 +69,19 @@
+ 
+ void FeedListFormAction::prepare()
+ {
++    if (const char* stars = std::getenv("NEWSBOAT_STARRED_STATUS")) {
++        struct stat info {};
++        const auto path = std::string(stars) + ".vods.count";
++        if (stat(path.c_str(), &info) == 0) {
++            const auto version = std::to_string(info.st_mtim.tv_sec) + ":" +
++                std::to_string(info.st_mtim.tv_nsec);
++            static std::string previous_count;
++            if (version != previous_count) {
++                previous_count = version;
++                do_redraw = true;
++            }
++        }
++    }
+ 	// Refresh generated library queries in place, without opening another feed.
+ 	if (const char* path = std::getenv("NEWSBOAT_LIVE_QUERIES")) {
+ 		struct stat info {};

@@ -42,6 +42,9 @@ export NEWSBOAT_MEDIA_URL="$URL"
 export NEWSBOAT_MAINTENANCE="$(dirname "$(readlink -f "$0")")/newsboat-maintenance.py"
 READY_OPTS=("--script=$(dirname "$(readlink -f "$0")")/newsboat-watch-completion.lua")
 READY_OPTS+=("--script=$(dirname "$(readlink -f "$0")")/newsboat-local-playback.lua")
+if [ -n "${NEWSBOAT_RANDOM_LIFECYCLE:-}" ]; then
+  READY_OPTS+=("--script=$(dirname "$(readlink -f "$0")")/newsboat-random-lifecycle.lua")
+fi
 if [ -n "${NEWSBOAT_PLAY_READY:-}" ]; then
   READY_OPTS+=("--script=$(dirname "$(readlink -f "$0")")/newsboat-play-ready.lua")
 fi

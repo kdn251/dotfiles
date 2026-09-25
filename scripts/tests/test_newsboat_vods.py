@@ -16,6 +16,11 @@ vods=importlib.util.module_from_spec(spec);spec.loader.exec_module(vods)
 media=vods.media
 
 class VODTests(unittest.TestCase):
+    def setUp(self):
+        for target in ['active_rows','publish']:
+            mock=patch.object(vods.progress,target,return_value=[])
+            mock.start();self.addCleanup(mock.stop)
+        mock=patch.object(vods.subprocess,'Popen');mock.start();self.addCleanup(mock.stop)
     def test_inventory_delete_and_archive_preserved(self):
         with tempfile.TemporaryDirectory() as directory:
             root=Path(directory);videos=root/'videos';folder=videos/'twitch-vods';folder.mkdir(parents=True)
@@ -93,9 +98,25 @@ class VODUITests(unittest.TestCase):
                 while time.monotonic()<deadline:
                     if select.select([fd],[],[],.05)[0]:stream.feed(os.read(fd,65536))
                 self.assertIn('3 items',next(row for row in screen.display if '🎬 VODs' in row))
-                os.write(fd,b':3\n\n');wait(lambda s:'Video1' in s and 'Video3' in s)
+                count_path=root/'state/newsboat/starred-urls.txt.vods.count'
+                cursor=screen.cursor.y
+                count_path.write_text('4\n')
+                wait(lambda s:'4 items' in next(row for row in s.splitlines() if '🎬 VODs' in row))
+                self.assertEqual(screen.cursor.y,cursor)
+                count_path.write_text('3\n')
+                wait(lambda s:'3 items' in next(row for row in s.splitlines() if '🎬 VODs' in row))
+
+                os.write(fd,b':3\n\n');wait(lambda s:'Video1' in s and 'Video3' in s and screen.cursor.y == 1)
                 self.assertTrue(screen.display[0].startswith(' 🎬 VODs'))
                 self.assertIn('alice',screen.display[1]);self.assertIn('Video3',screen.display[1]);self.assertIn('0%',screen.display[1])
+                # External progress updates redraw the badge without moving selection.
+                time.sleep(.5)  # Let the empty monitor publish its initial snapshot.
+                progress_path=root/'state/newsboat/download-status.tsv.vods'
+                progress_path.write_text('https://www.twitch.tv/videos/123456783\t↓ 42%\n')
+                wait(lambda s:'↓ 42%' in s)
+                wait(lambda s:screen.cursor.y == 1)
+                self.assertIn('Video3',screen.display[screen.cursor.y])
+                progress_path.write_text('')
                 os.write(fd,b':2\n,D');wait(lambda s:'Video2' not in s and 'Video1' in s)
                 self.assertFalse((folder/'alice - Video2 - 123456782.mp4').exists())
                 self.assertIn('Video1',screen.display[screen.cursor.y])
@@ -118,3 +139,34 @@ class VODUITests(unittest.TestCase):
                     try:os.kill(parent,signal.SIGTERM)
                     except ProcessLookupError:pass
                 stop_tree(pid);os.waitpid(pid,0);os.close(fd)
+
+class VODResponsivenessTests(unittest.TestCase):
+    def setUp(self):
+        for target in ['active_rows','publish']:
+            mock=patch.object(vods.progress,target,return_value=[])
+            mock.start();self.addCleanup(mock.stop)
+    def test_open_does_not_probe_or_wait_for_library_lock(self):
+        import fcntl,time
+        with tempfile.TemporaryDirectory() as directory:
+            root=Path(directory);state=root/'state';state.mkdir();folder=root/'vods';folder.mkdir()
+            complete=folder/'alice - Complete - 123456789.mp4';complete.write_bytes(b'test')
+            busy=folder/'alice - Busy - 123456790.mp4';busy.write_bytes(b'test')
+            partial=folder/'alice - Partial - 123456791.mp4';partial.write_bytes(b'test');Path(str(partial)+'.incomplete').touch()
+            index=state/'vod-items.json';index.write_text(json.dumps([dict(path=str(p),url='https://www.twitch.tv/videos/'+str(i)) for i,p in enumerate([complete,busy,partial])]))
+            with (state/'.library.lock').open('w') as lock:
+                fcntl.flock(lock,fcntl.LOCK_EX)
+                with patch.multiple(vods,STATE=state,INDEX=index),patch.object(media,'busy_paths',return_value={busy.resolve()}),patch.object(media,'playable',side_effect=AssertionError('Interactive open must not probe')),patch.object(vods.subprocess,'Popen') as launch:
+                    started=time.monotonic();rows=vods.view_entries()
+                    self.assertLess(time.monotonic()-started,.2)
+                    self.assertEqual([row['path'] for row in rows],[str(complete)])
+                    self.assertEqual(launch.call_args.args[0][-1],'refresh')
+
+    def test_unchanged_invalid_files_are_not_repeatedly_probed(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root=Path(directory);state=root/'state';folder=root/'vods';folder.mkdir()
+            path=folder/'alice - Broken - 123456789.mp4';path.write_bytes(b'incomplete')
+            with patch.multiple(vods,STATE=state,INDEX=state/'vod-items.json',DIRECTORY=folder),patch.object(media,'inside',return_value=True),patch.object(media,'busy_paths',return_value=set()),patch.object(media,'playable',return_value=False) as probe:
+                self.assertEqual(vods.scan(),[]);self.assertEqual(vods.scan(),[])
+                self.assertEqual(probe.call_count,1)
+                path.write_bytes(b'changed-file')
+                vods.scan();self.assertEqual(probe.call_count,2)

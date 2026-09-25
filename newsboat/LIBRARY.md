@@ -77,9 +77,12 @@ snapshot). Crossposts resolve to the original post, using its RSS entry if
 necessary. Link-only feed entries are rejected when the original body cannot
 be obtained; they are never reported as complete downloads. Short posts do
 not fail the article-length check and Reddit's JavaScript page is not required. Downloads also request a snapshot of the top comments and nested replies
-(up to 200 comments, ten levels deep). They label omitted replies and report
-blocked comment requests as a partial copy. Use **Open original** for the
-complete, current discussion.
+(up to 200 comments, ten levels deep). If Reddit blocks its JSON endpoint,
+downloads fall back to Reddit’s RSS discussion feed (up to 200 comments).
+RSS comments appear in feed order with authors and original comment links;
+Reddit does not provide reply nesting or scores there. Omitted replies are
+labeled, and a download is reported as partial if both comment requests fail.
+Use **Open original** for the complete, current discussion.
 
 Saved pages provide their own keyboard shortcuts: `j`/`k` scroll smoothly (including
 held keys), `gg`/`G` go
@@ -118,6 +121,17 @@ The  Favorites row appears above All. Use `f` to save an item for the long te
 
 ## Scheduled Twitch VODs
 
-The 🎬 VODs row sits directly above Favorites and shows the total available files from `~/Videos/newsboat/twitch-vods` (excluding the `manual/` subdirectory used by `,d`). It inventories existing files independently of the RSS cache, with streamer names, titles, row numbers, watched percentages, and newest downloads first. Active downloads and partial files are excluded.
+The 🎬 VODs row sits directly above Favorites and shows the total available files from `~/Videos/newsboat/twitch-vods` (excluding the `manual/` subdirectory used by `,d`). It inventories existing files independently of the RSS cache, with streamer names, titles, row numbers, watched percentages, and newest downloads first. The main-screen total counts completed and active VODs together (each VOD once), and updates while you remain on the main screen. Active downloads appear first with a live download counter; abandoned partial files are excluded.
 
-Use `o`, `O`, or `,v` to play a local VOD. `,D` deletes the file and immediately removes its row, selecting the next remaining item. The scheduled downloader's archive is preserved so deleting a VOD does not cause that same latest VOD to be downloaded again. The inventory refreshes at Newsboat startup, whenever VODs is opened, and after the scheduled downloader or pruning script updates the files. Reopen the list to see newly completed downloads.
+Use `o`, `O`, or `,v` to play a local VOD. `,D` deletes the file and immediately removes its row, selecting the next remaining item. The scheduled downloader's archive is preserved so deleting a VOD does not cause that same latest VOD to be downloaded again. VODs opens immediately from its saved inventory, adding currently running scheduled downloads. Inventory checks run in the background when the view opens, at Newsboat startup, and after the scheduled downloader or pruning script updates the files. Unchanged invalid files are not repeatedly probed. Active rows update every two seconds: download percentage when the total duration is known, otherwise MB/GB downloaded. Playback and deletion of unfinished VODs are blocked. Reopen the list to pick up newly started downloads or refreshed inventory.
+
+## 🍀 Random Starred pick
+
+Press **7** on the main feed screen to open a random Starred item in the usual
+Brave article window or mpv player. Newsboat remains usable. When that window
+closes, a prompt inside Newsboat offers **u: Unstar** or **k: Keep starred**.
+Enter or Escape also keeps it starred. The main-screen footer displays
+**7: 🍀 Random Starred**. Unstarring uses the normal Miniflux sync queue,
+so the change also reaches Capy. Only one random pick is active at a time.
+Article window tracking uses Hyprland; failed or unconfirmed opens never unstar
+an item. Restart Newsboat after installing this shortcut.

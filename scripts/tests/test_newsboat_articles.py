@@ -130,3 +130,36 @@ with tempfile.TemporaryDirectory() as d:
             content,warnings=articles.reddit_comments('https://www.reddit.com/r/test/comments/abc123/title/')
         self.assertEqual(warnings,['Reddit comments unavailable'])
         self.assertIn('could not be downloaded',content)
+
+    def test_reddit_json_blocked_falls_back_to_comment_feed(self):
+        rss='''<feed xmlns="http://www.w3.org/2005/Atom">
+          <entry><id>t3_abc123</id><content type="html">&lt;p&gt;Post text&lt;/p&gt;</content></entry>
+          <entry><id>t1_reply1</id><author><name>/u/Alice</name></author><link href="https://www.reddit.com/r/test/comments/abc123/title/reply1/"/><content type="html">&lt;p&gt;First comment with &lt;strong&gt;formatting&lt;/strong&gt;.&lt;/p&gt;</content></entry>
+          <entry><id>t1_reply2</id><author><name>/u/Bob</name></author><link href="https://www.reddit.com/r/test/comments/abc123/title/reply2/"/><content type="html">&lt;p&gt;A reply &amp;amp; more text.&lt;/p&gt;</content></entry>
+          <entry><id>t1_reply2</id><link href="https://www.reddit.com/r/test/comments/abc123/title/reply2/"/><content type="html">Duplicate</content></entry>
+          <entry><id>t1_wrong</id><link href="https://www.reddit.com/r/test/comments/other1/title/wrong/"/><content type="html">Wrong thread</content></entry>
+        </feed>'''
+        with patch.object(articles,'fetch',side_effect=[OSError('403 Blocked'),(rss.encode(),'application/atom+xml','https://www.reddit.com')]) as fetch:
+            content,warnings=articles.reddit_comments('https://old.reddit.com/r/test/comments/abc123/title/')
+        self.assertEqual(warnings,[])
+        self.assertIn('Comments (2 saved)',content)
+        self.assertIn('u/Alice',content);self.assertIn('A reply',content)
+        self.assertIn('reply nesting and scores are not supplied',content)
+        self.assertNotIn('Post text',content);self.assertNotIn('Duplicate',content);self.assertNotIn('Wrong thread',content)
+        self.assertEqual(fetch.call_args.args[0],'https://www.reddit.com/comments/abc123/.rss?limit=200&sort=top')
+        code='''import sys
+sys.path.insert(0,sys.argv[1])
+import newsboat_articles as a
+page,title,warnings=a.render('<p>Post body.</p>','https://www.reddit.com/r/test/comments/abc123/title/','Test Reddit post',reddit=True,comments=sys.stdin.read())
+assert 'Comments (2 saved)' in page and 'u/Alice' in page and 'A reply &amp; more text.' in page
+assert '<section id="article-comments">' in page
+assert page.count('<script') == 1
+'''
+        subprocess.run([str(PYTHON),'-c',code,str(SCRIPTS)],input=content,text=True,check=True)
+
+    def test_reddit_rss_rejects_unrelated_or_block_pages(self):
+        for response in (b'<html><body>Blocked</body></html>',b'<feed xmlns="http://www.w3.org/2005/Atom"><entry><id>t3_other</id></entry></feed>'):
+            with patch.object(articles,'fetch',side_effect=[ValueError('Not JSON'),(response,'text/html','https://www.reddit.com')]):
+                content,warnings=articles.reddit_comments('https://www.reddit.com/r/test/comments/abc123/title/')
+            self.assertEqual(warnings,['Reddit comments unavailable'])
+            self.assertIn('could not be downloaded',content)

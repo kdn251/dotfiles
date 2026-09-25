@@ -164,3 +164,6 @@ bind I articlelist,article,searchresultslist set browser "python3 ~/scripts/news
 # Long-term favorites, independent of Starred and Commentary.
 bind f articlelist,article,searchresultslist undo-checkpoint favorites ; set browser "python3 ~/scripts/newsboat-favorites.py save %u" ; open-in-browser-noninteractively ; set browser "~/scripts/newsboat-brave-app.sh %u" -- "Save to Favorites"
 bind F articlelist,article,searchresultslist undo-checkpoint favorites ; set browser "python3 ~/scripts/newsboat-favorites.py remove %u" ; open-in-browser-noninteractively ; set browser "~/scripts/newsboat-brave-app.sh %u" -- "Remove from Favorites"
+
+# Open a random saved item without blocking the reader.
+bind 7 feedlist set browser "newsboat-random://starred" -- "🍀 Random Starred item; offer to unstar after closing"

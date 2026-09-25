@@ -24,6 +24,7 @@ import tempfile
 import termios
 import time
 import tty
+from newsboat_random_prompt import Prompt
 
 
 SLIDE_DURATION = 0.5
@@ -279,6 +280,7 @@ def run(args):
     master = None
     nested_pid = None
     nested_master = None
+    vod_monitor = None
     status = None
     startup_error = b""
     offline_requested = False
@@ -290,6 +292,10 @@ def run(args):
             os.environ['NEWSBOAT_UNDO_HELPER'] = str(Path(__file__).with_name('newsboat-starred.py'))
             os.environ['NEWSBOAT_COMMENTARY_HELPER'] = str(Path(__file__).with_name('newsboat-commentary.py'))
             os.environ['NEWSBOAT_FAVORITES_HELPER'] = str(Path(__file__).with_name('newsboat-favorites.py'))
+        random_directory = Path(directory)/"random-prompt"
+        random_directory.mkdir(mode=0o700)
+        os.environ['NEWSBOAT_RANDOM_PROMPT_DIR'] = str(random_directory)
+        random_prompt = Prompt(random_directory)
         refresh_request = Path(directory)/"refresh-request"
         os.environ["NEWSBOAT_REFRESH_REQUEST"] = str(refresh_request)
         view_env = nested_view_environment(directory)
@@ -329,6 +335,9 @@ def run(args):
             signal.signal(signal.SIGWINCH, resize)
             signal.signal(signal.SIGTERM, forward_signal)
             signal.signal(signal.SIGHUP, forward_signal)
+            vod_monitor = subprocess.Popen([sys.executable, str(Path(__file__).with_name('newsboat_vod_progress.py')), str(os.getpid())],
+                             stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                             start_new_session=True)
             tty.setraw(0)
             write_all(1, b"\x1b[?1049h\x1b[?25l")
             progress = Progress()
@@ -353,6 +362,9 @@ def run(args):
                     data += renderer.compact(frame, progress.toast_caption(),
                                              cols, rows, toast_rows, toast_offset)
                     data = b"\x1b[?2026h" + data + b"\x1b[?2026l"
+                if random_prompt.current:
+                    cols, rows = os.get_terminal_size(1)
+                    data += random_prompt.draw(cols, rows)
                 write_all(1, data)
 
             opening_feed = False
@@ -380,6 +392,9 @@ def run(args):
                         offline_requested = True
                         os.kill(pid, signal.SIGTERM)
                         break
+                    if not startup and random_prompt.poll():
+                        cols, rows = os.get_terminal_size(1)
+                        write_all(1, random_prompt.draw(cols, rows))
                     if refresh_request.exists() and not progress.active:
                         refresh_request.unlink(missing_ok=True)
                         write_all(master, b":exec reload-all\n")
@@ -514,6 +529,10 @@ def run(args):
                                     pass
                                 running = False
                                 break
+                            if random_prompt.current:
+                                if random_prompt.handle(data):
+                                    write_all(nested_master if nested_master is not None else master, b"\x0c")
+                                continue
                             write_all(nested_master if nested_master is not None else master, data)
                         else:
                             try:
@@ -605,6 +624,8 @@ def run(args):
                                 write_all(1, b"\x1b[?2026h" +
                                           renderer.compact(frame, label, cols, rows, toast_rows, toast_offset) +
                                           b"\x1b[?2026l")
+                        if random_prompt.current:
+                            write_all(1, random_prompt.draw(cols, rows))
                         next_frame = now + (1/60 if sliding else 0.08)
 
             _, status = os.waitpid(pid, 0)
@@ -619,6 +640,13 @@ def run(args):
                 write_all(1, b"\x1b[0m\x1b[?1049l\x1b[?25h")
             except (OSError, termios.error):
                 pass
+            if vod_monitor is not None:
+                if vod_monitor.poll() is None:
+                    try:
+                        os.killpg(vod_monitor.pid, signal.SIGTERM)
+                    except ProcessLookupError:
+                        pass
+                vod_monitor.wait(timeout=3)
             if nested_pid:
                 try:
                     os.killpg(nested_pid, signal.SIGTERM)

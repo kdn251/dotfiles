@@ -1,0 +1,30 @@
+--- a/src/formaction.cpp
++++ b/src/formaction.cpp
+@@ -197,6 +197,11 @@
+ 			if (args.size() == 2) {
+ 				const std::string key = args.at(0);
+ 				const std::string value = args.at(1);
++				if (key == "browser" && value == "newsboat-random://starred") {
++					// Detached helper owns the window; keep the reader responsive.
++					std::system("python3 ~/scripts/newsboat-random.py </dev/null >/dev/null 2>&1 &");
++					return true;
++				}
+ 				cfg->set_configvalue(key, value);
+ 				// Browser commands do not change the visible layout.
+ 				if (key != "browser") {
+--- a/src/feedlistformaction.cpp
++++ b/src/feedlistformaction.cpp
+@@ -86,6 +86,13 @@
+ 	}
+ 
+ 	set_keymap_hints();
++	if (!all_sources) {
++		auto hint = StflRichText::from_plaintext_with_style("7", "<key>");
++		hint.append(StflRichText::from_plaintext_with_style(":", "<colon>"));
++		hint.append(StflRichText::from_plaintext_with_style("🍀 Random Starred  ", "<desc>"));
++		hint.append(v.get_keymap()->prepare_keymap_hint(get_keymap_hint(), id()));
++		set_value("help", hint.stfl_quoted());
++	}
+ 
+ 	const auto sort_strategy = cfg->get_feed_sort_strategy();
+ 	if (!old_sort_strategy || sort_strategy != *old_sort_strategy) {

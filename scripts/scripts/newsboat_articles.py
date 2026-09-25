@@ -84,7 +84,7 @@ def reddit_snapshot(url, seen=None):
     # that isn't in the local cache. Never treat a blocked/error page as text.
     if not candidates:
         try:
-            feed_url = urldefrag(url)[0].split('?')[0].rstrip('/')+'/.rss'
+            feed_url = f'https://www.reddit.com/comments/{post_id}/.rss?limit=1'
             raw, mime, _ = fetch(feed_url, 4*1024*1024, 'application/atom+xml,application/xml')
             feed = ET.fromstring(raw)
             ns = {'a':'http://www.w3.org/2005/Atom'}
@@ -111,6 +111,53 @@ def reddit_snapshot(url, seen=None):
     raise ValueError('Reddit supplied no post text, and the original could not be fetched. No offline copy was saved')
 
 
+def reddit_rss_comments(url):
+    """Reddit's public thread feed remains usable when anonymous JSON is blocked.
+
+    Atom provides comment bodies and permalinks, but no parent IDs or scores.
+    Preserve feed order rather than inventing a reply hierarchy.
+    """
+    post_id = reddit_id(url)
+    if not post_id:
+        raise ValueError('Not a Reddit comment thread')
+    endpoint = f'https://www.reddit.com/comments/{post_id}/.rss?limit=200&sort=top'
+    raw, mime, _ = fetch(endpoint, 12*1024*1024, 'application/atom+xml,application/xml')
+    feed = ET.fromstring(raw)
+    ns = {'a': 'http://www.w3.org/2005/Atom'}
+    entries = feed.findall('a:entry', ns)
+    if feed.tag != '{http://www.w3.org/2005/Atom}feed' or not any(
+        entry.findtext('a:id', '', ns) == 't3_'+post_id for entry in entries
+    ):
+        raise ValueError('Reddit did not return the requested thread feed')
+    seen = set()
+    comments = []
+    for entry in entries:
+        ident = entry.findtext('a:id', '', ns)
+        if not re.fullmatch(r't1_[a-z0-9]+', ident) or ident in seen:
+            continue
+        link = entry.find('a:link', ns)
+        permalink = link.get('href', '') if link is not None else ''
+        if reddit_id(permalink) != post_id:
+            continue
+        body = entry.findtext('a:content', '', ns)
+        if not body.strip():
+            continue
+        seen.add(ident)
+        author = entry.findtext('a:author/a:name', '[deleted]', ns).removeprefix('/').removeprefix('u/')
+        label = '<strong>u/'+html.escape(author)+'</strong> · <a href="'+html.escape(permalink, quote=True)+'">View comment</a>'
+        # The final article renderer sanitizes comment markup, like post text.
+        comments.append('<blockquote><p>'+label+'</p>'+body+'</blockquote>')
+        if len(comments) >= 200:
+            break
+    heading = f'<h2>Comments ({len(comments)} saved)</h2>'
+    explanation = '<p>Snapshot from Reddit’s comment feed. Comments and replies are shown in feed order; reply nesting and scores are not supplied by this feed.</p>'
+    if not comments:
+        comments.append('<p>No comments were returned by Reddit.</p>')
+    elif len(comments) >= 200:
+        comments.append('<p>Saved the first 200 comments returned by Reddit. Open the original post for the full discussion.</p>')
+    return heading+explanation+''.join(comments), []
+
+
 def reddit_comments(url):
     """Save a bounded snapshot of the comments Reddit returns, including replies."""
     endpoint = canonical(url).split('?')[0].rstrip('/')+'.json?raw_json=1&limit=100&sort=top'
@@ -121,6 +168,10 @@ def reddit_comments(url):
             raise ValueError('Reddit did not return a comment thread')
         children = data[1]['data']['children']
     except (OSError, ValueError, KeyError, TypeError):
+        try:
+            return reddit_rss_comments(url)
+        except (OSError, ValueError, ET.ParseError):
+            pass
         return '<h2>Comments</h2><p>Comments could not be downloaded from Reddit. Open the original post to read the discussion.</p>', ['Reddit comments unavailable']
     count = 0
     truncated = False

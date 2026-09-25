@@ -2,12 +2,14 @@
 """Newsboat inventory/view for the scheduled Twitch VOD downloads."""
 from email.utils import formatdate
 import importlib.util
+import fcntl
 import json
 import os
 from pathlib import Path
 import subprocess
 import sys
 import tempfile
+import newsboat_vod_progress as progress
 import xml.etree.ElementTree as ET
 import newsboat_media as media
 
@@ -30,6 +32,12 @@ def scan():
     old = {row['path']: row for row in entries()}
     busy = media.busy_paths()
     rows = {}
+    probe_index = STATE/'vod-probes.json'
+    try:
+        previous_probes = json.loads(probe_index.read_text())
+    except (OSError, ValueError):
+        previous_probes = {}
+    probes = {}
     # Only the daily downloader's top-level files; ,d downloads live in manual/.
     for path in DIRECTORY.glob('*'):
         if path.suffix.lower() not in media.MEDIA or not path.is_file() or not media.inside(path):
@@ -44,13 +52,17 @@ def scan():
         signature = [stat.st_size,stat.st_mtime_ns]
         row = old.get(str(path))
         if not row or row.get('signature') != signature:
-            if not media.playable(path):
+            cached = previous_probes.get(str(path), {})
+            valid = cached.get('valid') if cached.get('signature') == signature else media.playable(path)
+            probes[str(path)] = dict(signature=signature, valid=valid)
+            if not valid:
                 continue
             row = dict(url='https://www.twitch.tv/videos/'+key[1], title=parts[1].rsplit(' - ',1)[0],
                        source=parts[0], id=key[1], path=str(path), saved=stat.st_mtime, signature=signature)
         previous = rows.get(key[1])
         if not previous or row['saved'] > previous['saved']:
             rows[key[1]] = row
+    media.atomic_write(probe_index,json.dumps(probes))
     return sorted(rows.values(),key=lambda row:int(row['id']),reverse=True)
 
 
@@ -63,7 +75,7 @@ def rebuild():
     with media.library_lock():
         rows = scan()
         media.atomic_write(INDEX,json.dumps(rows,ensure_ascii=False))
-        media.atomic_write(STATE/'starred-urls.txt.vods.count',str(len(rows))+'\n')
+        progress.publish_count(progress.active_rows(),state=STATE)
         if media.URLS.exists():
             lines = [line for line in media.URLS.read_text().splitlines() if not line.startswith('"'+PREFIX)]
             position = next((i for i,line in enumerate(lines) if line.startswith(('"query: Favorites:', '"query:🌎 All:'))),len(lines))
@@ -97,8 +109,34 @@ def write_view(directory, rows):
     media.atomic_write(directory/'urls',query(rows)+'\n'+path.as_uri()+'\n')
 
 
+def refresh_background():
+    STATE.mkdir(parents=True, exist_ok=True)
+    with (STATE/'vod-refresh.lock').open('a') as lock:
+        try:
+            fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except BlockingIOError:
+            return
+        rebuild()
+
+
+def view_entries():
+    # Opening a list must never wait for ffprobe or a downloader's library lock.
+    busy = media.busy_paths()
+    rows = [row for row in entries() if Path(row['path']).resolve() not in busy
+            and not any(Path(row['path']+suffix).exists() for suffix in ('.part','.ytdl','.incomplete'))]
+    subprocess.Popen([sys.executable,str(Path(__file__).resolve()),'refresh'],
+                     stdin=subprocess.DEVNULL,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL,
+                     start_new_session=True)
+    active = progress.active_rows()
+    active_urls = {row['url'] for row in active}
+    # Publish a byte counter immediately; metadata/percentage are filled in off-thread.
+    progress.publish(active,{})
+    return sorted(active + [row for row in rows if row['url'] not in active_urls],
+                  key=lambda row: (not row.get('active',False), -int(row.get('id',0))))
+
+
 def prepare_view(directory):
-    rows=rebuild()
+    rows=view_entries()
     spec=importlib.util.spec_from_file_location('history',SCRIPTS/'newsboat-history.py')
     history=importlib.util.module_from_spec(spec);spec.loader.exec_module(history)
     command,config=history.prepare_view(directory)
@@ -137,6 +175,8 @@ def delete(url):
 
 
 def play(url):
+    if any(row['url']==url for row in progress.active_rows()):
+        raise ValueError('This VOD is still downloading; its progress is shown in the list')
     row=next((row for row in entries() if row['url']==url),None)
     if not row:
         raise ValueError('This VOD is no longer on disk; reopen VODs to refresh the list')
@@ -153,6 +193,9 @@ def show():
         env.pop('NEWSBOAT_UNDO_HELPER',None)
         # Keep the query inside this local view instead of nesting VODs again.
         env.pop('NEWSBOAT_NESTED_VIEWS',None)
+        subprocess.Popen([sys.executable,str(SCRIPTS/'newsboat_vod_progress.py')],
+                         stdin=subprocess.DEVNULL,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL,
+                         start_new_session=True)
         return subprocess.call(command,env=env)
 
 
@@ -161,6 +204,7 @@ if __name__=='__main__':
         action=sys.argv[1]
         if action=='show':sys.exit(show())
         elif action=='rebuild':rebuild()
+        elif action=='refresh':refresh_background()
         elif action=='delete':delete(sys.argv[2])
         elif action=='play':play(sys.argv[2])
     except (OSError,ValueError,subprocess.CalledProcessError) as error:
