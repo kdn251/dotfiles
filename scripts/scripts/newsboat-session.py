@@ -287,8 +287,9 @@ def run(args):
     toast_rows = 0
     previous_signals = {sig: signal.getsignal(sig) for sig in (signal.SIGWINCH, signal.SIGTERM, signal.SIGHUP)}
     with tempfile.TemporaryDirectory(prefix="newsboat-progress-") as directory:
+        os.environ['NEWSBOAT_UNDO_FILE'] = str(Path(directory)/'undo')
+        os.environ['NEWSBOAT_DOWNLOAD_UNDO_HELPER'] = str(Path(__file__).with_name('newsboat_media.py'))
         if live_queries:
-            os.environ['NEWSBOAT_UNDO_FILE'] = str(Path(directory)/'undo')
             os.environ['NEWSBOAT_UNDO_HELPER'] = str(Path(__file__).with_name('newsboat-starred.py'))
             os.environ['NEWSBOAT_COMMENTARY_HELPER'] = str(Path(__file__).with_name('newsboat-commentary.py'))
             os.environ['NEWSBOAT_FAVORITES_HELPER'] = str(Path(__file__).with_name('newsboat-favorites.py'))
@@ -663,6 +664,11 @@ def run(args):
                     os.waitpid(pid, 0)
                 except ProcessLookupError:
                     pass
+            try:
+                from newsboat_download_undo import cleanup
+                cleanup()
+            except (OSError, ValueError):
+                pass
             os.close(log_fd)
             renderer.close()
             for sig, handler in previous_signals.items():

@@ -178,3 +178,31 @@ then fully quit and reopen Brave. This registers a native messaging host and add
 Restarting only Newsboat does not reload the browser extension. Registration matches
 Reddit's old/www URL variants. Other redirected URLs currently need to match the
 registered article URL to be tracked.
+
+## Visual row selection and bulk undo
+
+In an article list or search results, `V` starts visual-line selection at the
+current row. `j`/`k` (and page navigation) extend or shrink the continuous range.
+Selected rows use the existing teal highlight; the list title stays unchanged. `Esc`, `V`, or `q` cancel selection; another `q` then leaves the list.
+Live progress updates do not reorder a range while it is being selected.
+
+Use the existing actions on the range: `s`/`S` star/unstar, `f`/`F`
+favorite/unfavorite, `c`/`C` add/remove Commentary, `n`/`N` toggle read status,
+and `,D` delete downloaded copies. Each unique URL is acted on once. The
+selection clears after the operation and the cursor moves to the next surviving
+row after the range, or the preceding row at the end. Other commands, such as
+opening an item or searching, clear selection and retain their normal behavior.
+
+`U` reverses a whole bulk change, including file deletion, in one operation.
+The undo journal keeps the last 100 actions (a batch counts as one), shared across
+views in the current session. To make bulk `,D` reversible, files and sidecars
+are moved into a recovery directory next to the video library instead of erased
+immediately. They are permanently removed when the Newsboat session exits;
+use `U` before quitting to restore them. Single-row `,D` outside visual mode
+retains its existing immediate-delete behavior. Undo refuses to overwrite a
+new file at the old location. An interrupted/rejected batch keeps completed
+changes undoable.
+
+Search checks titles, article contents, and author/source labels. Starred's
+channel names are stored as source labels, so `/` can now find those as well as
+read and unread article titles. Visual selection also works in search results.

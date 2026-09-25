@@ -1,0 +1,408 @@
+--- a/include/itemlistformaction.h
++++ b/include/itemlistformaction.h
+@@ -29,6 +29,8 @@
+ 		ConfigContainer* cfg,
+ 		RegexManager& r);
+ 	~ItemListFormAction() override = default;
++    bool has_visual_selection() const { return visual_active; }
++    std::optional<bool> run_visual_commands(const std::vector<MacroCmd>& commands, BindingType type);
+ 	void prepare() override;
+ 	void init() override;
+ 
+@@ -105,6 +107,10 @@
+ 	void apply_filter(const std::string& filter_query);
+ 
+ private:
++    bool visual_active = false;
++    unsigned int visual_anchor = 0;
++    std::pair<unsigned int, unsigned int> visual_range();
++    void cancel_visual();
+ 	void register_format_styles();
+ 
+ 	void do_update_visible_items();
+--- a/include/keymap.h
++++ b/include/keymap.h
+@@ -76,6 +76,8 @@
+ 	OP_TOGGLEITEMREAD,
+ 	OP_UNDO_ACTION,
+ 	OP_UNDO_CHECKPOINT,
++	OP_VISUAL_ROWS,
++	OP_VISUAL_CANCEL,
+ 	OP_TOGGLESHOWREAD,
+ 	OP_SHOWURLS,
+ 	OP_CLEARTAG,
+--- a/include/view.h
++++ b/include/view.h
+@@ -38,6 +38,10 @@
+     void remember_action(std::shared_ptr<RssItem> item, std::shared_ptr<RssFeed> feed,
+         std::optional<bool> target_star = std::nullopt, int commentary_action = 0);
+     void undo_action();
++    bool undo_single_action();
++    std::string undo_group;
++    void begin_undo_group();
++    void end_undo_group() { undo_group.clear(); }
+     void sync_undoable_read(std::shared_ptr<RssItem> item, bool read);
+     struct UndoState {
+         std::string token, guid, url;
+--- a/src/itemlistformaction.cpp
++++ b/src/itemlistformaction.cpp
+@@ -155,6 +155,108 @@
+ 	register_format_styles();
+ }
+ 
++std::pair<unsigned int, unsigned int> ItemListFormAction::visual_range()
++{
++    const unsigned int cursor = list.get_position();
++    return {std::min(visual_anchor, cursor), std::max(visual_anchor, cursor)};
++}
++
++void ItemListFormAction::cancel_visual()
++{
++    visual_active = false;
++    store_selection();
++    invalidate_list();
++}
++
++std::optional<bool> ItemListFormAction::run_visual_commands(
++    const std::vector<MacroCmd>& commands, BindingType type)
++{
++    if (!visual_active || commands.empty()) { return std::nullopt; }
++    bool deleting_downloads = false;
++    bool bulk = false, read_action = false, opens_browser = false;
++    for (const auto& cmd : commands) {
++        if (cmd.op == OP_UNDO_CHECKPOINT) { bulk = true; }
++        if (cmd.op == OP_TOGGLEITEMREAD) { read_action = true; }
++        if (cmd.op == OP_OPENINBROWSER || cmd.op == OP_OPENINBROWSER_NONINTERACTIVE) { opens_browser = true; }
++        if (cmd.op == OP_SET && cmd.args.size() == 2 && cmd.args[0] == "browser") {
++            const auto& browser = cmd.args[1];
++            if (browser.find("delete-downloaded.sh ") != std::string::npos) { bulk = true; deleting_downloads = true; }
++        }
++    }
++    bulk = bulk || (read_action && !opens_browser);
++    if (!bulk) {
++        const auto op = commands.front().op;
++        if (op == OP_VISUAL_ROWS || op == OP_VISUAL_CANCEL || op == OP_QUIT || op == OP_HARDQUIT || op == OP_MACROPREFIX ||
++            (op > OP_SK_MIN && op < OP_SK_MAX)) { return std::nullopt; }
++        // Opening/searching/refreshing still acts normally on the cursor item,
++        // never on every selected item. Do not retain a hidden selection.
++        cancel_visual();
++        return std::nullopt;
++    }
++    const auto range = visual_range();
++    std::vector<std::string> selected, neighbours;
++    std::set<std::string> urls;
++    for (unsigned int i = range.first; i <= range.second && i < visible_items.size(); ++i) {
++        if (urls.insert(visible_items[i].first->link()).second) {
++            selected.push_back(visible_items[i].first->guid());
++        }
++    }
++    for (size_t i = range.second + 1; i < visible_items.size(); ++i) {
++        neighbours.push_back(visible_items[i].first->guid());
++    }
++    for (size_t i = range.first; i > 0; --i) {
++        neighbours.push_back(visible_items[i - 1].first->guid());
++    }
++    const auto browser = cfg->get_configvalue("browser");
++    cancel_visual();
++    const auto select = [&](const std::string& guid) {
++        restore_selection_guid.reset();
++        for (size_t i = 0; i < visible_items.size(); ++i) {
++            if (visible_items[i].first->guid() == guid) {
++                list.set_position(i);
++                return true;
++            }
++        }
++        return false;
++    };
++    v.begin_undo_group();
++    size_t completed = 0;
++    bool success = true;
++    for (const auto& guid : selected) {
++        prepare();
++        if (!select(guid)) { continue; }
++        if (deleting_downloads) {
++            v.remember_action(visible_items[list.get_position()].first, feed, std::nullopt, 3);
++            setenv("NEWSBOAT_DOWNLOAD_UNDO_TOKEN", v.undo_history.back().token.c_str(), 1);
++        }
++        for (const auto& cmd : commands) {
++            // Single-item bindings advance the cursor; a bulk action must not.
++            if ((cmd.op > OP_SK_MIN && cmd.op < OP_SK_MAX) || cmd.op == OP_NEXTUNREAD) { continue; }
++            prepare();
++            const bool present = select(guid);
++            if (!present && cmd.op != OP_SET && cmd.op != OP_RELOADURLS && cmd.op != OP_PURGE_DELETED) { continue; }
++            if (!process_op(cmd.op, cmd.args, type)) { success = false; break; }
++        }
++        if (!success) { break; }
++        ++completed;
++    }
++    unsetenv("NEWSBOAT_DOWNLOAD_UNDO_TOKEN");
++    v.end_undo_group();
++    cfg->set_configvalue("browser", browser);
++    prepare();
++    bool positioned = false;
++    for (const auto& guid : neighbours) {
++        if (select(guid)) { positioned = true; break; }
++    }
++    if (!positioned && !selected.empty()) { select(selected.front()); }
++    store_selection();
++    invalidate_list();
++    if (success) {
++        v.get_statusline().show_message(strprintf::fmt("Applied action to %u selected rows", static_cast<unsigned int>(completed)));
++    }
++    return success;
++}
++
+ bool ItemListFormAction::process_operation(Operation op,
+ 	const std::vector<std::string>& args,
+ 	BindingType bindingType)
+@@ -170,7 +272,24 @@
+ 
+ 	const unsigned int itempos = list.get_position();
+ 
++    if (visual_active && (op == OP_QUIT || op == OP_HARDQUIT)) { cancel_visual(); return true; }
++    if (visual_active && op > OP_SK_MIN && op < OP_SK_MAX) {
++        const auto result = ListFormAction::process_operation(op, args, bindingType);
++        invalidate_list();
++        return result;
++    }
+ 	switch (op) {
++    case OP_VISUAL_ROWS:
++        if (visual_active) { cancel_visual(); }
++        else if (!visible_items.empty()) {
++            visual_active = true;
++            visual_anchor = list.get_position();
++            invalidate_list();
++        }
++        break;
++    case OP_VISUAL_CANCEL:
++        if (visual_active) { cancel_visual(); }
++        break;
+ 	case OP_OPEN: {
+ 		LOG(Level::INFO, "ItemListFormAction: opening item at pos `%u'", itempos);
+ 		if (!visible_items.empty()) {
+@@ -1159,6 +1278,7 @@
+ 
+ void ItemListFormAction::do_update_visible_items()
+ {
++    if (visual_active) { return; } // Keep the selected range stable during live updates.
+ 	if (invalidation_mode != InvalidationMode::COMPLETE) {
+ 		return;
+ 	}
+@@ -1267,7 +1387,13 @@
+             feed->rssurl().find("query:📥 Downloads:") == 0;
+         const std::string watched = (feed->title() == "⭐ Starred" || feed->rssurl().find("query:📥 Downloads:") == 0 || feed->rssurl().find("query:🎬 VODs:") == 0) ? "%4w " : "";
+         const auto format = numbered ? strprintf::fmt("%4u ", line + 1) + watched + itemlist_format : itemlist_format;
+-        return item2formatted_line(item, width, format, datetime_format);
++        auto rendered = item2formatted_line(item, width, format, datetime_format);
++        const auto range = visual_range();
++        if (visual_active && line >= range.first && line <= range.second) {
++            const auto padded = utils::substr_with_width(rendered.plaintext() + std::string(width, ' '), width);
++            return StflRichText::from_plaintext_with_style(padded, "<nbvisual>");
++        }
++        return rendered;
+ 	};
+ 	list.invalidate_list_content(visible_items.size(), render_line);
+ 
+@@ -1779,7 +1905,10 @@
+ 			}
+ 		}
+ 	});
+-	const std::string attrstr = rxman.get_attrs_stfl_string(Dialog::ArticleList, true, focus_background, focus_foreground);
++    const std::string visual_style = (focus_foreground.empty() ? "fg=black" : focus_foreground) + "," +
++        (focus_background.empty() ? "bg=cyan" : focus_background) + ",attr=bold";
++	const std::string attrstr = rxman.get_attrs_stfl_string(Dialog::ArticleList, true, focus_background, focus_foreground) +
++        " @style_nbvisual_normal:" + visual_style + " @style_nbvisual_focus:" + visual_style + " ";
+ 	const std::string textview = strprintf::fmt(
+ 			"{!list[items] .expand:vh style_normal[listnormal]: "
+ 			"style_focus[listfocus]: "
+@@ -1829,6 +1958,7 @@
+ 		"ItemListFormAction::set_feed: fd pointer = %p title = `%s'",
+ 		fd.get(),
+ 		fd->title());
++	visual_active = false;
+ 	feed = fd;
+ 	feed->load();
+     download_revision();
+--- a/src/keymap.cpp
++++ b/src/keymap.cpp
+@@ -228,6 +228,10 @@
+ 	},
+     { OP_UNDO_ACTION, "undo-action", {},
+       translatable("Undo last read or star change"), KM_NEWSBOAT },
++    { OP_VISUAL_ROWS, "visual-rows", {},
++      translatable("Select a range of article rows"), KM_ARTICLELIST | KM_SEARCHRESULTSLIST },
++    { OP_VISUAL_CANCEL, "visual-cancel", {},
++      translatable("Cancel row selection"), KM_ARTICLELIST | KM_SEARCHRESULTSLIST },
+     { OP_UNDO_CHECKPOINT, "undo-checkpoint", {},
+       translatable("Remember item state for undo"), KM_ARTICLELIST | KM_SEARCHRESULTSLIST | KM_ARTICLE },
+ 	{
+--- a/src/listformatter.cpp
++++ b/src/listformatter.cpp
+@@ -40,7 +40,8 @@
+ {
+ 	std::string format_cache = "{list";
+ 	for (auto str : lines) {
+-		if (rxman && location.has_value()) {
++        const bool visual = str.stfl_quoted().find("<nbvisual>") != std::string::npos;
++		if (rxman && location.has_value() && !visual) {
+ 			rxman->quote_and_highlight(str, location.value());
+ 		}
+ 		format_cache.append(strprintf::fmt(
+--- a/src/view.cpp
++++ b/src/view.cpp
+@@ -131,6 +131,13 @@
+ 
+ bool View::run_commands(const std::vector<MacroCmd>& commands, BindingType binding_type)
+ {
++    if (formaction_stack_size()) {
++        auto items = std::dynamic_pointer_cast<ItemListFormAction>(get_current_formaction());
++        if (items) {
++            const auto result = items->run_visual_commands(commands, binding_type);
++            if (result.has_value()) { return *result; }
++        }
++    }
+ 	for (auto command : commands) {
+ 		if (formaction_stack_size() == 0) {
+ 			return true;
+@@ -237,6 +244,15 @@
+ 		LOG(Level::DEBUG, "View::run: event = %s", event);
+ 
+ 		const auto key_combination = KeyCombination::from_bindkey(event);
++        if (key_combination == KeyCombination("ESC")) {
++            const auto items = std::dynamic_pointer_cast<ItemListFormAction>(fa);
++            if (items && items->has_visual_selection()) {
++                items->process_op(OP_VISUAL_CANCEL, {});
++                key_sequence.clear();
++                have_macroprefix = false;
++                continue;
++            }
++        }
+ 		if (have_macroprefix) {
+ 			have_macroprefix = false;
+ 			status_line.show_message("");
+@@ -1063,6 +1079,20 @@
+ 
+ 
+ namespace {
++std::string undo_group_id(const std::string& token)
++{
++    return token.substr(0, token.find('|'));
++}
++void trim_undo_history(std::vector<View::UndoState>& states)
++{
++    unsigned int groups = 0;
++    std::string previous;
++    for (size_t i = states.size(); i > 0; --i) {
++        const auto group = undo_group_id(states[i - 1].token);
++        if (group != previous) { ++groups; previous = group; }
++        if (groups > 100) { states.erase(states.begin(), states.begin() + i); break; }
++    }
++}
+ std::vector<View::UndoState> read_undo_history(const char* path)
+ {
+     std::vector<View::UndoState> states;
+@@ -1098,6 +1128,7 @@
+     UndoState state;
+     state.token = std::to_string(getpid()) + ":" + std::to_string(
+         std::chrono::steady_clock::now().time_since_epoch().count());
++    if (!undo_group.empty()) { state.token = undo_group + "|" + state.token; }
+     state.guid = item->guid(); state.url = item->link();
+     state.unread = item->unread(); state.deleted = item->deleted();
+     state.item = item; state.feed = feed;
+@@ -1135,11 +1166,11 @@
+         }
+     }
+     undo_history.push_back(state);
+-    if (undo_history.size() > 100) { undo_history.erase(undo_history.begin()); }
++    trim_undo_history(undo_history);
+     if (const char* path = std::getenv("NEWSBOAT_UNDO_FILE")) {
+         auto states = read_undo_history(path);
+         states.push_back(state);
+-        if (states.size() > 100) { states.erase(states.begin()); }
++        trim_undo_history(states);
+         write_undo_history(path, states);
+     }
+ }
+@@ -1158,26 +1189,62 @@
+     }
+ }
+ 
++void View::begin_undo_group()
++{
++    undo_group = std::to_string(getpid()) + ":" + std::to_string(
++        std::chrono::steady_clock::now().time_since_epoch().count());
++}
++
+ void View::undo_action()
+ {
+     const char* journal = std::getenv("NEWSBOAT_UNDO_FILE");
+     auto states = journal ? read_undo_history(journal) : undo_history;
+     if (states.empty()) { status_line.show_message("Nothing to undo"); return; }
++    const auto group = undo_group_id(states.back().token);
++    const bool bulk = states.back().token.find('|') != std::string::npos;
++    size_t count = 0;
++    do {
++        if (!undo_single_action()) { return; }
++        ++count;
++        states = journal ? read_undo_history(journal) : undo_history;
++    } while (bulk && !states.empty() && undo_group_id(states.back().token) == group);
++    if (bulk) { status_line.show_message(strprintf::fmt("Undid bulk action (%u rows)", static_cast<unsigned int>(count))); }
++}
++
++bool View::undo_single_action()
++{
++    const char* journal = std::getenv("NEWSBOAT_UNDO_FILE");
++    auto states = journal ? read_undo_history(journal) : undo_history;
++    if (states.empty()) { status_line.show_message("Nothing to undo"); return false; }
+     auto state = states.back();
+     // Local snapshots retain pointers needed to restore purged rows. The
+     // shared journal determines ordering across separate saved-list views.
+     const auto local = std::find_if(undo_history.begin(), undo_history.end(),
+         [&](const auto& item) { return item.token == state.token; });
+     if (local != undo_history.end()) { state = *local; }
+-    if (state.has_commentary) {
++    if (state.has_commentary == 3) {
++        const char* helper = std::getenv("NEWSBOAT_DOWNLOAD_UNDO_HELPER");
++        if (!helper) { status_line.show_error("Restart Newsboat to undo download deletion"); return false; }
++        const auto browser = cfg->get_configvalue("browser");
++        cfg->set_configvalue("browser", "python3 " + utils::quote(helper) + " restore-delete %u " + utils::quote(state.token));
++        const auto result = open_in_browser(state.url, "", "", "", false);
++        cfg->set_configvalue("browser", browser);
++        if (!result || *result != 0) { status_line.show_error("Could not restore deleted download"); return false; }
++        ctrl.reload_urls_file();
++        for (const auto& form : formaction_stack) {
++            if (const auto list = std::dynamic_pointer_cast<ItemListFormAction>(form)) {
++                list->process_op(OP_RELOADURLS, {});
++            }
++        }
++    } else if (state.has_commentary) {
+         const char* helper = std::getenv(state.has_commentary == 2 ? "NEWSBOAT_FAVORITES_HELPER" : "NEWSBOAT_COMMENTARY_HELPER");
+-        if (!helper) { status_line.show_error("Restart Newsboat to undo collection changes"); return; }
++        if (!helper) { status_line.show_error("Restart Newsboat to undo collection changes"); return false; }
+         const auto browser = cfg->get_configvalue("browser");
+         cfg->set_configvalue("browser", "python3 " + utils::quote(helper) + " restore %u " +
+             (state.commentary ? "saved" : "removed"));
+         const auto result = open_in_browser(state.url, "", "", "", false);
+         cfg->set_configvalue("browser", browser);
+-        if (!result || *result != 0) { status_line.show_error("Could not undo collection change"); return; }
++        if (!result || *result != 0) { status_line.show_error("Could not undo collection change"); return false; }
+     } else {
+     // Enqueue compensation after pending star changes, never wait for HTTP here.
+     if (const char* helper = std::getenv("NEWSBOAT_UNDO_HELPER")) {
+@@ -1187,7 +1254,7 @@
+             (state.unread ? " unread" : " read"));
+         const auto result = open_in_browser(state.url, "", "", "", false);
+         cfg->set_configvalue("browser", browser);
+-        if (!result || *result != 0) { status_line.show_error("Could not queue undo"); return; }
++        if (!result || *result != 0) { status_line.show_error("Could not queue undo"); return false; }
+     }
+     }
+     const auto restore_item = [&](std::shared_ptr<RssItem> item) {
+@@ -1221,6 +1288,7 @@
+     undo_history.erase(std::remove_if(undo_history.begin(), undo_history.end(),
+         [&](const auto& item) { return item.token == state.token; }), undo_history.end());
+     status_line.show_message(state.has_commentary == 2 ? "Undid last Favorites change" : state.has_commentary ? "Undid last Commentary change" : "Undid last read/star change");
++    return true;
+ }
+ 
+ void View::force_redraw()

@@ -285,12 +285,20 @@ def delete(url):
                     raise ValueError('Cancel this video download before deleting it')
         # No shell glob or substring match: every candidate has a parsed ID.
         paths = [p for k, p in (articles() if key[0] == 'article' else candidates()) if k == key]
-        for path in paths:
-            path.unlink()
-            for suffix in ('.meta', '.info.json'):
-                sidecar = path.with_suffix(suffix)
-                if sidecar.is_file() and inside(sidecar):
-                    sidecar.unlink()
+        undo_token = os.environ.get('NEWSBOAT_DOWNLOAD_UNDO_TOKEN')
+        if undo_token:
+            from newsboat_download_undo import preserve
+            archive = ROOT/'.downloaded-twitch-vods'
+            archive_lines = [line for line in archive.read_text().splitlines()
+                             if line.rsplit(':',1)[-1] == key[1]] if key[0] == 'twitch' and archive.exists() else []
+            preserve(url, paths, [(p,j) for p,j in records() if library_identity(j['url']) == key], archive_lines, undo_token)
+        else:
+            for path in paths:
+                path.unlink()
+                for suffix in ('.meta', '.info.json'):
+                    sidecar = path.with_suffix(suffix)
+                    if sidecar.is_file() and inside(sidecar):
+                        sidecar.unlink()
         for state_path, job in records():
             if library_identity(job['url']) == key:
                 job.update(status='deleted', files=[])
@@ -341,10 +349,15 @@ def main():
     if command == 'rebuild':
         rebuild()
         return 0
+    if command == 'restore-delete':
+        from newsboat_download_undo import restore
+        restore(sys.argv[2], sys.argv[3])
+        return 0
     if command == 'delete':
         count = delete(sys.argv[2])
-        subprocess.run(['notify-send', '-a', 'Newsboat', '-t', '3000',
-                        'Download deleted' if count else 'No downloaded copy found'])
+        if not os.environ.get('NEWSBOAT_DOWNLOAD_UNDO_TOKEN'):
+            subprocess.run(['notify-send', '-a', 'Newsboat', '-t', '3000',
+                            'Download deleted' if count else 'No downloaded copy found'])
         return 0
     return 2
 

@@ -1,0 +1,38 @@
+--- a/src/cache.cpp
++++ b/src/cache.cpp
+@@ -694,10 +694,11 @@
+ 				"enclosure_description, enclosure_description_mime_type, "
+ 				"enqueued, flags, base "
+ 				"FROM rss_item "
+-				"WHERE (title LIKE '%%%q%%' OR content LIKE '%%%q%%') "
++				"WHERE (title LIKE '%%%q%%' OR content LIKE '%%%q%%' OR author LIKE '%%%q%%') "
+ 				"AND feedurl = '%q' "
+ 				"AND deleted = 0 "
+ 				"ORDER BY pubDate DESC, id DESC;",
++				querystr,
+ 				querystr,
+ 				querystr,
+ 				feedurl);
+@@ -709,9 +710,10 @@
+ 				"enclosure_description, enclosure_description_mime_type, "
+ 				"enqueued, flags, base "
+ 				"FROM rss_item "
+-				"WHERE (title LIKE '%%%q%%' OR content LIKE '%%%q%%') "
++				"WHERE (title LIKE '%%%q%%' OR content LIKE '%%%q%%' OR author LIKE '%%%q%%') "
+ 				"AND deleted = 0 "
+ 				"ORDER BY pubDate DESC,  id DESC;",
++				querystr,
+ 				querystr,
+ 				querystr);
+ 	}
+@@ -756,8 +758,9 @@
+ 	std::string query = prepare_query(
+ 			"SELECT guid "
+ 			"FROM rss_item "
+-			"WHERE (title LIKE '%%%q%%' OR content LIKE '%%%q%%') "
++			"WHERE (title LIKE '%%%q%%' OR content LIKE '%%%q%%' OR author LIKE '%%%q%%') "
+ 			"AND guid IN %s;",
++			querystr,
+ 			querystr,
+ 			querystr,
+ 			list);

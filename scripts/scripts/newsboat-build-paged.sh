@@ -55,6 +55,8 @@ patch -p1 < "$repo/newsboat/patches/vod-download-progress.patch"
 patch -p1 < "$repo/newsboat/patches/copy-url-shortcut.patch"
 patch -p1 < "$repo/newsboat/patches/starred-reading-progress.patch"
 patch -p1 < "$repo/newsboat/patches/starred-progress-order.patch"
+patch -p1 < "$repo/newsboat/patches/visual-rows.patch"
+patch -p1 < "$repo/newsboat/patches/search-source-names.patch"
 make -j"${NEWSBOAT_BUILD_JOBS:-4}" WARNFLAGS="-Werror -Wall -Wextra -Wunreachable-code -Wno-error=unused-function" newsboat
 install -m 755 newsboat "$install_dir/newsboat.new"
 mv "$install_dir/newsboat.new" "$install_dir/newsboat"

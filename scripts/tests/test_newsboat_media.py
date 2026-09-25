@@ -77,6 +77,36 @@ class MediaTests(unittest.TestCase):
         self.assertNotIn('abc123DEF45',media.URLS.read_text())
         self.assertIn('abc123DEF46',media.URLS.read_text())
 
+    def test_bulk_delete_can_restore_files_metadata_and_archive(self):
+        import newsboat_download_undo as undo
+        url='https://www.twitch.tv/videos/1234567890'
+        video=self.video('Streamer [1234567890].mp4',media.ROOT/'twitch-vods')
+        sidecar=video.with_suffix('.meta');sidecar.write_text('Streamer')
+        archive=media.ROOT/'.downloaded-twitch-vods';archive.write_text('twitch:1234567890\ntwitch:9999999999\n')
+        job=media.STATE/'job.json';job.write_text(json.dumps(dict(url=url,status='done',files=[str(video)])))
+        with patch.dict(os.environ,NEWSBOAT_UNDO_FILE=str(self.root/'undo'),NEWSBOAT_DOWNLOAD_UNDO_TOKEN='group|one'):
+            media.delete(url)
+            self.assertFalse(video.exists());self.assertFalse(sidecar.exists())
+            self.assertNotIn('1234567890',archive.read_text())
+            undo.restore(url,'group|one')
+            self.assertTrue(video.exists());self.assertEqual(sidecar.read_text(),'Streamer')
+            self.assertEqual(json.loads(job.read_text())['status'],'done')
+            self.assertIn('twitch:1234567890',archive.read_text())
+            self.assertIn('twitch:9999999999',archive.read_text())
+            media.delete(url)
+            folder=undo.session_directory();self.assertTrue(folder.exists())
+            undo.cleanup();self.assertFalse(folder.exists())
+
+    def test_bulk_restore_refuses_to_overwrite_new_download(self):
+        import newsboat_download_undo as undo
+        video=self.video('Selected [abc123DEF45].mp4')
+        with patch.dict(os.environ,NEWSBOAT_UNDO_FILE=str(self.root/'undo'),NEWSBOAT_DOWNLOAD_UNDO_TOKEN='group|one'):
+            media.delete(URL)
+            video.write_text('new download')
+            with self.assertRaises(ValueError):undo.restore(URL,'group|one')
+            self.assertEqual(video.read_text(),'new download')
+            self.assertTrue((undo.directory('group|one')/'0').exists())
+
     def test_download_order_uses_completion_time_and_persists_legacy_timestamp(self):
         selected = self.video('Selected [abc123DEF45].mp4')
         # yt-dlp can preserve the upload mtime; that is not download time.

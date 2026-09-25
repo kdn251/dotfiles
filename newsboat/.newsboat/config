@@ -170,3 +170,7 @@ bind 7 feedlist set browser "newsboat-random://starred" -- "🍀 Random Starred 
 
 # Copy the selected item without opening it or changing read status.
 bind ^C articlelist,article,searchresultslist set browser "python3 ~/scripts/newsboat-copy-url.py %u" ; open-in-browser-noninteractively ; set browser "~/scripts/newsboat-brave-app.sh %u" -- "Copy item URL to clipboard"
+
+# Vim-style full-row selection; existing actions apply to the whole range.
+bind V articlelist,searchresultslist visual-rows -- "Select rows with j/k; apply action to the range"
+bind ESC articlelist,searchresultslist visual-cancel -- "Cancel row selection"
