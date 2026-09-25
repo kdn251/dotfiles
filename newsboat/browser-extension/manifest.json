@@ -1,0 +1,25 @@
+{
+  "manifest_version": 3,
+  "name": "Newsboat Reading Position",
+  "version": "1.0.1",
+  "description": "Remember reading progress for articles opened from Newsboat Starred. Stored locally.",
+  "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA1ptx0ZtZsdm6GUuuLLIQo5bGjfbCbwjlvZljcRbucAhDoFvVbwoLPSYMYrw/cPHRXjQ361Ox4vaHxuAe3aZok4N4+AthiGfokP3o0TDFmQBmZHCAfdS8RYx0WqOGoY1UKoRObXNdFgS9nNaZkCkADkfizygaEQ40hL7gcZ6mdd0PXrPtjv9wnZ9LPfBcL+ZUjx1Rx9yPfQD9LZVjc3fkC2p/pF1R7MJmuAFxe6l4LwG865ItRPiBOcv2+JmO1oraaq3ERoA+hRhvQ3WhuTBuGSIinL7bkWy1TjYKDd6ENp6qpwg8rTv0kTNlDvoQn0VkHEzuBjCXZabp+mqxnFJPKQIDAQAB",
+  "permissions": [
+    "nativeMessaging"
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "http://*/*",
+        "https://*/*"
+      ],
+      "js": [
+        "reading.js"
+      ],
+      "run_at": "document_idle"
+    }
+  ]
+}

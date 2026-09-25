@@ -31,6 +31,10 @@ def load_starred():
 
 
 def main():
+    if sys.argv[1:2] == ['resume']:
+        from newsboat_watch_progress import resume_position
+        print(resume_position(sys.argv[2],float(sys.argv[3]) if len(sys.argv)>3 else 0))
+        return 0
     if sys.argv[1:2] == ['progress']:
         from newsboat_watch_progress import record
         return 0 if record(sys.argv[2], float(sys.argv[3]), float(sys.argv[4])) else 1

@@ -47,7 +47,7 @@ def lookup(ident):
     return row
 
 
-def record(ident, data):
+def record(ident, data, save_position=True):
     fraction = data.get('fraction')
     y, anchor, offset = data.get('y'), data.get('anchor'), data.get('offset')
     if not all(isinstance(v,(int,float)) and math.isfinite(v) for v in (fraction,y,offset)) or not isinstance(anchor,int):
@@ -58,8 +58,12 @@ def record(ident, data):
     with LOCK, closing(database()) as db, db:
         if not db.execute('SELECT 1 FROM articles WHERE id=?',(ident,)).fetchone():
             raise ValueError('Unknown article')
-        db.execute('UPDATE articles SET fraction=MAX(fraction,?), position=?, updated=? WHERE id=?',
-                   (fraction,position,time.time(),ident))
+        if save_position:
+            db.execute('UPDATE articles SET fraction=MAX(fraction,?), position=?, updated=? WHERE id=?',
+                       (fraction,position,time.time(),ident))
+        else:
+            db.execute('UPDATE articles SET fraction=MAX(fraction,?), updated=? WHERE id=?',
+                       (fraction,time.time(),ident))
         db.commit()
         rows=db.execute('SELECT url,fraction FROM articles').fetchall()
         atomic_write(STATE/'download-status.tsv.read', ''.join(f'{url}\t{min(100,int(value*100))}%\n' for url,value in rows))

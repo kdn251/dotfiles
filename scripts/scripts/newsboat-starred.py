@@ -240,7 +240,7 @@ def show():
         with config.open('a') as out:out.write('run-on-startup open\n')
         markers = Path(directory)/'managed-removals'
         markers.mkdir()
-        process = subprocess.Popen(command, env=dict(os.environ, NEWSBOAT_STARRED_REMOVALS=str(markers)))
+        process = subprocess.Popen(command, env=dict(os.environ, NEWSBOAT_STARRED_REMOVALS=str(markers), NEWSBOAT_STARRED_VIEW='1'))
         finished = threading.Event()
         def wait_for_exit():
             process.wait()

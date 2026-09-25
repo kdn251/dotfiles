@@ -1,0 +1,23 @@
+--- a/src/view.cpp
++++ b/src/view.cpp
+@@ -196,6 +196,20 @@
+ 
+ 		if (ctrl_c_hit) {
+ 			ctrl_c_hit = false;
++            if (is_inside_qna) {
++                fa->cancel_qna();
++                continue;
++            }
++            auto binding_state = MultiKeyBindingState::NotFound;
++            BindingType type = BindingType::Bind;
++            auto commands = keys->get_operation(KeyCombination::from_bind("^C"),
++                fa->id(), binding_state, type);
++            if (binding_state != MultiKeyBindingState::NotFound && !commands.empty()) {
++                key_sequence.clear();
++                have_macroprefix = false;
++                run_commands(commands, type);
++                continue;
++            }
+ 			fa->cancel_qna();
+ 			if (!get_cfg()->get_configvalue_as_bool(
+ 					"confirm-exit") ||

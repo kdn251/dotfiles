@@ -135,3 +135,46 @@ Enter or Escape also keeps it starred. The main-screen footer displays
 so the change also reaches Capy. Only one random pick is active at a time.
 Article window tracking uses Hyprland; failed or unconfirmed opens never unstar
 an item. Restart Newsboat after installing this shortcut.
+
+## Copy an item URL
+
+Press **Ctrl+C** on a selected item in an article list or search results, or
+while reading an article inside Newsboat, to copy its original web URL to the
+Wayland clipboard. This also works for downloaded videos/articles and saved
+lists; it copies the original link, not a local file path. Copying does not
+open the item, move the selection, or mark it read. In a search/command input,
+Ctrl+C cancels that input. This binding applies inside Newsboat.
+
+In mpv opened through Newsboat, **Ctrl+C** copies the original video/stream URL
+and shows “Video URL copied” without closing or pausing playback. The URL stays
+the same after switching to a downloaded file. Reopen an existing player to
+load this shortcut.
+
+## Starred reading and watching progress
+
+Starred shows a watched/read percentage beside each row number, using the same
+progress records as Downloads. Rows sort by progress descending (including
+100% completed items), then by publication date newest first. Untouched items
+appear below items with progress. Live updates keep the same item selected.
+Video resume positions are stored by video ID
+so reopening a stream or its downloaded file returns to the same place.
+Older saved percentages can also supply a resume position once duration is known.
+Completed videos restart when reopened.
+
+Opening an article with `o`/`O` from Starred registers its original URL for
+browser-side reading progress. It opens the original website without downloading
+anything, unless you already explicitly downloaded a copy (then the resumable
+local reader still opens). The local Brave extension saves the furthest reading
+percentage and latest scroll position, and restores the paragraph on reopening.
+Scrolling with Vimium `j`/`k` is tracked even when Vimium consumes the key event.
+Website and offline-reader anchors are kept separately because their layouts differ.
+Only URLs registered by Newsboat are tracked; data stays on this computer.
+Dynamic layouts can make positioning approximate. Reading percentage measures
+scroll progress through the article, not whether its text was actually read.
+
+Install on another machine with `python3 ~/scripts/newsboat-install-browser-reading.py`,
+then fully quit and reopen Brave. This registers a native messaging host and adds
+`newsboat/browser-extension` to `brave-flags.conf`. No browser profile reset is needed.
+Restarting only Newsboat does not reload the browser extension. Registration matches
+Reddit's old/www URL variants. Other redirected URLs currently need to match the
+registered article URL to be tracked.

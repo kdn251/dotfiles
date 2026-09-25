@@ -25,14 +25,20 @@ def launcher_for(url):
     return 'newsboat-play-video.sh' if playable else 'newsboat-brave-app.sh'
 
 
-if __name__ == '__main__':
-    url = sys.argv[1]
+def open_url(url):
     launcher = Path(__file__).resolve().with_name(launcher_for(url))
     if launcher.name == 'newsboat-brave-app.sh':
         from newsboat_articles import find
         local = find(url)
+        if not local and os.environ.get('NEWSBOAT_STARRED_VIEW') == '1':
+            from newsboat_browser_reading import register
+            register(url)
         if local:
             os.environ['NEWSBOAT_HISTORY_URL'] = url
             from newsboat_reading import reader_url
             url = reader_url(url)
     os.execv(str(launcher), [str(launcher), url])
+
+
+if __name__ == '__main__':
+    open_url(sys.argv[1])

@@ -1,0 +1,31 @@
+--- a/src/itemlistformaction.cpp
++++ b/src/itemlistformaction.cpp
+@@ -1190,6 +1190,19 @@
+ 		i++;
+ 	}
+ 
++    if (feed->title() == "⭐ Starred") {
++        std::stable_sort(new_visible_items.begin(), new_visible_items.end(),
++            [](const ItemPtrPosPair& a, const ItemPtrPosPair& b) {
++                const auto percent = [](const std::string& url) {
++                    const auto it = watched_progress.find(url);
++                    return it == watched_progress.end() ? 0 : std::atoi(it->second.c_str());
++                };
++                const auto ap = percent(a.first->link()), bp = percent(b.first->link());
++                if (ap != bp) { return ap > bp; }
++                return a.first->pubDate_timestamp() > b.first->pubDate_timestamp();
++            });
++    }
++
+     if (feed->rssurl().find("query:📥 Downloads:") == 0) {
+         std::stable_sort(new_visible_items.begin(), new_visible_items.end(),
+             [](const ItemPtrPosPair& a, const ItemPtrPosPair& b) {
+@@ -1272,7 +1285,7 @@
+     if (status_version != download_status_version) {
+         download_status_version = status_version;
+         // Badges must not refilter read items or move the current page.
+-        if (feed->rssurl().find("query:📥 Downloads:") == 0) {
++        if (feed->title() == "⭐ Starred" || feed->rssurl().find("query:📥 Downloads:") == 0) {
+             if (!restore_selection_guid) { store_selection(); }
+             invalidate_list();
+         } else {
