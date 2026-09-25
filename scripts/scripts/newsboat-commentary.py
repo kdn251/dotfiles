@@ -89,7 +89,7 @@ def rebuild():
         lines = [line for line in URLS.read_text().splitlines() if not line.startswith(('"query:📣 Commentary:', '"query:💬 Commentary:'))]
         expression = ' or '.join('link = '+json.dumps(row[0]) for row in rows) or 'link = "newsboat-commentary://empty"'
         query = json.dumps('query:📣 Commentary:'+expression, ensure_ascii=False)
-        index = next((i for i,line in enumerate(lines) if line.startswith(('"query: Favorites:', '"query:🌎 All:'))),len(lines))
+        index = next((i for i,line in enumerate(lines) if line.startswith(('"query:🎬 VODs:', '"query: Favorites:', '"query:🌎 All:'))),len(lines))
         lines.insert(index,query)
         text = '\n'.join(lines)+'\n'
         if text != URLS.read_text(): atomic_write(URLS,text)

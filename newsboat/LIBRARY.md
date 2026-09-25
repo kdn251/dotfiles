@@ -115,3 +115,9 @@ article-progress patch; reopen an article from Newsboat to enable tracking.
 ## Favorites
 
 The  Favorites row appears above All. Use `f` to save an item for the long term and `F` to remove it; `U` undoes either action. Favorited items show  on their rows, with the heart first in Favorites. The home row shows the total saved count, including read items. Opening or reading an item does not remove it. Favorites keeps a local snapshot of its title, source, and feed content in `~/.local/state/newsboat/favorites.db`, independent of feed retention, Starred, and Commentary. It does not download the linked page/video or sync to Miniflux/Capy.
+
+## Scheduled Twitch VODs
+
+The 🎬 VODs row sits directly above Favorites and shows the total available files from `~/Videos/newsboat/twitch-vods` (excluding the `manual/` subdirectory used by `,d`). It inventories existing files independently of the RSS cache, with streamer names, titles, row numbers, watched percentages, and newest downloads first. Active downloads and partial files are excluded.
+
+Use `o`, `O`, or `,v` to play a local VOD. `,D` deletes the file and immediately removes its row, selecting the next remaining item. The scheduled downloader's archive is preserved so deleting a VOD does not cause that same latest VOD to be downloaded again. The inventory refreshes at Newsboat startup, whenever VODs is opened, and after the scheduled downloader or pruning script updates the files. Reopen the list to see newly completed downloads.

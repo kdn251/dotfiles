@@ -140,7 +140,7 @@ def candidates():
             if not key or key in blocked or path.resolve() in busy:
                 continue
             # A same-name partial/fragment is not a completed media file.
-            if Path(str(path) + '.part').exists() or Path(str(path) + '.ytdl').exists():
+            if any(Path(str(path) + suffix).exists() for suffix in ('.part', '.ytdl', '.incomplete')):
                 continue
             yield key, path
 

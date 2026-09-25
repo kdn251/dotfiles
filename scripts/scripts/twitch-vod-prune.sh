@@ -113,3 +113,6 @@ while IFS=$'\t' read -r verdict streamer vodid bytes dur path; do
   [ -n "${BUSY[$path]:-}" ] && continue
   rm -f -- "$path" && echo "removed: $(basename -- "$path")"
 done <<<"$rows"
+
+# Refresh the local Newsboat VOD inventory after applied deletions.
+python3 "$HOME/scripts/newsboat-vods.py" rebuild >/dev/null 2>&1 || true

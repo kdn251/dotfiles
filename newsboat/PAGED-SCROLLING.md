@@ -1,13 +1,15 @@
-# Page scrolling
+# Centered scrolling
 
-The launcher uses `~/.local/lib/newsboat-paged/newsboat` when installed. This is
-Newsboat r2.44 with the opt-in patch in `patches/paged-lists.patch`.
+The launcher uses `~/.local/lib/newsboat-paged/newsboat` for the custom collection
+features. Lists now use Newsboat's built-in `scrolloff 999`: the selection stays
+in the middle of the available list area, with rows above and below it, except
+near the beginning/end or in a short list. The visible context adapts to terminal
+height. History, Starred, Commentary, Favorites, VODs, and offline Downloads use
+the same setting.
 
-With `NEWSBOAT_PAGE_SCROLL=1`, list selection crosses screen boundaries by
-whole pages. The next item is at the top, including on a short final page.
-Moving up crosses to the previous page. Article text scrolling is unchanged.
-Shelf and History inherit the same behavior.
+The launcher clears the old `NEWSBOAT_PAGE_SCROLL` override. The optional paging
+patch remains available in the build, but is inactive in normal sessions.
 
 Build or reinstall with `~/scripts/newsboat-build-paged.sh` (requires Newsboat's
-C++/Rust build dependencies). The download is pinned by SHA-256. The system
-Newsboat package is unchanged. Remove the local binary to use it again.
+C++/Rust build dependencies). The source download is pinned by SHA-256. The system
+Newsboat package is unchanged.

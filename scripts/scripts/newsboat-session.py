@@ -209,13 +209,13 @@ def nested_view_environment(directory):
 
 
 def run(args):
-    # Use the optional local build for page-at-a-time list navigation. Child
-    # History/Starred views inherit both the executable path and this setting.
+    # Use the local build for collection features. Let scrolloff center lists;
+    # saved views inherit the executable path without the legacy paging override.
     paged_binary = Path.home()/'.local/lib/newsboat-paged/newsboat'
     live_queries = paged_binary.is_file()
     if live_queries:
         os.environ['PATH'] = str(paged_binary.parent) + os.pathsep + os.environ.get('PATH', '')
-        os.environ['NEWSBOAT_PAGE_SCROLL'] = '1'
+        os.environ.pop('NEWSBOAT_PAGE_SCROLL', None)
         last_opened = Path(os.environ.get('XDG_STATE_HOME', Path.home()/'.local/state'))/'newsboat/last-opened'
         last_opened.parent.mkdir(parents=True, exist_ok=True)
         os.environ['NEWSBOAT_LAST_OPENED'] = str(last_opened)
@@ -259,6 +259,7 @@ def run(args):
     if remote:
         subprocess.run([sys.executable, str(Path(__file__).with_name('newsboat-commentary.py')), 'rebuild'], check=False, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         subprocess.run([sys.executable, str(Path(__file__).with_name('newsboat-favorites.py')), 'rebuild'], check=False, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        subprocess.Popen([sys.executable, str(Path(__file__).with_name('newsboat-vods.py')), 'rebuild'], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     startup_deadline = time.monotonic() + 5
     if remote:
         try:
@@ -467,6 +468,8 @@ def run(args):
                                     view_script = "newsboat-commentary.py"
                                 if b"FeedListFormAction: opening Favorites view" in line:
                                     view_script = "newsboat-favorites.py"
+                                if b"FeedListFormAction: opening VODs view" in line:
+                                    view_script = "newsboat-vods.py"
                                 if view_script and not live_queries:
                                     termios.tcsetattr(0, termios.TCSADRAIN, original)
                                     try:

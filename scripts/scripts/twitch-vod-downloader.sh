@@ -106,6 +106,9 @@ download_vods() {
   SAFE_TITLE=$(echo "$VOD_TITLE" | tr '/\\:*?"<>|' '_' | tr -s ' ' | sed 's/^ *//;s/ *$//')
   OUTPUT_PATH="$TWITCH_VOD_DIR/${streamer} - ${SAFE_TITLE} - ${VOD_ID}.mp4"
 
+  # Only successful downloads are published as available VODs.
+  touch "$OUTPUT_PATH.incomplete"
+
   # Streamlink execution (Fixed the backslash/space bugs)
   if [ -n "$TWITCH_TOKEN" ]; then
     streamlink \
@@ -149,6 +152,7 @@ download_vods() {
   wait $DOWNLOAD_PID
 
   if [ $? -eq 0 ]; then
+    rm -f -- "$OUTPUT_PATH.incomplete"
     OLD_VOD_ID=$(grep "^${streamer}:" "$ARCHIVE_FILE" 2>/dev/null | cut -d: -f2)
     if [ -n "$OLD_VOD_ID" ]; then
       OLD_FILE=$(find "$TWITCH_VOD_DIR" -type f -name "*${OLD_VOD_ID}*" 2>/dev/null)
@@ -162,6 +166,8 @@ download_vods() {
     grep -v "^${streamer}:" "$ARCHIVE_FILE" >"${ARCHIVE_FILE}.tmp" 2>/dev/null || true
     echo "${streamer}:${VOD_ID}" >>"${ARCHIVE_FILE}.tmp"
     mv "${ARCHIVE_FILE}.tmp" "$ARCHIVE_FILE"
+
+    python3 "$HOME/scripts/newsboat-vods.py" rebuild >/dev/null 2>&1 || true
 
     write_status "  $streamer" "$VOD_TITLE (Download Complete)"
     sleep 5

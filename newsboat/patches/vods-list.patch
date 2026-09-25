@@ -1,0 +1,105 @@
+--- a/src/feedlistformaction.cpp
++++ b/src/feedlistformaction.cpp
+@@ -126,6 +126,11 @@
+                 if (std::getenv("NEWSBOAT_NESTED_VIEWS") && selected &&
+                     selected->rssurl().find("query:📣 Commentary:") == 0) {
+                     LOG(Level::INFO, "FeedListFormAction: opening Commentary view");
++                    break;
++                }
++                if (std::getenv("NEWSBOAT_NESTED_VIEWS") && selected &&
++                    selected->rssurl().find("query:🎬 VODs:") == 0) {
++                    LOG(Level::INFO, "FeedListFormAction: opening VODs view");
+                     break;
+                 }
+                 if (std::getenv("NEWSBOAT_NESTED_VIEWS") && selected &&
+@@ -1188,6 +1193,14 @@
+         unsigned int total = 0;
+         if (const char* stars = std::getenv("NEWSBOAT_STARRED_STATUS")) {
+             std::ifstream count_file(std::string(stars) + ".commentary.count");
++            count_file >> total;
++        }
++        return total;
++    }
++    if (feed->rssurl().find("query:🎬 VODs:") == 0) {
++        unsigned int total = 0;
++        if (const char* stars = std::getenv("NEWSBOAT_STARRED_STATUS")) {
++            std::ifstream count_file(std::string(stars) + ".vods.count");
+             count_file >> total;
+         }
+         return total;
+@@ -1238,7 +1251,8 @@
+ 		strprintf::fmt("(%u/%u)",
+ 			unread_count,
+ 			static_cast<unsigned int>(feed->total_item_count())));
+-    const bool total_view = feed->rssurl().find("query: Favorites:") == 0 ||
++    const bool total_view = feed->rssurl().find("query:🎬 VODs:") == 0 ||
++        feed->rssurl().find("query: Favorites:") == 0 ||
+         feed->rssurl().find("query:📣 Commentary:") == 0 ||
+         feed->rssurl().find("query:⭐ Starred:") == 0 ||
+         feed->rssurl().find("query:📥 Downloads:") == 0;
+--- a/src/itemlistformaction.cpp
++++ b/src/itemlistformaction.cpp
+@@ -186,7 +186,8 @@
+ 	}
+ 	break;
+     case OP_RELOADURLS: {
+-        const bool downloads = feed->rssurl().find("query:📥 Downloads:") == 0;
++        const std::string library_prefix = feed->rssurl().find("query:🎬 VODs:") == 0 ? "query:🎬 VODs:" : "query:📥 Downloads:";
++        const bool downloads = feed->rssurl().find(library_prefix) == 0;
+         // Preserve the selected item on ordinary reloads. If it was removed,
+         // prefer its next surviving neighbour in the displayed order, then
+         // walk backwards. Feed indices can change when the query is rebuilt.
+@@ -202,7 +203,7 @@
+         v.get_ctrl().reload_urls_file();
+         if (downloads) {
+             for (const auto& updated : v.get_ctrl().get_feedcontainer()->get_all_feeds()) {
+-                if (updated->rssurl().find("query:📥 Downloads:") == 0) {
++                if (updated->rssurl().find(library_prefix) == 0) {
+                     set_feed(updated);
+                     restore_selection_guid.reset();
+                     list.set_position(0);
+@@ -1168,7 +1169,7 @@
+ 	// Downloads are a library, and explicit search results should include
+ 	// matching read items even when ordinary feeds hide them.
+ 	bool show_read = cfg->get_configvalue_as_bool("show-read-articles") ||
+-		feed->is_search_feed() ||
++		feed->is_search_feed() || feed->rssurl().find("query:🎬 VODs:") == 0 ||
+ 		feed->rssurl().find("query:📥 Downloads:") == 0;
+ 
+ 	unsigned int i = 0;
+@@ -1241,9 +1242,9 @@
+ 			return StflRichText::from_plaintext("ERROR");
+ 		}
+ 		auto& item = visible_items[line];
+-        const bool numbered = (feed->rssurl().find("query:📬 New:") == 0 || feed->title() == "⭐ Starred" || feed->title() == "📣 Commentary" || feed->title() == " Favorites") ||
++        const bool numbered = (feed->rssurl().find("query:🎬 VODs:") == 0 || feed->rssurl().find("query:📬 New:") == 0 || feed->title() == "⭐ Starred" || feed->title() == "📣 Commentary" || feed->title() == " Favorites") ||
+             feed->rssurl().find("query:📥 Downloads:") == 0;
+-        const std::string watched = feed->rssurl().find("query:📥 Downloads:") == 0 ? "%4w " : "";
++        const std::string watched = (feed->rssurl().find("query:📥 Downloads:") == 0 || feed->rssurl().find("query:🎬 VODs:") == 0) ? "%4w " : "";
+         const auto format = numbered ? strprintf::fmt("%4u ", line + 1) + watched + itemlist_format : itemlist_format;
+         return item2formatted_line(item, width, format, datetime_format);
+ 	};
+@@ -1335,12 +1336,12 @@
+     const auto status = download_status.find(item.first->link());
+     const std::vector<std::string> markers = {
+         starred_urls.count(item.first->link()) ? "󰓎" : "",
+-        status != download_status.end() ? status->second : "",
++        status != download_status.end() ? status->second : feed->rssurl().find("query:🎬 VODs:") == 0 ? "📥" : "",
+         commentary_urls.count(item.first->link()) ? "📣" : "",
+         favorites_urls.count(item.first->link()) ? "" : ""
+     };
+     size_t primary = 0; // New, All and source feeds: star, download, commentary.
+-    if (feed->title() == "📥 Downloads") { primary = 1; }
++    if (feed->title() == "📥 Downloads" || feed->title() == "🎬 VODs") { primary = 1; }
+     else if (feed->title() == "📣 Commentary") { primary = 2; }
+     else if (feed->title() == " Favorites") { primary = 3; }
+     std::string badges;
+@@ -1630,7 +1631,7 @@
+ 
+ void ItemListFormAction::handle_cmdline_num(unsigned int idx)
+ {
+-    if ((feed->rssurl().find("query:📬 New:") == 0 || feed->title() == "⭐ Starred" || feed->title() == "📣 Commentary" || feed->title() == " Favorites") || feed->rssurl().find("query:📥 Downloads:") == 0) {
++    if ((feed->rssurl().find("query:🎬 VODs:") == 0 || feed->rssurl().find("query:📬 New:") == 0 || feed->title() == "⭐ Starred" || feed->title() == "📣 Commentary" || feed->title() == " Favorites") || feed->rssurl().find("query:📥 Downloads:") == 0) {
+         if (idx > 0 && idx <= visible_items.size()) { list.set_position(idx - 1); }
+         else { v.get_statusline().show_error(_("Invalid position!")); }
+         return;
