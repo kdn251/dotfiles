@@ -207,6 +207,7 @@ xdg-desktop-portal-cosmic
 xdg-desktop-portal-hyprland
 xdotool
 xf86-input-synaptics
+xorg-server-xvfb
 xournalpp
 yazi
 ydotool
