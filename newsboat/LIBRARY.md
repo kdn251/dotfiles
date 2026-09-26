@@ -127,10 +127,10 @@ Use `o`, `O`, or `,v` to play a local VOD. `,D` deletes the file and immediately
 
 ## 🍀 Random Starred pick
 
-Press **7** on the main feed screen to open a random Starred item in the usual
+Press **7** from any Newsboat screen to open a random Starred item in the usual
 Brave article window or mpv player. Newsboat remains usable. When that window
 closes, a prompt inside Newsboat offers **u: Unstar** or **k: Keep starred**.
-Enter or Escape also keeps it starred. The main-screen footer displays
+Enter or Escape also keeps it starred. Every screen’s footer displays
 **7: 🍀 Random Starred**. Unstarring uses the normal Miniflux sync queue,
 so the change also reaches Capy. Only one random pick is active at a time.
 Article window tracking uses Hyprland; failed or unconfirmed opens never unstar
@@ -237,3 +237,5 @@ The 📚 Books home row sits below VODs and inventories PDFs and EPUBs in `~/Boo
 Browser reading progress recognizes HTTP/HTTPS and www/bare-host aliases while keeping paths, queries, and explicit ports distinct. Older registrations retain their original article ID and saved position, so redirected pages such as Paul Graham essays update the original Starred row. The native host change applies on the next message; reopen an already-untracked tab to initialize tracking.
 
 Books polls reader-owned state every two seconds while its list is open. Zathura supplies the current PDF page over D-Bus and saves position/zoom in its own SQLite database. Foliate supplies EPUB location/progress through its native JSON state. Newsboat stores the furthest percentage reached in `~/.local/state/newsboat/books/progress.json`; reopening uses the reader’s last position, even if you went backwards. Percentages represent page/location progress, not proof of reading. The selected book stays selected as progress reorders rows. Foliate is listed in `pacman-packages.txt`. PDF progress requires `pdfinfo` and Python GObject bindings, already installed here.
+
+The `7` Random Starred binding is available in all Newsboat contexts, including article lists, search results, the article reader, help, and the local Books view. It retains the session’s in-terminal Unstar/Keep prompt. Search and command-line text entry still accept digits normally.

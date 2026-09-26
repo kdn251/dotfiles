@@ -171,3 +171,31 @@ while not (root/'finish').exists():time.sleep(.02)
                 self.assertEqual((root/'answer').read_text(),'unstar')
             finally:
                 os.kill(pid,signal.SIGTERM);os.waitpid(pid,0);os.close(fd)
+
+class RandomShortcutTests(unittest.TestCase):
+    def test_shortcut_in_feed_items_search_and_article(self):
+        from test_newsboat_reconnect import reader,pyte,BINARY
+        if not pyte or not BINARY.exists():self.skipTest('requires native Newsboat and pyte')
+        with tempfile.TemporaryDirectory() as d:
+            root=Path(d);(root/'scripts').mkdir()
+            (root/'scripts/newsboat-random.py').write_text('from pathlib import Path\np=Path.home()/"picks"\nwith p.open("a") as f:f.write("pick\\n")\n')
+            feed=root/'feed.xml';feed.write_text('<rss version="2.0"><channel><title>Source</title><link>https://example.org</link><description>Test</description><item><title>Article</title><guid>one</guid><link>https://example.org/one</link><description>Article body</description></item></channel></rss>')
+            binding=next(line for line in (SCRIPTS.parents[1]/'newsboat/.newsboat/config').read_text().splitlines() if line.startswith('bind 7 '))
+            config='confirm-exit no\nshow-read-feeds yes\nshow-read-articles yes\n'+binding+'\n'
+            with reader(root,config,feed.as_uri()+'\n') as (_,screen,send,wait):
+                def count():return len((root/'picks').read_text().splitlines()) if (root/'picks').exists() else 0
+                wait(lambda s:'Source' in s)
+                self.assertIn('🍀 Random Starred',screen.display[-2])
+                send('7');wait(lambda s:count()==1)
+                send('\n');wait(lambda s:'Articles in feed' in screen.display[0])
+                self.assertIn('🍀 Random Starred',screen.display[-2])
+                send('7');wait(lambda s:count()==2)
+                send('/Article\n');wait(lambda s:'Search' in screen.display[0])
+                self.assertIn('🍀 Random Starred',screen.display[-2])
+                send('7');wait(lambda s:count()==3)
+                send('\n');wait(lambda s:'Article body' in s)
+                self.assertIn('🍀 Random Starred',screen.display[-2])
+                send('7');wait(lambda s:count()==4)
+                send('?');wait(lambda s:'Help' in screen.display[0])
+                self.assertIn('🍀 Random Starred',screen.display[-2])
+                send('7');wait(lambda s:count()==5)

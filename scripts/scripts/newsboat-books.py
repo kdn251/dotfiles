@@ -71,6 +71,7 @@ def prepare_view(directory, rows):
     if not source.exists():source=SCRIPTS.parents[1]/'newsboat/.newsboat/config'
     appearance={'color','highlight','highlight-article','scrolloff','text-width'}
     lines=[line for line in source.read_text().splitlines() if line.split() and line.split()[0] in appearance]
+    lines += [line for line in source.read_text().splitlines() if line.startswith('bind 7 ')]
     browser='python3 '+shlex.quote(str(Path(__file__).resolve()))+' open %u'
     lines += ['show-read-feeds yes','show-read-articles yes','confirm-exit no',
               'article-sort-order title-asc','articlelist-title-format " %T"',
@@ -101,6 +102,8 @@ def show():
     with tempfile.TemporaryDirectory(prefix='newsboat-books-') as directory:
         command=prepare_view(directory,rows)
         env={k:v for k,v in os.environ.items() if not k.startswith('NEWSBOAT_')}
+        if os.environ.get('NEWSBOAT_RANDOM_PROMPT_DIR'):
+            env['NEWSBOAT_RANDOM_PROMPT_DIR']=os.environ['NEWSBOAT_RANDOM_PROMPT_DIR']
         env['NEWSBOAT_BOOKS_DIR']=str(DIRECTORY)
         env['NEWSBOAT_DOWNLOAD_STATUS']=str(progress.STATE/'status.tsv')
         progress.publish(rows,refresh=False)

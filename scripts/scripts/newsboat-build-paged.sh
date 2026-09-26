@@ -63,6 +63,7 @@ patch -p1 < "$repo/newsboat/patches/unique-links.patch"
 patch -p1 < "$repo/newsboat/patches/pending-downloads-first.patch"
 patch -p1 < "$repo/newsboat/patches/books-list.patch"
 patch -p1 < "$repo/newsboat/patches/books-reading-progress.patch"
+patch -p1 < "$repo/newsboat/patches/random-shortcut-footer.patch"
 make -j"${NEWSBOAT_BUILD_JOBS:-4}" WARNFLAGS="-Werror -Wall -Wextra -Wunreachable-code -Wno-error=unused-function" newsboat
 install -m 755 newsboat "$install_dir/newsboat.new"
 mv "$install_dir/newsboat.new" "$install_dir/newsboat"

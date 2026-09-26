@@ -168,7 +168,7 @@ bind f articlelist,article,searchresultslist undo-checkpoint favorites ; set bro
 bind F articlelist,article,searchresultslist undo-checkpoint favorites ; set browser "python3 ~/scripts/newsboat-favorites.py remove %u" ; open-in-browser-noninteractively ; set browser "~/scripts/newsboat-brave-app.sh %u" -- "Remove from Favorites"
 
 # Open a random saved item without blocking the reader.
-bind 7 feedlist set browser "newsboat-random://starred" -- "🍀 Random Starred item; offer to unstar after closing"
+bind 7 everywhere set browser "newsboat-random://starred" -- "🍀 Random Starred item; offer to unstar after closing"
 
 # Copy the selected item without opening it or changing read status.
 bind ^C articlelist,article,searchresultslist set browser "python3 ~/scripts/newsboat-copy-url.py %u" ; open-in-browser-noninteractively ; set browser "~/scripts/newsboat-brave-app.sh %u" -- "Copy item URL to clipboard"

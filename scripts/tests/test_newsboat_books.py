@@ -66,6 +66,7 @@ class BooksTests(unittest.TestCase):
             wait(lambda s:'Books' in s);send('\n')
             wait(lambda s:'A book' in s and 'Z book' in s and 'PDF' in s and 'EPUB' in s)
             self.assertEqual(screen.display[0].strip(),'📚 Books')
+            self.assertIn('🍀 Random Starred',screen.display[-2])
             send('\n');wait(lambda s:(view/'opened').exists())
             self.assertEqual((view/'opened').read_text(),(self.library/'A book.pdf').as_uri())
             self.assertIn('Z book','\n'.join(screen.display))

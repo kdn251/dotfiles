@@ -105,7 +105,7 @@ def run():
         starred = module('newsboat-starred')
         row = choose(starred.view_entries())
         if not row:
-            notify('Starred is empty', 'Star something with s, then press 7 on the main screen.')
+            notify('Starred is empty', 'Star something with s, then press 7 from any Newsboat screen.')
             return
         opener = module('newsboat-open')
         url = row['url']

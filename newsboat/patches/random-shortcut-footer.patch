@@ -1,0 +1,33 @@
+--- a/src/formaction.cpp
++++ b/src/formaction.cpp
+@@ -68,8 +68,11 @@
+ 
+ void FormAction::set_keymap_hints()
+ {
+-	set_value("help", v.get_keymap()->prepare_keymap_hint(this->get_keymap_hint(),
+-			this->id()).stfl_quoted());
++    auto hint = StflRichText::from_plaintext_with_style("7", "<key>");
++    hint.append(StflRichText::from_plaintext_with_style(":", "<colon>"));
++    hint.append(StflRichText::from_plaintext_with_style("🍀 Random Starred  ", "<desc>"));
++    hint.append(v.get_keymap()->prepare_keymap_hint(get_keymap_hint(), id()));
++    set_value("help", hint.stfl_quoted());
+ }
+ 
+ void FormAction::edit_urls(const std::vector<std::string>& args,
+--- a/src/feedlistformaction.cpp
++++ b/src/feedlistformaction.cpp
+@@ -100,13 +100,7 @@
+ 	}
+ 
+ 	set_keymap_hints();
+-	if (!all_sources) {
+-		auto hint = StflRichText::from_plaintext_with_style("7", "<key>");
+-		hint.append(StflRichText::from_plaintext_with_style(":", "<colon>"));
+-		hint.append(StflRichText::from_plaintext_with_style("🍀 Random Starred  ", "<desc>"));
+-		hint.append(v.get_keymap()->prepare_keymap_hint(get_keymap_hint(), id()));
+-		set_value("help", hint.stfl_quoted());
+-	}
++
+ 
+ 	const auto sort_strategy = cfg->get_feed_sort_strategy();
+ 	if (!old_sort_strategy || sort_strategy != *old_sort_strategy) {
