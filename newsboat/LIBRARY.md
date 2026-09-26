@@ -227,3 +227,13 @@ feeds, excluding aggregate query feeds. It updates as each feed finishes, instea
 of waiting for the New query to rebuild at the end of the whole refresh.
 
 Aggregate query lists, Starred and searches show each exact destination URL once. Different URLs remain separate even with identical titles. Reading a destination updates its loaded source copies together, including undo; New and All unread counts use unique URLs. Individual source feeds remain available.
+
+Downloads includes unfinished attempts as soon as preparation starts. Active, failed and cancelled attempts sort above completed files; retry with `,d`. Finished files keep their watched-percentage/download-date order. Deleting an attempt removes its row.
+
+## Books
+
+The 📚 Books home row sits below VODs and inventories PDFs and EPUBs in `~/Books`, including subfolders. Set `NEWSBOAT_BOOKS_DIR` to override the folder. The home row shows a total count; the list shows filenames and formats, with currently reading books first, unopened books next, and finished books last (reading progress descending within the first group). Enter, o or O launches PDFs in Zathura and EPUBs in Foliate without blocking Newsboat; q returns home, / searches. Reopen Books to pick up filesystem changes (or run `python3 ~/scripts/newsboat-books.py rebuild` to update the home count). Files remain in their original folder and are never deleted by download cleanup. Books uses its own local view with no feed download/delete/star actions.
+
+Browser reading progress recognizes HTTP/HTTPS and www/bare-host aliases while keeping paths, queries, and explicit ports distinct. Older registrations retain their original article ID and saved position, so redirected pages such as Paul Graham essays update the original Starred row. The native host change applies on the next message; reopen an already-untracked tab to initialize tracking.
+
+Books polls reader-owned state every two seconds while its list is open. Zathura supplies the current PDF page over D-Bus and saves position/zoom in its own SQLite database. Foliate supplies EPUB location/progress through its native JSON state. Newsboat stores the furthest percentage reached in `~/.local/state/newsboat/books/progress.json`; reopening uses the reader’s last position, even if you went backwards. Percentages represent page/location progress, not proof of reading. The selected book stays selected as progress reorders rows. Foliate is listed in `pacman-packages.txt`. PDF progress requires `pdfinfo` and Python GObject bindings, already installed here.

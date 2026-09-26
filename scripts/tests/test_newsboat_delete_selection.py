@@ -98,6 +98,15 @@ class DeleteSelectionTests(unittest.TestCase):
                 wait(lambda:order()==['02','03','07'] and selected('Video03'))
                 (root/'status.tsv.watched').write_text('https://example.com/7\t100%\nhttps://example.com/2\t80%\nhttps://example.com/3\t30%\n')
                 wait(lambda:order()==['07','02','03'] and selected('Video03'))
+                # Active and failed downloads stay above even fully watched files.
+                (root/'status.tsv').write_text('https://example.com/3\t↓ 42%\n')
+                wait(lambda:order()==['03','07','02'] and selected('Video03'))
+                (root/'status.tsv').write_text('https://example.com/3\t✕\n')
+                wait(lambda:order()==['03','07','02'] and '✕' in '\n'.join(screen.display))
+                (root/'status.tsv').write_text('https://example.com/3\t…\n')
+                wait(lambda:order()==['03','07','02'] and '…' in '\n'.join(screen.display))
+                (root/'status.tsv').write_text('https://example.com/3\t📥\n')
+                wait(lambda:order()==['07','02','03'] and selected('Video03'))
                 (root/'status.tsv.watched').write_text('')
                 wait(lambda:order()==['07','03','02'] and selected('Video03'))
 

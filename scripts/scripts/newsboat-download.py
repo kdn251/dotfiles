@@ -189,6 +189,8 @@ def download(url, title=''):
     if not os.access(ytdlp, os.X_OK):
         ytdlp = 'yt-dlp'
     try:
+        # Publish the row immediately; progress updates only need the status index.
+        rebuild()
         if platform == 'article':
             from newsboat_media import cached_title
             job.update(title=title or cached_title(url) or urlparse(url).hostname, status='downloading')

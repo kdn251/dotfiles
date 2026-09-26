@@ -1,0 +1,39 @@
+--- a/src/feedlistformaction.cpp
++++ b/src/feedlistformaction.cpp
+@@ -152,6 +152,11 @@
+                 if (std::getenv("NEWSBOAT_NESTED_VIEWS") && selected &&
+                     selected->rssurl().find("query:🎬 VODs:") == 0) {
+                     LOG(Level::INFO, "FeedListFormAction: opening VODs view");
++                    break;
++                }
++                if (std::getenv("NEWSBOAT_NESTED_VIEWS") && selected &&
++                    selected->rssurl().find("query:📚 Books:") == 0) {
++                    LOG(Level::INFO, "FeedListFormAction: opening Books view");
+                     break;
+                 }
+                 if (std::getenv("NEWSBOAT_NESTED_VIEWS") && selected &&
+@@ -1222,6 +1227,14 @@
+         unsigned int total = 0;
+         if (const char* stars = std::getenv("NEWSBOAT_STARRED_STATUS")) {
+             std::ifstream count_file(std::string(stars) + ".vods.count");
++            count_file >> total;
++        }
++        return total;
++    }
++    if (feed->rssurl().find("query:📚 Books:") == 0) {
++        unsigned int total = 0;
++        if (const char* stars = std::getenv("NEWSBOAT_STARRED_STATUS")) {
++            std::ifstream count_file(std::string(stars) + ".books.count");
+             count_file >> total;
+         }
+         return total;
+@@ -1276,7 +1289,8 @@
+ 		strprintf::fmt("(%u/%u)",
+ 			unread_count,
+ 			static_cast<unsigned int>(feed->total_item_count())));
+-    const bool total_view = feed->rssurl().find("query:🎬 VODs:") == 0 ||
++    const bool total_view = feed->rssurl().find("query:📚 Books:") == 0 ||
++        feed->rssurl().find("query:🎬 VODs:") == 0 ||
+         feed->rssurl().find("query: Favorites:") == 0 ||
+         feed->rssurl().find("query:📣 Commentary:") == 0 ||
+         feed->rssurl().find("query:⭐ Starred:") == 0 ||

@@ -78,7 +78,7 @@ def rebuild():
         progress.publish_count(progress.active_rows(),state=STATE)
         if media.URLS.exists():
             lines = [line for line in media.URLS.read_text().splitlines() if not line.startswith('"'+PREFIX)]
-            position = next((i for i,line in enumerate(lines) if line.startswith(('"query: Favorites:', '"query:🌎 All:'))),len(lines))
+            position = next((i for i,line in enumerate(lines) if line.startswith(('"query:📚 Books:', '"query: Favorites:', '"query:🌎 All:'))),len(lines))
             lines.insert(position,query(rows))
             text = '\n'.join(lines)+'\n'
             if text != media.URLS.read_text():

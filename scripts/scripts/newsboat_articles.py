@@ -214,7 +214,11 @@ def reddit_comments(url):
 def post_body(raw):
     """Convert cached HTML to the same strict rendering vocabulary as articles."""
     from lxml import html as lhtml
-    root = lhtml.fragment_fromstring(raw, create_parent='div')
+    # Reddit wraps Markdown with <!-- SC_OFF --> / <!-- SC_ON -->.
+    # Discard HTML comments before converting nodes, preserving their tails;
+    # otherwise the converter turns comment contents into visible spans.
+    root = lhtml.fragment_fromstring(raw, create_parent='div',
+                                    parser=lhtml.HTMLParser(remove_comments=True))
     for element in root.xpath('.//script | .//style | .//iframe | .//form | .//object | .//embed'):
         element.drop_tree()
     if not root.text_content().strip() and not root.xpath('.//img'):

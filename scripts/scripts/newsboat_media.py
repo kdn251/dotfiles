@@ -234,6 +234,12 @@ def rebuild_unlocked():
                                 downloaded_at=entry.get("downloaded_at", stat.st_ctime))
         if valid:
             keys.add(key)
+    # Keep unfinished attempts visible so ,d can retry them, even without a file.
+    for _, job in records():
+        if job.get('status') in {'preparing', 'downloading', 'processing', 'failed', 'cancelled'}:
+            key = library_identity(job['url'])
+            if key:
+                keys.add(key)
     patterns = []
     youtube = sorted(value for platform, value in keys if platform == 'youtube')
     twitch = sorted(value for platform, value in keys if platform == 'twitch')
@@ -247,6 +253,8 @@ def rebuild_unlocked():
         patterns.append(r'^https?://(clips[.]twitch[.]tv/|(www[.])?twitch[.]tv/[^/]+/clip/)('
                         + '|'.join(clips) + r')([?&#/]|$)')
     terms = ['link =~ ' + json.dumps(pattern) for pattern in patterns]
+    terms.extend('link = ' + json.dumps(value) for platform, value in sorted(keys)
+                 if platform == 'article')
     for key, path in articles():
         keys.add(key)
         terms.append('link = ' + json.dumps(key[1]))

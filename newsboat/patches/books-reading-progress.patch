@@ -1,0 +1,50 @@
+--- a/src/itemlistformaction.cpp
++++ b/src/itemlistformaction.cpp
+@@ -1312,6 +1312,20 @@
+ 		i++;
+ 	}
+ 
++    if (feed->title() == "📚 Books") {
++        std::stable_sort(new_visible_items.begin(), new_visible_items.end(),
++            [](const ItemPtrPosPair& a, const ItemPtrPosPair& b) {
++                const auto percent = [](const std::string& url) {
++                    const auto it = watched_progress.find(url);
++                    return it == watched_progress.end() ? 0 : std::atoi(it->second.c_str());
++                };
++                const int ap = percent(a.first->link()), bp = percent(b.first->link());
++                const auto group = [](int p) { return p > 0 && p < 100 ? 0 : p == 0 ? 1 : 2; };
++                if (group(ap) != group(bp)) { return group(ap) < group(bp); }
++                return ap > bp;
++            });
++    }
++
+     if (feed->title() == "⭐ Starred") {
+         std::stable_sort(new_visible_items.begin(), new_visible_items.end(),
+             [](const ItemPtrPosPair& a, const ItemPtrPosPair& b) {
+@@ -1392,7 +1406,7 @@
+ 			return StflRichText::from_plaintext("ERROR");
+ 		}
+ 		auto& item = visible_items[line];
+-        const bool numbered = (feed->rssurl().find("query:🎬 VODs:") == 0 || feed->rssurl().find("query:📬 New:") == 0 || feed->title() == "⭐ Starred" || feed->title() == "📣 Commentary" || feed->title() == " Favorites") ||
++        const bool numbered = (feed->title() == "📚 Books" || feed->rssurl().find("query:🎬 VODs:") == 0 || feed->rssurl().find("query:📬 New:") == 0 || feed->title() == "⭐ Starred" || feed->title() == "📣 Commentary" || feed->title() == " Favorites") ||
+             feed->rssurl().find("query:📥 Downloads:") == 0;
+         const std::string watched = (feed->title() == "⭐ Starred" || feed->rssurl().find("query:📥 Downloads:") == 0 || feed->rssurl().find("query:🎬 VODs:") == 0) ? "%4w " : "";
+         const auto format = numbered ? strprintf::fmt("%4u ", line + 1) + watched + itemlist_format : itemlist_format;
+@@ -1420,7 +1434,7 @@
+     if (status_version != download_status_version) {
+         download_status_version = status_version;
+         // Badges must not refilter read items or move the current page.
+-        if (feed->title() == "⭐ Starred" || feed->rssurl().find("query:📥 Downloads:") == 0) {
++        if (feed->title() == "📚 Books" || feed->title() == "⭐ Starred" || feed->rssurl().find("query:📥 Downloads:") == 0) {
+             if (!restore_selection_guid) { store_selection(); }
+             invalidate_list();
+         } else {
+@@ -1787,7 +1801,7 @@
+ 
+ void ItemListFormAction::handle_cmdline_num(unsigned int idx)
+ {
+-    if ((feed->rssurl().find("query:🎬 VODs:") == 0 || feed->rssurl().find("query:📬 New:") == 0 || feed->title() == "⭐ Starred" || feed->title() == "📣 Commentary" || feed->title() == " Favorites") || feed->rssurl().find("query:📥 Downloads:") == 0) {
++    if ((feed->title() == "📚 Books" || feed->rssurl().find("query:🎬 VODs:") == 0 || feed->rssurl().find("query:📬 New:") == 0 || feed->title() == "⭐ Starred" || feed->title() == "📣 Commentary" || feed->title() == " Favorites") || feed->rssurl().find("query:📥 Downloads:") == 0) {
+         if (idx > 0 && idx <= visible_items.size()) { list.set_position(idx - 1); }
+         else { v.get_statusline().show_error(_("Invalid position!")); }
+         return;

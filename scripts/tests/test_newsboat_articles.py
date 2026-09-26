@@ -113,6 +113,19 @@ with tempfile.TemporaryDirectory() as d:
 """
         subprocess.run([str(PYTHON),'-c',code,str(SCRIPTS)],check=True)
 
+    def test_reddit_hidden_markers_do_not_render_or_remove_adjacent_text(self):
+        code='''import sys
+sys.path.insert(0,sys.argv[1])
+import newsboat_articles as a
+post='<!-- SC_OFF --><div><p>Post <strong>formatting</strong>.</p></div><!-- SC_ON -->Post tail'
+comments='<blockquote><!-- SC_OFF --><p>Reply text.</p><!-- SC_ON -->Reply tail<!-- hidden metadata --></blockquote>'
+page,_,_=a.render(post,'https://www.reddit.com/r/test/comments/abc123/title/','Test',reddit=True,comments=comments)
+assert 'SC_OFF' not in page and 'SC_ON' not in page and 'hidden metadata' not in page
+assert '<strong>formatting</strong>' in page
+assert all(text in page for text in ('Post tail','Reply text.','Reply tail'))
+'''
+        subprocess.run([str(PYTHON),'-c',code,str(SCRIPTS)],check=True)
+
     def test_reddit_comments_include_nested_replies_and_report_fetch_failure(self):
         def comment(author, text, replies=''):
             return {'kind':'t1','data':{'author':author,'body':text,'score':3,'replies':replies}}

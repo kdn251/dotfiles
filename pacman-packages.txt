@@ -45,6 +45,7 @@ firefox
 firewalld
 flameshot
 flatpak
+foliate
 foot
 fprintd
 framework-system

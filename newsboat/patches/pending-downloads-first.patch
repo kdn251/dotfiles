@@ -1,0 +1,16 @@
+--- a/src/itemlistformaction.cpp
++++ b/src/itemlistformaction.cpp
+@@ -1328,6 +1328,13 @@
+     if (feed->rssurl().find("query:📥 Downloads:") == 0) {
+         std::stable_sort(new_visible_items.begin(), new_visible_items.end(),
+             [](const ItemPtrPosPair& a, const ItemPtrPosPair& b) {
++                const auto pending = [](const std::string& url) {
++                    const auto it = download_status.find(url);
++                    return it != download_status.end() &&
++                        (it->second == "…" || it->second == "✕" || it->second.find("↓") == 0);
++                };
++                const auto aq = pending(a.first->link()), bq = pending(b.first->link());
++                if (aq != bq) { return aq; }
+                 const auto percent = [](const std::string& url) {
+                     const auto it = watched_progress.find(url);
+                     return it == watched_progress.end() ? 0 : std::atoi(it->second.c_str());

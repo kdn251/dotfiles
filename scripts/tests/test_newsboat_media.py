@@ -77,6 +77,16 @@ class MediaTests(unittest.TestCase):
         self.assertNotIn('abc123DEF45',media.URLS.read_text())
         self.assertIn('abc123DEF46',media.URLS.read_text())
 
+    def test_unfinished_download_remains_in_library_until_deleted(self):
+        job = media.STATE/'attempt.json'
+        for status in ('preparing', 'downloading', 'processing', 'failed', 'cancelled'):
+            job.write_text(json.dumps(dict(url=URL,status=status,files=[])))
+            self.assertEqual(media.rebuild(),1)
+            self.assertIn('abc123DEF45',media.URLS.read_text())
+        job.write_text(json.dumps(dict(url=URL,status='deleted',files=[])))
+        self.assertEqual(media.rebuild(),0)
+        self.assertNotIn('abc123DEF45',media.URLS.read_text())
+
     def test_bulk_delete_can_restore_files_metadata_and_archive(self):
         import newsboat_download_undo as undo
         url='https://www.twitch.tv/videos/1234567890'

@@ -4,6 +4,7 @@ import json
 import re
 import struct
 import sys
+from urllib.parse import urlsplit, urlunsplit
 
 from newsboat_articles import canonical, key
 import newsboat_reading as reading
@@ -11,8 +12,13 @@ import newsboat_reading as reading
 
 def normalized(url):
     url = canonical(url)
-    return re.sub(r'^(https?://)(?:www\.|np\.|new\.|old\.)?reddit\.com/',
-                  r'\1reddit.com/', url)
+    url = re.sub(r'^(https?://)(?:www\.|np\.|new\.|old\.)?reddit\.com/',
+                 r'\1reddit.com/', url)
+    parts = urlsplit(url)
+    # Feed URLs often predate HTTPS or redirect between www and the bare host.
+    # Keep the path/query and explicit ports distinct; never match by title.
+    host = parts.netloc.lower().removeprefix('www.')
+    return urlunsplit(('https', host, parts.path or '/', parts.query, ''))
 
 
 def database():
@@ -25,6 +31,9 @@ def register(url):
     url = canonical(url)
     ident = key(url)
     with closing(database()) as db, db:
+        if any(normalized(existing) == normalized(url)
+               for (existing,) in db.execute('SELECT url FROM browser_articles')):
+            return
         db.execute('INSERT OR IGNORE INTO articles(id,url) VALUES (?,?)', (ident, url))
         db.execute('INSERT OR IGNORE INTO browser_articles(url,id) VALUES (?,?)', (normalized(url), ident))
 
@@ -32,10 +41,15 @@ def register(url):
 def handle(message):
     url = normalized(message['url'])
     with closing(database()) as db:
-        row = db.execute('SELECT id,position FROM browser_articles WHERE url=?', (url,)).fetchone()
+        row = db.execute('SELECT id,position,url FROM browser_articles WHERE url=?', (url,)).fetchone()
+        if not row:
+            # Existing registrations used their original HTTP/www spelling.
+            # Retain their ID so progress still appears on the original feed URL.
+            row = next((entry for entry in db.execute('SELECT id,position,url FROM browser_articles')
+                        if normalized(entry[2]) == url), None)
     if not row:
         return {'tracked': False}
-    ident, position = row
+    ident, position, stored_url = row
     if message.get('action') == 'save':
         data = message['position']
         # Shared percentage, separate anchors: the original DOM and saved reader
@@ -46,7 +60,7 @@ def handle(message):
         reading.record(ident, data, save_position=False)
         position = json.dumps({k: data[k] for k in ('y','anchor','offset','text') if k in data})
         with closing(database()) as db, db:
-            db.execute('UPDATE browser_articles SET position=? WHERE url=?', (position, url))
+            db.execute('UPDATE browser_articles SET position=? WHERE url=?', (position, stored_url))
     elif message.get('action') != 'get':
         raise ValueError('Unknown action')
     return {'tracked': True, 'fraction': reading.lookup(ident)[1], 'position': json.loads(position)}

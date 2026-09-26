@@ -261,6 +261,7 @@ def run(args):
         subprocess.run([sys.executable, str(Path(__file__).with_name('newsboat-commentary.py')), 'rebuild'], check=False, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         subprocess.run([sys.executable, str(Path(__file__).with_name('newsboat-favorites.py')), 'rebuild'], check=False, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         subprocess.Popen([sys.executable, str(Path(__file__).with_name('newsboat-vods.py')), 'rebuild'], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        subprocess.Popen([sys.executable, str(Path(__file__).with_name('newsboat-books.py')), 'rebuild'], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     startup_deadline = time.monotonic() + 5
     if remote:
         try:
@@ -486,6 +487,8 @@ def run(args):
                                     view_script = "newsboat-favorites.py"
                                 if b"FeedListFormAction: opening VODs view" in line:
                                     view_script = "newsboat-vods.py"
+                                if b"FeedListFormAction: opening Books view" in line:
+                                    view_script = "newsboat-books.py"
                                 if view_script and not live_queries:
                                     termios.tcsetattr(0, termios.TCSADRAIN, original)
                                     try:
