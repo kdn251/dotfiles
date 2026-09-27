@@ -6,13 +6,8 @@
 /* ==========================================================================
    Local overrides — appended to the stock swaync stylesheet above.
 
-   Ported from the mako config this daemon replaced:
-     background-color=#010202ee  ->  rgba(1, 2, 2, 0.93)
-     text-color=#CACACAff        ->  #cacaca
-     border-color=#676767ff      ->  #676767
-     border-size=1 / border-radius=5 / padding=10
-     font=monospace 10
-     progress-color=over #7C7C7C
+   Lighter slate surfaces, bright text, and a muted teal outline.
+   Keep action buttons and the notification center in the same palette.
 
    The slide itself is not CSS: it's "transition-time": 400 in config.json,
    which drives swaync's GtkRevealer. Because positionX is "right", that
@@ -25,8 +20,8 @@
 }
 
 .notification-row .notification-background .notification {
-  background: rgba(1, 2, 2, 0.93);
-  border: 1px solid #676767;
+  background: rgba(48, 61, 72, 0.98);
+  border: 1px solid #819fa8;
   border-radius: 5px;
   padding: 0px;
   /* right margin 0 so the card lines up with the right edge of a tiled
@@ -36,7 +31,7 @@
 }
 
 .notification-row .notification-background .notification.critical {
-  border: 1px solid #575757;
+  border: 1px solid #e7a58d;
 }
 
 .notification-row .notification-background .notification .notification-default-action {
@@ -46,14 +41,14 @@
 }
 
 .notification-row .notification-background .notification .notification-default-action:hover {
-  background: rgba(40, 40, 40, 0.6);
+  background: rgba(109, 143, 157, 0.22);
 }
 
 .notification-row .notification-background .notification
   .notification-default-action .notification-content .text-box label {
   font-family: monospace;
   font-size: 10pt;
-  color: #cacaca;
+  color: #e6edf2;
 }
 
 .notification-row .notification-background .notification
@@ -64,24 +59,24 @@
 
 .notification-row .notification-background .notification
   .notification-default-action .notification-content .text-box .time {
-  color: #676767;
+  color: #b5c5ce;
 }
 
 .notification-row .notification-background .notification
   .notification-default-action .notification-content progressbar progress {
-  background: #7c7c7c;
+  background: #8bd5ca;
 }
 
 .control-center {
-  background: rgba(1, 2, 2, 0.93);
-  border: 1px solid #676767;
+  background: rgba(48, 61, 72, 0.98);
+  border: 1px solid #819fa8;
   border-radius: 5px;
 }
 
 .control-center .widget-title > label,
 .control-center .widget-dnd > label {
   font-family: monospace;
-  color: #cacaca;
+  color: #e6edf2;
 }
 
 /* NOTE: no pointer-cursor rules here on purpose. GTK4's CSS parser has no
@@ -106,5 +101,17 @@
 
 /* Compact avatars keep download notifications from becoming tall cards. */
 :root {
+  --cc-bg: rgba(48, 61, 72, 0.98);
+  --noti-bg: 48, 61, 72;
+  --noti-bg-alpha: 0.98;
+  --noti-border-color: #819fa8;
+  --noti-bg-darker: #344550;
+  --noti-bg-hover: #425967;
+  --noti-bg-focus: rgba(109, 143, 157, 0.3);
+  --noti-close-bg: #4e6572;
+  --noti-close-bg-hover: #617e8a;
+  --text-color: #e6edf2;
+  --text-color-disabled: #b5c5ce;
+  --bg-selected: #649f9a;
   --notification-icon-size: 40px;
 }
