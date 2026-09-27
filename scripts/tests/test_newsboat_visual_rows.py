@@ -1,5 +1,5 @@
 """Real-terminal visual selection, bulk mutation and search regression tests."""
-from contextlib import contextmanager
+from contextlib import closing, contextmanager
 import fcntl,os,pty,select,signal,sqlite3,struct,subprocess,tempfile,termios,time,unittest
 from pathlib import Path
 try:
@@ -110,3 +110,23 @@ class VisualRowsTests(unittest.TestCase):
             send('/Channel1\n');wait(lambda:'Search' in screen.display[0] and 'Item01' in '\n'.join(screen.display))
             self.assertNotIn('Item02','\n'.join(screen.display))
             send('q/needle1\n');wait(lambda:'needle1' in screen.display[0] and 'Item01' in '\n'.join(screen.display))
+
+    def test_download_marks_selected_read_and_advances_with_undo(self):
+        config=Path(__file__).resolve().parents[2]/'newsboat/.newsboat/config'
+        macro=next(line for line in config.read_text().splitlines() if line.startswith('macro d '))
+        with session(extra=macro+'\n') as (root,screen,send,wait):
+            (root/'scripts').mkdir()
+            helper=root/'scripts/newsboat-download-video.sh'
+            helper.write_text('#!/bin/sh\nprintf "%s\\n" "$1" >> "'+str(root/'downloaded')+'"\n')
+            helper.chmod(0o755)
+            def unread(guid):
+                with closing(sqlite3.connect(root/'cache')) as db:return db.execute('SELECT unread FROM rss_item WHERE guid=?',(guid,)).fetchone()[0]
+            send(',d');wait(lambda:(root/'downloaded').exists() and unread('1')==0 and 'Item02' in screen.display[screen.cursor.y])
+            self.assertEqual((root/'downloaded').read_text().splitlines(),['https://example.org/1'])
+            self.assertEqual(unread('2'),1)
+            send('U');wait(lambda:unread('1')==1)
+            # Downloading an already-read item must not toggle it back to unread.
+            send(':1\nn');wait(lambda:unread('1')==0)
+            send(':1\n,d');wait(lambda:len((root/'downloaded').read_text().splitlines())==2 and 'Item02' in screen.display[screen.cursor.y])
+            self.assertEqual(unread('1'),0)
+            self.assertEqual(unread('2'),1)

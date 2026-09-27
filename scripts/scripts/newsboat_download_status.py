@@ -23,11 +23,11 @@ def publish(state):
                 if not key:
                     continue
                 status = job['status']
-                if status in {'preparing','downloading','processing'} and (not job.get('process_start') or job.get('process_start') != start_time(job.get('pid', 0))):
-                    status = 'failed'
+                if status in {'preparing','downloading','processing','retrying'} and (not job.get('process_start') or job.get('process_start') != start_time(job.get('pid', 0))):
+                    status = 'waiting' if job.get('auto_resume') else 'failed'
                 if status == 'downloading':
                     value = f"↓ {job['percent']:.0f}%" if job.get('percent') is not None else '↓'
-                elif status in {'preparing','processing'}:
+                elif status in {'preparing','processing','retrying','waiting'}:
                     value = '…'
                 elif status in {'failed','cancelled'}:
                     value = '✕'

@@ -2,12 +2,14 @@
 import importlib.util
 import json
 import os
+import signal
 from pathlib import Path
 import subprocess
 import sys
 import tempfile
 import time
 import unittest
+from unittest.mock import patch
 
 SCRIPTS = Path(__file__).resolve().parents[1] / 'scripts'
 sys.path.insert(0, str(SCRIPTS))
@@ -36,13 +38,25 @@ if '--dump-single-json' in args:
 assert '--load-info-json' in args and '--no-simulate' in args
 folder=Path(args[args.index('-o')+1]).parent
 folder.mkdir(parents=True,exist_ok=True)
+partial=folder/'video [abc123DEF45].mp4.part'
+if partial.exists():
+ assert '--continue' in args
+ Path(os.environ['CALLS']+'.resumed').touch()
+partial.write_bytes(b'partial-video')
 for amount in (10,60,100):
  print('NBPROGRESS:'+json.dumps(dict(downloaded_bytes=amount,total_bytes=100)),flush=True)
  time.sleep(float(os.environ.get('DELAY','0.03')))
+if mode=='twice':
+ attempts=Path(os.environ['CALLS']+'.attempts')
+ count=int(attempts.read_text())+1 if attempts.exists() else 1
+ attempts.write_text(str(count))
+ if count<3:
+  print('temporary failure',file=sys.stderr);sys.exit(1)
 if mode=='download':
  print('HTTP 403: deliberate download failure',file=sys.stderr);sys.exit(1)
 if mode!='missing':
  target=folder/'video [abc123DEF45].mp4';target.write_bytes(b'finished-video')
+ partial.unlink(missing_ok=True)
  outputs=Path(args[args.index('--print-to-file')+2])
  outputs.write_text(json.dumps(str(target))+'\n')
 '''
@@ -77,6 +91,7 @@ class DownloadTests(unittest.TestCase):
         self.env = dict(os.environ, HOME=str(self.root), XDG_STATE_HOME=str(self.root/'state'),
                         NEWSBOAT_VIDEO_DIR=str(self.root/'videos'), TITLE=TITLE,
                         CALLS=str(self.root/'calls'), NOTICES=str(self.root/'notices'),
+                        NEWSBOAT_DOWNLOAD_ATTEMPTS='1', NEWSBOAT_DOWNLOAD_RETRY_DELAYS='0.01,0.01',
                         PATH=f'{notify_dir}:/usr/bin:/bin')  # No ~/.local/bin, like the desktop.
         self.processes = []
 
@@ -217,12 +232,123 @@ class DownloadTests(unittest.TestCase):
         self.assertEqual(len(calls),2)
         self.assertIn('sign-in retry failed',self.state()['error'])
 
+    def test_automatic_retries_succeed_on_third_attempt(self):
+        p = self.start(FAIL='twice', NEWSBOAT_DOWNLOAD_ATTEMPTS='3')
+        self.assertEqual(p.wait(timeout=8), 0)
+        self.assertTrue(Path(self.env['CALLS']+'.resumed').exists())
+        self.assertEqual(self.state()['attempt'], 3)
+        self.assertEqual(self.state()['status'], 'done')
+        notices = self.read_notices()
+        self.assertFalse(any(n[1] == 'Download failed' for n in notices))
+        calls = [json.loads(line) for line in (self.root/'calls').read_text().splitlines()]
+        downloads = [args for args in calls if '--load-info-json' in args]
+        self.assertEqual(len(downloads), 3)
+        self.assertTrue(all('--continue' in args for args in downloads))
+        self.assertEqual(len({args[args.index('-o')+1] for args in downloads}), 1)
+
+    def test_automatic_retries_stop_after_three_attempts(self):
+        p = self.start(FAIL='download', NEWSBOAT_DOWNLOAD_ATTEMPTS='3')
+        self.assertEqual(p.wait(timeout=8), 1)
+        self.assertEqual(self.state()['status'], 'failed')
+        self.assertEqual(self.state()['attempt'], 3)
+        calls = [json.loads(line) for line in (self.root/'calls').read_text().splitlines()]
+        self.assertEqual(sum('--load-info-json' in args for args in calls), 3)
+
+    def test_interrupted_worker_can_resume(self):
+        p = self.start(DELAY='1')
+        self.wait_active()
+        original = self.state()
+        p.send_signal(signal.SIGHUP)
+        self.assertEqual(p.wait(timeout=5), 130)
+        self.assertEqual(self.state()['status'], 'waiting')
+        self.assertTrue(self.state()['auto_resume'])
+        self.assertEqual(self.start().wait(timeout=5), 0)
+        self.assertEqual(self.state()['status'], 'done')
+        self.assertEqual(self.state()['output_template'], original['output_template'])
+
     def test_url_validation(self):
         self.assertEqual(module.canonical_url('https://youtu.be/abc123DEF45?list=ignore')[1],URL)
         self.assertEqual(module.canonical_url('https://example.com/article#section'), ('article', 'https://example.com/article'))
         self.assertEqual(module.canonical_url('https://evil-youtube.com/watch?v=abc123DEF45')[0], 'article')
         for bad in ('--exec=bad','https://youtube.com/@channel','file:///tmp/video'):
             with self.assertRaises(ValueError):module.canonical_url(bad)
+
+
+class RecoveryTests(unittest.TestCase):
+    def setUp(self):
+        self.temp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.temp.cleanup)
+        self.state = Path(self.temp.name)
+        for name, value in [('STATE', self.state)]:
+            context = patch.object(module, name, value)
+            context.start()
+            self.addCleanup(context.stop)
+        self.spawn = patch.object(module, 'detached').start()
+        self.online = patch.object(module, 'reachable', return_value=True).start()
+        self.addCleanup(patch.stopall)
+        self.key = module.job_key(URL)
+
+    def job(self, status='waiting', **extra):
+        data = dict(key=self.key, url=URL, status=status, auto_resume=True,
+                    pid=0, process_start=None, updated=0, title='Saved title')
+        data.update(extra)
+        (self.state/f'{self.key}.json').write_text(json.dumps(data))
+        return data
+
+    def test_offline_waits_then_reconnect_queues_once(self):
+        self.job('downloading')
+        self.online.return_value = False
+        module.recover()
+        self.spawn.assert_not_called()
+        waiting = module.read_job(self.key)
+        self.assertEqual(waiting['status'], 'waiting')
+        module.recover()
+        self.assertEqual(module.read_job(self.key)['updated'], waiting['updated'])
+        self.online.return_value = True
+        module.recover()
+        self.assertEqual(self.spawn.call_count, 1)
+        args = self.spawn.call_args.args[0]
+        self.assertEqual(args[0], '--worker')
+        self.assertEqual(args[2], URL)
+        module.recover()
+        self.assertEqual(self.spawn.call_count, 1)
+
+    def test_reopening_retries_failed_but_excludes_finished_deleted_cancelled_legacy(self):
+        for status in ('done', 'deleted', 'cancelled'):
+            self.job(status)
+            module.recover(reopened=True)
+        self.job('failed', auto_resume=False)
+        module.recover(reopened=True)
+        self.spawn.assert_not_called()
+        self.job('failed')
+        module.recover()
+        self.spawn.assert_not_called()
+        module.recover(reopened=True)
+        self.spawn.assert_called_once()
+
+    def test_waiting_waybar_never_looks_complete(self):
+        view = module.waybar([self.job()])
+        self.assertEqual(view['text'], '…')
+        self.assertEqual(view['class'], 'downloading')
+        self.assertIn('Waiting to resume', view['tooltip'])
+
+    def test_orphan_downloader_is_not_duplicated(self):
+        self.job('downloading', child_pid=os.getpid(), child_start=module.process_start(os.getpid()))
+        module.recover(reopened=True)
+        self.spawn.assert_not_called()
+
+    def test_cancel_waiting_invalidates_queued_worker(self):
+        self.job(worker_token='old')
+        self.assertEqual(module.cancel_job(self.key), 0)
+        self.assertEqual(module.download(URL, worker_token='old'), 0)
+        module.recover(reopened=True)
+        self.spawn.assert_not_called()
+        self.assertEqual(module.read_job(self.key)['status'], 'cancelled')
+
+    def test_stale_worker_cannot_restart_deleted_job(self):
+        self.job('deleted', worker_token='old')
+        self.assertEqual(module.download(URL, worker_token='old'), 0)
+        self.assertEqual(module.read_job(self.key)['status'], 'deleted')
 
 
 if __name__=='__main__':unittest.main()

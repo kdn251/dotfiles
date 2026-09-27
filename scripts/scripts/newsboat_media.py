@@ -122,9 +122,8 @@ def candidates():
         key = identity(job['url'])
         if not key:
             continue
-        if job.get('status') in {'preparing', 'downloading', 'processing'}:
-            if job.get('process_start') and start_time(job.get('pid', 0)) == job['process_start']:
-                blocked.add(key)
+        if job.get('status') in {'preparing', 'downloading', 'processing', 'retrying', 'waiting'}:
+            blocked.add(key)
         elif job.get('status') in {'failed', 'cancelled'} and not job.get('files'):
             blocked.add(key)
         for value in job.get('files', []):
@@ -236,7 +235,7 @@ def rebuild_unlocked():
             keys.add(key)
     # Keep unfinished attempts visible so ,d can retry them, even without a file.
     for _, job in records():
-        if job.get('status') in {'preparing', 'downloading', 'processing', 'failed', 'cancelled'}:
+        if job.get('status') in {'preparing', 'downloading', 'processing', 'retrying', 'waiting', 'failed', 'cancelled'}:
             key = library_identity(job['url'])
             if key:
                 keys.add(key)
@@ -286,9 +285,20 @@ def delete(url):
     key = library_identity(url)
     if not key:
         raise ValueError('Could not identify the selected download')
-    with library_lock():
+    with library_lock(), contextlib.ExitStack() as locks:
+        # Prevent recovery from starting a queued worker while we delete it.
+        for state_path, job in records():
+            if library_identity(job['url']) != key:
+                continue
+            lock = locks.enter_context(state_path.with_suffix('.lock').open('a'))
+            try:
+                fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            except BlockingIOError:
+                raise ValueError('Cancel this video download before deleting it')
+            if job.get('child_start') and start_time(job.get('child_pid', 0)) == job['child_start']:
+                raise ValueError('Cancel this video download before deleting it')
         for _, job in records():
-            if library_identity(job['url']) == key and job.get('status') in {'preparing', 'downloading', 'processing'}:
+            if library_identity(job['url']) == key and job.get('status') in {'preparing', 'downloading', 'processing', 'retrying', 'waiting'}:
                 if job.get('process_start') and start_time(job.get('pid', 0)) == job['process_start']:
                     raise ValueError('Cancel this video download before deleting it')
         # No shell glob or substring match: every candidate has a parsed ID.

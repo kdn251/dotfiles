@@ -29,7 +29,7 @@
     "custom/display",
     // Speaker icon: click opens pavucontrol (was Alt+Shift+V).
     "pulseaudio",
-    "bluetooth",
+    "custom/bluetooth",
     "network",
     "battery"
   ],
@@ -68,20 +68,11 @@
   //   "format": "{icon} {temperatureC}°C",
   //   "format-icons": ["", "", ""]
   // },
-"bluetooth": {
-    "format": "",
-    "format-disabled": "",
-    "format-off": "",
-    "format-connected": "", 
-    "format-connected-battery": "",
-    // Click opens a device panel (swaync notification with action buttons):
-    // quick connect/disconnect for paired devices, plus "Manage..." for
-    // bluetui. The panel powers the adapter on when it is off.
-    "on-click": "~/scripts/bluetooth-panel.sh",
-    // These lines control the hover state (tooltip)
-    "tooltip-format": "{controller_alias}\n\n{device_enumerate}",
-    "tooltip-format-enumerate-connected": "{device_alias}",
-    "tooltip-format-enumerate-connected-battery": "{device_alias} ({device_battery_percentage}%)"
+"custom/bluetooth": {
+    "exec": "python3 ~/.config/waybar/scripts/bluetooth-status.py",
+    "return-type": "json",
+    "interval": 2,
+    "on-click": "~/scripts/bluetooth-panel.sh"
 },
   "battery": {
     // omarchy's battery presentation: a 10-step ramp with a separate charging
@@ -259,6 +250,7 @@
       "car": "",
       "default": ["", "", ""]
     },
-    "on-click": "~/scripts/sound-panel.sh"
+    "on-click": "python3 ~/.config/waybar/scripts/bluetooth-status.py --click-audio",
+    "on-click-right": "~/scripts/sound-panel.sh"
   }
 }

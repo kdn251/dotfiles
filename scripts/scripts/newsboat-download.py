@@ -8,17 +8,19 @@ import os
 from pathlib import Path
 import re
 import signal
+import socket
 import subprocess
 import sys
 import tempfile
 import time
+import uuid
 from urllib.parse import parse_qs, urlparse
 from newsboat_media import rebuild
 
 SCRIPTS = Path(__file__).resolve().parent
 STATE = Path(os.environ.get('XDG_STATE_HOME', Path.home() / '.local/state')) / 'newsboat/downloads'
 VIDEOS = Path(os.environ.get('NEWSBOAT_VIDEO_DIR', Path.home() / 'Videos/newsboat'))
-ACTIVE = {'preparing', 'downloading', 'processing'}
+ACTIVE = {'preparing', 'downloading', 'processing', 'retrying'}
 FINISHED_SECONDS = 5
 FAILED_SECONDS = 5
 FORMAT = 'bestvideo[height<=?1440]+bestaudio/best[height<=?1440]/best'
@@ -113,7 +115,7 @@ def failure_notification(key):
     try:
         result = subprocess.run(args, capture_output=True, text=True, timeout=12)
         if 'retry' in result.stdout.splitlines():
-            subprocess.Popen([sys.executable, str(Path(__file__).resolve()), job['url']],
+            subprocess.Popen([sys.executable, str(Path(__file__).resolve()), '--enqueue', job['url']],
                              stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
                              stderr=subprocess.DEVNULL, start_new_session=True)
     except (OSError, subprocess.TimeoutExpired):
@@ -160,7 +162,89 @@ def cookie_retry_options(platform, diagnostics):
     return ['--cookies-from-browser', browser]
 
 
-def download(url, title=''):
+def read_job(key):
+    try:return json.loads((STATE / f'{key}.json').read_text())
+    except (OSError, ValueError):return {}
+
+
+def reachable(url):
+    parsed = urlparse(url)
+    try:
+        with socket.create_connection((parsed.hostname, parsed.port or (443 if parsed.scheme == 'https' else 80)), timeout=2):
+            return True
+    except OSError:return False
+
+
+def child_alive(job):
+    return bool(job.get('child_start')) and process_start(job.get('child_pid',0)) == job['child_start']
+
+
+def detached(args):
+    return subprocess.Popen([sys.executable, str(Path(__file__).resolve()), *args],
+                            stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
+                            stderr=subprocess.DEVNULL, start_new_session=True)
+
+
+def start_watcher():
+    detached(['--watch'])
+
+
+def resumable(job, reopened=False):
+    return job.get('auto_resume', False) and (
+        job.get('status') in ACTIVE | {'waiting'} or
+        (reopened and job.get('status') == 'failed'))
+
+
+def enqueue(url, title='', automatic=False, reopened=False, online=True):
+    platform, url = canonical_url(url)
+    STATE.mkdir(parents=True, exist_ok=True, mode=0o700)
+    key = job_key(url)
+    with (STATE / f'{key}.lock').open('a') as lock:
+        try:fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except BlockingIOError:return 0
+        job = read_job(key)
+        if automatic and not resumable(job, reopened):return 0
+        if (job.get('status') in ACTIVE and alive(job)) or child_alive(job):return 0
+        if job.get('status') == 'done' and any(Path(p).is_file() for p in job.get('files',[])):return 0
+        if automatic and job.get('wait_reason') == 'queued' and time.time()-job.get('updated',0) < 30:return 0
+        if automatic and not online and job.get('status') == 'waiting':return 0
+        (STATE / f'{key}.cancel').unlink(missing_ok=True)
+        token = uuid.uuid4().hex
+        job.update(worker_token=token,key=key,url=url,platform=platform,title=title or job.get('title') or 'Fetching video details',
+                   status='waiting',auto_resume=True,percent=None,
+                   wait_reason='queued' if online else 'network',pid=0,process_start=None,
+                   child_pid=0,child_start=None)
+        save(job)
+        # A token prevents an older queued worker from restarting a finished job.
+    if online:detached(['--worker', token, url, job['title']])
+    if not automatic:start_watcher()
+    return 0
+
+
+def recover(reopened=False):
+    connectivity = {}
+    for path in STATE.glob('*.json'):
+        try:
+            job = json.loads(path.read_text())
+            if not resumable(job,reopened) or alive(job) or child_alive(job):continue
+            url = job['url'];host = urlparse(url).netloc
+            if host not in connectivity:connectivity[host] = reachable(url)
+            enqueue(url,job.get('title',''),automatic=True,reopened=reopened,online=connectivity[host])
+        except (OSError,ValueError,KeyError):continue
+
+
+def watch():
+    STATE.mkdir(parents=True, exist_ok=True, mode=0o700)
+    with (STATE / '.recovery.lock').open('a') as lock:
+        try:fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except BlockingIOError:return 0
+        while True:
+            recover()
+            if not any(resumable(read_job(path.stem)) for path in STATE.glob('*.json')):return 0
+            time.sleep(15)
+
+
+def download(url, title='', worker_token=None):
     platform, url = canonical_url(url)
     STATE.mkdir(parents=True, exist_ok=True, mode=0o700)
     key = job_key(url)
@@ -170,15 +254,22 @@ def download(url, title=''):
     except BlockingIOError:
         lock.close()
         return 0
-    job = dict(key=key, url=url, platform=platform, title=title or 'Fetching video details',
+    previous = read_job(key)
+    if worker_token and (previous.get('worker_token') != worker_token or previous.get('status') != 'waiting'):
+        lock.close()
+        return 0
+    job = dict(key=key, url=url, platform=platform, title=title or previous.get('title') or 'Fetching video details',
                creator='', icon='', status='preparing', bytes=0, percent=None,
                pid=os.getpid(), process_start=process_start(os.getpid()),
-               log=str(STATE / f'{key}.log'))
+               log=str(STATE / f'{key}.log'), auto_resume=True,
+               notification_id=previous.get('notification_id',0),
+               output_template=previous.get('output_template'),
+               download_title=previous.get('download_title'))
     process = None
     previous_handlers = {}
 
-    def cancel(*_):
-        raise Cancelled()
+    def cancel(signum, *_):
+        raise Cancelled(signum)
 
     for sig in (signal.SIGTERM, signal.SIGINT, signal.SIGHUP):
         previous_handlers[sig] = signal.signal(sig, cancel)
@@ -188,9 +279,14 @@ def download(url, title=''):
     ytdlp = str(Path.home() / '.local/bin/yt-dlp')
     if not os.access(ytdlp, os.X_OK):
         ytdlp = 'yt-dlp'
-    try:
-        # Publish the row immediately; progress updates only need the status index.
-        rebuild()
+    def launch(*args, **kwargs):
+        child = subprocess.Popen(*args, **kwargs)
+        job.update(child_pid=child.pid, child_start=process_start(child.pid))
+        save(job)
+        return child
+
+    def attempt():
+        nonlocal process
         if platform == 'article':
             from newsboat_media import cached_title
             job.update(title=title or cached_title(url) or urlparse(url).hostname, status='downloading')
@@ -199,7 +295,7 @@ def download(url, title=''):
             python = Path(os.environ.get('XDG_DATA_HOME', Path.home()/'.local/share'))/'newsboat/article-venv/bin/python'
             if not python.exists():
                 raise RuntimeError('Run ~/scripts/newsboat-article-setup.sh to install the article extractor')
-            process = subprocess.Popen([str(python), str(SCRIPTS/'newsboat_articles.py'), url, job['title']],
+            process = launch([str(python), str(SCRIPTS/'newsboat_articles.py'), url, job['title']],
                                        stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, start_new_session=True)
             try:
                 output, errors = process.communicate(timeout=180)
@@ -215,10 +311,10 @@ def download(url, title=''):
             return 0
         with tempfile.TemporaryDirectory(prefix='newsboat-video-') as temp, open(job['log'], 'w') as log:
             os.chmod(job['log'], 0o600)
-            process = subprocess.Popen([ytdlp, '--no-playlist', '--dump-single-json', '-f', FORMAT,
+            process = launch([ytdlp, '--socket-timeout', '15', '--retries', '3', '--no-playlist', '--dump-single-json', '-f', FORMAT,
                                         '--', url], stdout=subprocess.PIPE, stderr=log,
                                        env=env, start_new_session=True)
-            raw, _ = process.communicate()
+            raw, _ = process.communicate(timeout=120)
             session_options = []
             if process.returncode:
                 log.flush()
@@ -226,11 +322,11 @@ def download(url, title=''):
                 if session_options:
                     log.write('Retrying YouTube with the existing Brave session.\n')
                     log.flush()
-                    process = subprocess.Popen([ytdlp, *session_options, '--no-playlist',
+                    process = launch([ytdlp, *session_options, '--socket-timeout', '15', '--retries', '3', '--fragment-retries', '3', '--continue', '--no-playlist',
                                                 '--dump-single-json', '-f', FORMAT, '--', url],
                                                stdout=subprocess.PIPE, stderr=log, env=env,
                                                start_new_session=True)
-                    raw, _ = process.communicate()
+                    raw, _ = process.communicate(timeout=120)
             if process.returncode:
                 raise RuntimeError('YouTube sign-in retry failed; open the video in Brave and try again'
                                    if session_options else 'Could not fetch video details; see the download log')
@@ -244,21 +340,25 @@ def download(url, title=''):
             # top-level VOD directory, so it cannot remove an active download.
             folder = VIDEOS / ('downloaded-videos' if platform == 'youtube' else 'twitch-vods/manual')
             folder.mkdir(parents=True, exist_ok=True)
+            if not job.get('output_template'):
+                job['output_template'] = str(folder / '%(title).180B [%(id)s].%(ext)s')
+                job['download_title'] = job['title']
             metadata = Path(temp) / 'video.json'
-            metadata.write_bytes(raw)
+            info['title'] = job.get('download_title') or job['title']
+            metadata.write_text(json.dumps(info))
             outputs = Path(temp) / 'finished.jsonl'
             job.update(status='downloading', folder=str(folder))
             save(job)
             notify(job, 'Downloading')
-            command = [ytdlp, *session_options, '--no-playlist', '--load-info-json', str(metadata),
+            command = [ytdlp, *session_options, '--socket-timeout', '15', '--retries', '3', '--fragment-retries', '3', '--continue', '--no-playlist', '--load-info-json', str(metadata),
                        '--no-simulate', '-f', FORMAT, '--merge-output-format', 'mp4',
                        '--restrict-filenames', '--no-overwrites', '--newline', '--progress',
                        '--progress-delta', '1',
                        '--progress-template', 'download:NBPROGRESS:%(progress)j',
                        '--progress-template', 'postprocess:NBPOST:%(progress.status)s',
                        '--print-to-file', 'after_move:%(filepath)j', str(outputs),
-                       '-o', str(folder / '%(title).180B [%(id)s].%(ext)s')]
-            process = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=log,
+                       '-o', job['output_template']]
+            process = launch(command, stdout=subprocess.PIPE, stderr=log,
                                        env=env, text=True, start_new_session=True)
             for line in process.stdout:
                 if line.startswith('NBPROGRESS:'):
@@ -289,29 +389,53 @@ def download(url, title=''):
                 # a failed download. Preserve diagnostics for a manual retry.
                 log.write(f'Library update failed: {error}\n')
             return 0
-    except Cancelled:
+
+    try:
+        rebuild()
+        attempts = max(1, min(3, int(os.environ.get('NEWSBOAT_DOWNLOAD_ATTEMPTS', '3'))))
+        delays = [float(n) for n in os.environ.get('NEWSBOAT_DOWNLOAD_RETRY_DELAYS', '5,15').split(',')]
+        for number in range(1, attempts + 1):
+            job.update(status='preparing', attempt=number, percent=None)
+            save(job)
+            try:
+                return attempt()
+            except (OSError, ValueError, RuntimeError, subprocess.TimeoutExpired) as error:
+                stop(process)
+                if process is not None:
+                    for stream in (process.stdout, process.stderr):
+                        if stream is not None:stream.close()
+                process = None
+                with open(job['log'], 'a') as log:log.write(str(error)+'\n')
+                job['error'] = str(error)
+                permanent = any(message in str(error) for message in (
+                    'sign-in retry failed', 'install the article extractor', 'did not resolve to a video'))
+                if number < attempts and not permanent:
+                    job.update(status='retrying', percent=None)
+                    save(job)
+                    notify(job, f'Retrying download ({number + 1}/{attempts})')
+                    time.sleep(delays[min(number - 1, len(delays) - 1)])
+                    continue
+                waiting = not permanent and not reachable(url)
+                job.update(status='waiting' if waiting else 'failed', percent=None,
+                           wait_reason='network' if waiting else '')
+                save(job)
+                notify(job, 'Waiting for connection' if waiting else 'Download failed')
+                return 1
+    except Cancelled as error:
         stop(process)
-        job.update(status='cancelled', percent=None)
+        explicit = (STATE / f'{key}.cancel').exists()
+        (STATE / f'{key}.cancel').unlink(missing_ok=True)
+        job.update(status='cancelled' if explicit else 'waiting', percent=None,
+                   auto_resume=not explicit, wait_reason='interrupted')
         save(job)
-        notify(job, 'Download cancelled')
-        # Partial files are deliberately retained so another ,d can resume.
+        if explicit:notify(job, 'Download cancelled')
         return 130
-    except (OSError, ValueError, RuntimeError) as error:
-        stop(process)
-        with open(job['log'], 'a') as log:
-            log.write(str(error)+'\n')
-        job.update(status='failed', error=str(error), percent=None)
-        save(job)
-        notify(job, 'Download failed')
-        return 1
     finally:
         stop(process)
         if process is not None:
             for stream in (process.stdout, process.stderr):
-                if stream is not None:
-                    stream.close()
-        for sig, handler in previous_handlers.items():
-            signal.signal(sig, handler)
+                if stream is not None:stream.close()
+        for sig, handler in previous_handlers.items():signal.signal(sig, handler)
         lock.close()
 
 
@@ -342,8 +466,8 @@ def jobs():
             if job.get('status') == 'deleted':
                 continue
             if job['status'] in ACTIVE and not alive(job):
-                job.update(status='failed', error='Download process stopped unexpectedly')
-                save(job)
+                job.update(status='waiting' if job.get('auto_resume') else 'failed',
+                           wait_reason='interrupted', error='Download process stopped unexpectedly')
             ttl = FAILED_SECONDS if job['status'] == 'failed' else FINISHED_SECONDS
             if job['status'] in ACTIVE or time.time() - job['updated'] < ttl:
                 found.append(job)
@@ -358,7 +482,8 @@ def size_text(value):
 
 def detail(job):
     labels = {'preparing': 'Preparing', 'downloading': 'Downloading', 'processing': 'Merging',
-              'done': 'Complete', 'failed': 'Failed', 'cancelled': 'Cancelled'}
+              'done': 'Complete', 'failed': 'Failed', 'cancelled': 'Cancelled',
+              'retrying': 'Retrying', 'waiting': 'Waiting to resume'}
     text = labels[job['status']]
     if job.get('percent') is not None and job['status'] == 'downloading':
         text += f' {job["percent"]:.0f}%'
@@ -372,15 +497,27 @@ def waybar(items):
         return {'text': ''}
     active = sum(j['status'] in ACTIVE for j in items)
     failed = any(j['status'] == 'failed' for j in items)
-    icon = '\U000f01da' if active else ('✕' if failed else '✓')
+    waiting = any(j['status'] == 'waiting' for j in items)
+    icon = '\U000f01da' if active else ('✕' if failed else ('…' if waiting else '✓'))
     text = f'{icon} {active}' if active > 1 else icon
     tooltip = '\n\n'.join(html.escape(f'{j["title"]}\n'
                           + (f'{j["creator"]} · ' if j.get('creator') else '')
                           + detail(j)) for j in items)
-    return dict(text=text, tooltip=tooltip, **{'class': 'downloading' if active else ('failed' if failed else 'done')})
+    return dict(text=text, tooltip=tooltip, **{'class': 'downloading' if active or waiting else ('failed' if failed else 'done')})
 
 
 def cancel_job(key):
+    pending = read_job(key)
+    if pending.get('status') == 'waiting':
+        with (STATE / f'{key}.lock').open('a') as lock:
+            try:fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            except BlockingIOError:pass
+            else:
+                pending = read_job(key)
+                if pending.get('status') == 'waiting':
+                    pending.update(status='cancelled', auto_resume=False)
+                    save(pending)
+                    return 0
     match = next((j for j in jobs() if j['key'] == key and j['status'] in ACTIVE), None)
     if not match or not alive(match):
         return 1
@@ -390,6 +527,8 @@ def cancel_job(key):
     expected = b'streamlink' if key.startswith('legacy-') else b'newsboat-download.py'
     if not any(Path(os.fsdecode(arg)).name == expected.decode() for arg in args[:3]):
         return 1
+    if not key.startswith('legacy-'):
+        (STATE / f'{key}.cancel').touch()
     os.kill(match['pid'], signal.SIGTERM)
     return 0
 
@@ -423,6 +562,16 @@ def panel():
 
 def main(args):
     os.umask(0o077)
+    if args == ['--recover']:
+        recover(reopened=True)
+        start_watcher()
+        return 0
+    if args == ['--watch']:
+        return watch()
+    if len(args) >= 2 and args[0] == '--enqueue':
+        return enqueue(args[1], ' '.join(args[2:]))
+    if len(args) >= 3 and args[0] == '--worker':
+        return download(args[2], ' '.join(args[3:]), worker_token=args[1])
     if args == ['--waybar']:
         print(json.dumps(waybar(jobs())))
         return 0
