@@ -231,7 +231,10 @@ def rebuild_unlocked():
         valid = entry.get('valid') if entry.get('signature') == signature else playable(path)
         index[str(path)] = dict(signature=signature, valid=valid,
                                 downloaded_at=entry.get("downloaded_at", stat.st_ctime))
-        if valid:
+        # The scheduled downloader's top-level Twitch files belong to VODs.
+        # Keep them indexed for local playback/badges; explicit ,d requests
+        # live in twitch-vods/manual and still belong in Downloads.
+        if valid and path.parent != ROOT / 'twitch-vods':
             keys.add(key)
     # Keep unfinished attempts visible so ,d can retry them, even without a file.
     for _, job in records():

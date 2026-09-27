@@ -170,6 +170,19 @@ class MediaTests(unittest.TestCase):
         self.assertEqual(text.count('query:📥 Downloads:'),1)
         media.rebuild();self.assertEqual(media.URLS.read_text(),text)
 
+    def test_scheduled_vods_stay_out_of_downloads_but_remain_playable(self):
+        scheduled = self.video('twitch-vods/creator - Scheduled VOD - 1234567890.mp4')
+        self.video('twitch-vods/manual/Manual [v1234567891].mp4')
+        self.video('YouTube [abc123DEF45].mp4')
+        self.assertEqual(media.rebuild(), 2)
+        query = media.URLS.read_text().splitlines()[0]
+        self.assertNotIn('1234567890', query)
+        self.assertIn('1234567891', query)
+        self.assertIn('abc123DEF45', query)
+        self.assertEqual(media.find('https://www.twitch.tv/videos/1234567890'), scheduled)
+        index = json.loads((media.STATE / '.media-index.json').read_text())
+        self.assertTrue(index[str(scheduled)]['valid'])
+
     def test_download_query_excludes_old_entries_for_same_video(self):
         self.video('YouTube [abc123DEF45].mp4')
         with sqlite3.connect(media.URLS.parent/'cache.db') as db:
