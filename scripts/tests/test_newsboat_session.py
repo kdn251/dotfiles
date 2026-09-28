@@ -131,6 +131,64 @@ class FeedServer(http.server.BaseHTTPRequestHandler):
 
 @unittest.skipUnless(shutil.which('newsboat'), 'requires Newsboat')
 class TerminalIntegrationTests(unittest.TestCase):
+    def test_playlist_shortcut_opens_during_active_feed_refresh(self):
+        gate=threading.Event();started=threading.Event()
+        class BlockingFeed(FeedServer):
+            def do_GET(self):
+                if getattr(self.server,'block',False):
+                    started.set();gate.wait(10)
+                super().do_GET()
+        server=http.server.ThreadingHTTPServer(('127.0.0.1',0),BlockingFeed)
+        thread=threading.Thread(target=server.serve_forever,daemon=True);thread.start()
+        try:
+            with tempfile.TemporaryDirectory() as directory:
+                root=Path(directory)
+                wrapper=root/'newsboat-session.py';shutil.copyfile(SCRIPT,wrapper)
+                helper=root/'newsboat-playlists.py'
+                helper.write_text('import os,sys,tty\nfrom pathlib import Path\n'
+                    'if sys.argv[1]=="request":\n'
+                    ' Path(os.environ["NEWSBOAT_PLAYLIST_REQUEST"]).write_text(sys.argv[2]);sys.exit(0)\n'
+                    'tty.setraw(0);os.write(1,b"\\x1b[H\\x1b[2JPLAYLIST_DURING_REFRESH")\n'
+                    'while os.read(0,1)!=b"q":pass\n')
+                bindir=root/'.local/lib/newsboat-paged';bindir.mkdir(parents=True)
+                binary=Path.home()/'.local/lib/newsboat-paged/newsboat'
+                (bindir/'newsboat').symlink_to(binary)
+                config=root/'config';urls=root/'urls';cache=root/'cache.db'
+                binding=next(line for line in SCRIPT.parents[2].joinpath('newsboat/.newsboat/config').read_text().splitlines() if line.startswith('bind P '))
+                self.assertIn('request %u',binding)
+                self.assertIn('open-in-browser-noninteractively',binding)
+                binding=binding.replace('~/scripts/newsboat-playlists.py',str(helper))
+                config.write_text('show-read-feeds yes\nshow-read-articles yes\nconfirm-exit no\nbind R feedlist,articlelist,searchresultslist reload-all\n'+binding+'\n')
+                urls.write_text(f'http://127.0.0.1:{server.server_port}/0\n')
+                args=['-C',str(config),'-u',str(urls),'-c',str(cache)]
+                subprocess.run([str(binary),*args,'-x','reload'],check=True,capture_output=True)
+                env=dict(os.environ,HOME=directory,XDG_STATE_HOME=str(root/'state'),TERM='xterm-256color')
+                pid,fd=pty.fork()
+                if pid==0:os.execve(sys.executable,[sys.executable,str(wrapper),*args],env)
+                fcntl.ioctl(fd,termios.TIOCSWINSZ,struct.pack('HHHH',24,100,0,0))
+                captured=bytearray()
+                def until(needle):
+                    end=time.monotonic()+6
+                    while time.monotonic()<end:
+                        if needle in captured:return
+                        if select.select([fd],[],[],.05)[0]:
+                            try:captured.extend(os.read(fd,65536))
+                            except OSError:break
+                    self.fail(repr(bytes(captured[-1600:])))
+                try:
+                    until(b'Test feed 0');captured.clear();os.write(fd,b'\n')
+                    until(b'Test article 0')
+                    server.block=True;captured.clear();os.write(fd,b'R')
+                    until(b'feeds refreshed');self.assertTrue(started.wait(1))
+                    os.write(fd,b'P');until(b'PLAYLIST_DURING_REFRESH')
+                    self.assertFalse(gate.is_set(),'playlist opening waited for refresh completion')
+                    captured.clear();os.write(fd,b'q');until(b'Test article 0')
+                    gate.set();until(b'1/1 feeds refreshed')
+                finally:
+                    gate.set();os.kill(pid,signal.SIGTERM);os.waitpid(pid,0);os.close(fd)
+        finally:
+            gate.set();server.shutdown();server.server_close()
+
     def test_closed_terminal_releases_newsboat(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
