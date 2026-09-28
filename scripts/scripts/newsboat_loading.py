@@ -35,6 +35,30 @@ class GraphicsStream:
             offset = end+terminator
 
 
+def ship_art(frame, inner):
+    """Shared smoke, ship bobbing, and waves for refresh and thumbnail loading."""
+    smoke = [list(' ' * 18) for _ in range(2)]
+    for stack in (7, 11):
+        for puff_offset in (0, 6):
+            age = (frame // 2 + puff_offset + (2 if stack == 11 else 0)) % 12
+            smoke[1-age//6][stack+age//4] = 'o' if 3 <= age < 9 else '.'
+    art = [''.join(line) for line in smoke] + [
+        '      |#| |#|     ',
+        '   ___|[]_[]|___  ',
+        '   \\_o_o_o_o__/   ',
+    ]
+    colors = [244,244,203,255,203]
+    if 6 <= frame % 32 < 22:
+        art = art[1:] + [' ' * 18]
+        colors = colors[1:] + [244]
+    wave = '~^~~-~~^~~-~~^~~-~~^~~-~~'
+    shift = (frame//2) % 6
+    art.append(wave[shift:shift+18])
+    colors.append(38)
+    art = [line.center(inner) for line in art[:-1]] + [(wave * 3)[shift:shift+inner]]
+    return list(zip(colors, art))
+
+
 class Renderer:
     def __init__(self):
         launcher = Path(__file__).with_name("newsboat-launch.sh")
@@ -71,26 +95,8 @@ class Renderer:
         if height == 1:
             lines = ['🚢  ' + caption.splitlines()[-1][:max(0, width-4)]]
         else:
-            smoke = [list(' ' * 18) for _ in range(2)]
-            for stack in (7, 11):
-                for puff_offset in (0, 6):
-                    age = (frame // 2 + puff_offset + (2 if stack == 11 else 0)) % 12
-                    smoke[1-age//6][stack+age//4] = 'o' if 3 <= age < 9 else '.'
-            art = [''.join(line) for line in smoke] + [
-                '      |#| |#|     ',
-                '   ___|[]_[]|___  ',
-                '   \\_o_o_o_o__/   ',
-            ]
-            colors = [244,244,203,255,203]
-            if 6 <= frame % 32 < 22:
-                art = art[1:] + [' ' * 18]
-                colors = colors[1:] + [244]
-            wave = '~^~~-~~^~~-~~^~~-~~^~~-~~'
-            shift = (frame//2) % 6
-            art.append(wave[shift:shift+18])
-            colors.append(38)
             inner = width - 2
-            art = [line.center(inner) for line in art[:-1]] + [(wave * 3)[shift:shift+inner]]
+            colors, art = zip(*ship_art(frame, inner))
             lines = [f'│\x1b[38;5;{color}m{line}\x1b[0m│' for color,line in zip(colors,art)]
             lines.extend('│' + line[:inner].center(inner) + '│' for line in caption.splitlines())
             lines = ['╭' + '─' * inner + '╮'] + lines + ['╰' + '─' * inner + '╯']

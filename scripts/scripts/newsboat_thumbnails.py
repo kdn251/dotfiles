@@ -19,12 +19,15 @@ import struct
 import subprocess
 import termios
 import threading
+import time
+from functools import lru_cache
 import tty
 from urllib.request import Request, urlopen
 from urllib.parse import urlparse
 
 from newsboat_youtube_playlists import LIBRARY
 from newsboat_media import identity
+from newsboat_loading import ship_art
 
 MARKER = b'\x1b]777;newsboat-thumbnail;'
 
@@ -162,6 +165,28 @@ class Fetcher:
             self.results.put((ident, data))
 
 
+@lru_cache(maxsize=97)
+def loading_png(frame, failed=False):
+    """Render the refresh ship inside the existing image placement, not curses."""
+    from PIL import Image, ImageDraw, ImageFont
+    canvas = Image.new('RGBA', (680, 400), (0, 0, 0, 0))
+    draw = ImageDraw.Draw(canvas)
+    font_path = '/usr/share/fonts/TTF/JetBrainsMonoNerdFontMono-Regular.ttf'
+    try:
+        font = ImageFont.truetype(font_path, 28)
+    except OSError:
+        font = ImageFont.load_default(size=28)
+    colors = {244:'#808080',203:'#ff5f5f',255:'#eeeeee',38:'#00afd7'}
+    draw.rounded_rectangle((2,2,677,397),radius=20,outline='#ffffff',width=4)
+    for row,(color,line) in enumerate(ship_art(frame, 34)):
+        draw.text((340,40+row*40),line,font=font,fill=colors[color],anchor='mt')
+    caption = 'Thumbnail unavailable' if failed else 'Loading thumbnail…'
+    draw.text((340,330),caption,font=font,fill='#cdd6f4',anchor='mt')
+    output = io.BytesIO()
+    canvas.save(output,format='PNG')
+    return output.getvalue()
+
+
 def delete(image_id):
     return f'\x1b_Ga=d,d=I,i={image_id},q=2\x1b\\'.encode()
 
@@ -236,6 +261,7 @@ def run(command, env):
         nonlocal resized
         resized = True
     signal.signal(signal.SIGWINCH, resize)
+    last_placeholder = None
     preview_active = False
     configured = False
     def preview_mode(active):
@@ -263,6 +289,7 @@ def run(command, env):
                 fcntl.ioctl(master, termios.TIOCSWINSZ, size)
                 write(1, delete(image_id))
                 current = png = None
+                last_placeholder = None
                 resized = False
             ready, _, _ = select.select([0, master], [], [], .05)
             repaint = False
@@ -283,6 +310,7 @@ def run(command, env):
                         if b'\x1b[2J' in value or b'\x1b[?1049' in value:
                             write(1, delete(image_id))
                             current = png = None
+                            last_placeholder = None
                         write(1, value)
                         repaint = True
                     else:
@@ -290,6 +318,7 @@ def run(command, env):
                         if selected != current:
                             write(1, delete(image_id))
                             current, png = selected, None
+                            last_placeholder = None
                             if current:
                                 if current[4] in images:
                                     png = images[current[4]]
@@ -309,8 +338,18 @@ def run(command, env):
                     if png:
                         write(1, transmit(image_id, png))
                         repaint = True
-            if repaint and current and png:
-                write(1, placement(image_id, current, size, png))
+            display_png = png
+            if current and not png:
+                failed = current[4] in images
+                frame = 0 if failed else int(time.monotonic() * 10) % 96
+                placeholder = (frame, failed)
+                display_png = loading_png(*placeholder)
+                if placeholder != last_placeholder:
+                    write(1, transmit(image_id, display_png))
+                    last_placeholder = placeholder
+                    repaint = True
+            if repaint and current and display_png:
+                write(1, placement(image_id, current, size, display_png))
             done, exit_status = os.waitpid(pid, os.WNOHANG)
             if done:
                 status = exit_status

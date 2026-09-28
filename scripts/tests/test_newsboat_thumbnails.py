@@ -152,6 +152,51 @@ class ThumbnailTests(unittest.TestCase):
             finally:
                 os.kill(pid,signal.SIGTERM);os.waitpid(pid,0);os.close(fd)
 
+    def test_loading_frames_and_nonblocking_handoff(self):
+        self.assertNotEqual(thumbs.loading_png(0),thumbs.loading_png(8))
+        self.assertNotEqual(thumbs.loading_png(0),thumbs.loading_png(0,True))
+        with Image.open(io.BytesIO(thumbs.loading_png(0))) as image:
+            self.assertEqual(image.size,(680,400))
+        def fetch(ident):
+            time.sleep(.4)
+            return b'ready' if ident=='abc123DEF45' else None
+        child = """import os, tty
+tty.setraw(0)
+marker=b'\\x1b]777;newsboat-thumbnail;'
+def video(ident):os.write(1,marker+b'82;1;38;13;https://youtu.be/'+ident+b'\\x07')
+video(b'abc123DEF45')
+os.read(0,1);os.write(1,marker+b'\\x07moved')
+os.read(0,1);video(b'abc123DEF45')
+os.read(0,1);video(b'abc123DEF46')
+os.read(0,1)
+"""
+        env=dict(os.environ,TERM='xterm-256color',KITTY_WINDOW_ID='1')
+        for key in ('TMUX','STY','NEWSBOAT_THUMBNAIL_OWNER'):env.pop(key,None)
+        with patch.object(thumbs,'fetch_png',side_effect=fetch), \
+             patch.object(thumbs,'loading_png',side_effect=lambda frame,failed:b'failed' if failed else b'loading'), \
+             patch.object(thumbs,'transmit',side_effect=lambda ident,data:b'[image:'+data+b']'), \
+             patch.object(thumbs,'placement',return_value=b''):
+            pid,fd=pty.fork()
+            if pid==0:
+                fcntl.ioctl(0,termios.TIOCSWINSZ,struct.pack('HHHH',24,120,1200,480))
+                os._exit(thumbs.run([sys.executable,'-c',child],env))
+        data=bytearray()
+        def until(needle):
+            end=time.monotonic()+3
+            while time.monotonic()<end:
+                if needle in data:return
+                if select.select([fd],[],[],.05)[0]:data.extend(os.read(fd,65536))
+            self.fail(repr(data[-500:]))
+        try:
+            until(b'[image:loading]')
+            data.clear();os.write(fd,b'j');until(b'moved')
+            # Navigation is processed before the slow fetch finishes.
+            self.assertNotIn(b'[image:ready]',data)
+            data.clear();os.write(fd,b'j');until(b'[image:ready]')
+            data.clear();os.write(fd,b'j');until(b'[image:failed]')
+        finally:
+            os.kill(pid,signal.SIGTERM);os.waitpid(pid,0);os.close(fd)
+
     def test_graphics_packets_and_geometry(self):
         out=io.BytesIO();Image.new('RGB',(320,180),'red').save(out,'PNG')
         data=out.getvalue()
@@ -192,10 +237,11 @@ class ThumbnailTests(unittest.TestCase):
                 self.fail(repr(bytes(data[-500:])))
             image_id=0x40000000+pid
             try:
+                until(thumbs.transmit(image_id,(library/'thumbnails/abc123DEF45.png').read_bytes()))
                 until(b'a=p,')
                 self.assertIn(b'\x1b[22;0t\x1b]2;Newsboat Playlist Preview\x07',data)
                 self.assertNotIn(thumbs.MARKER,data)
-                data.clear();os.write(fd,b'j');until(b'a=t,')
+                data.clear();os.write(fd,b'j');until(thumbs.delete(image_id));until(b'a=t,')
                 self.assertIn(thumbs.delete(image_id),data)
                 data.clear();os.write(fd,b'/First\n');until(b'Search results');until(b'a=p,')
                 data.clear();os.write(fd,b'?');until(b'Help');until(thumbs.delete(image_id))
