@@ -54,6 +54,27 @@ class PlaylistTests(unittest.TestCase):
         with patch.object(library,'Client') as client:
             self.assertEqual(library.channel_for(URL),'https://www.youtube.com/channel/'+CID)
             client.assert_not_called()
+    def test_channel_feed_requests_open_creator_playlists(self):
+        canonical='https://www.youtube.com/channel/'+CID
+        cases={canonical:canonical,
+               'https://www.youtube.com/feeds/videos.xml?channel_id='+CID:canonical,
+               'https://www.youtube.com/@Creator/videos':'https://www.youtube.com/@Creator',
+               'https://www.youtube.com/user/Creator':'https://www.youtube.com/user/Creator'}
+        request=self.root/'request'
+        for url,channel in cases.items():
+            with self.subTest(url=url),patch.dict(os.environ,NEWSBOAT_PLAYLIST_REQUEST=str(request),NEWSBOAT_WINDOW_ADDRESS=''),patch.object(library,'extract',return_value=dict(channel='Creator',entries=[])) as extract:
+                ui.request(url)
+                self.assertEqual(request.read_text(),channel)
+                self.assertEqual(library.playlists(request.read_text()),('Creator',[]))
+                extract.assert_called_once_with(channel+'/playlists',False)
+        for url in ('https://example.com/@Creator','https://www.youtube.com/','https://www.youtube.com/feed/subscriptions'):
+            with self.assertRaises(ValueError):library.browse_url(url)
+        with patch.dict(os.environ,NEWSBOAT_PLAYLIST_REQUEST=str(request),NEWSBOAT_WINDOW_ADDRESS=''),patch.object(library,'Client') as client:
+            ui.request('42')
+            client.assert_not_called()  # Network work happens under the loader.
+            client.return_value.request.return_value={'feed_url':'https://www.youtube.com/feeds/videos.xml?channel_id='+CID}
+            self.assertEqual(library.channel_for(request.read_text()),canonical)
+            client.return_value.request.assert_called_once_with('feeds/42')
     def test_only_selected_video_imported_read_and_duplicate_reused(self):
         library.remember(dict(url=URL,title='Episode',source='Creator',channel_id=CID))
         library.remember(dict(url=URL[:-1]+'6',title='Unselected',source='Creator',channel_id=CID))

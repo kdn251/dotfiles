@@ -82,7 +82,38 @@ def extract(url, force=False):
     return data
 
 
+def channel_url(url):
+    """Recognize channel pages and subscription RSS without a network lookup."""
+    parsed = urlparse(url)
+    if parsed.hostname not in {'youtube.com', 'www.youtube.com', 'm.youtube.com'}:
+        return None
+    path = parsed.path.rstrip('/')
+    if path == '/feeds/videos.xml':
+        cid = parse_qs(parsed.query).get('channel_id', [''])[0]
+        if re.fullmatch(r'UC[A-Za-z0-9_-]{22}', cid):
+            return 'https://www.youtube.com/channel/'+cid
+    match = re.fullmatch(r'(/channel/UC[A-Za-z0-9_-]{22}|/@[^/]+|/(?:c|user)/[^/]+)(?:/(?:featured|videos|streams|shorts|playlists))?', path)
+    if match:
+        return 'https://www.youtube.com'+match[1]
+    return None
+
+
+def browse_url(url):
+    # Miniflux-backed feed rows pass their numeric subscription ID.
+    if re.fullmatch(r'[0-9]+', url):
+        return url
+    return channel_url(url) or video_url(url)
+
+
 def channel_for(url):
+    if re.fullmatch(r'[0-9]+', url):
+        feed = Client().request('feeds/'+url)
+        channel = channel_url(feed.get('feed_url', '')) or channel_url(feed.get('site_url', ''))
+        if not channel:
+            raise ValueError('Select a YouTube feed to browse its creator’s playlists')
+        return channel
+    if channel := channel_url(url):
+        return channel
     url = video_url(url)
     row = saved_item(url)
     if row and row.get('channel_id'):

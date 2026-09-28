@@ -224,7 +224,7 @@ def download_playlist(url):
 
 
 def request(url):
-    url=library.video_url(url)
+    url=library.browse_url(url)
     target=os.environ.get('NEWSBOAT_PLAYLIST_REQUEST')
     if not target or not Path(target).parent.is_dir():
         raise ValueError('Restart Newsboat, then reopen this video to use playlists from MPV')
