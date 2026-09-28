@@ -23,7 +23,7 @@ import time
 from functools import lru_cache
 import tty
 from urllib.request import Request, urlopen
-from urllib.parse import urlparse
+from urllib.parse import urlparse, parse_qs
 
 from newsboat_youtube_playlists import LIBRARY
 from newsboat_media import identity
@@ -87,6 +87,10 @@ def video_key(url):
     if key:
         return key[1] if key[0] == 'youtube' else ':'.join(key)
     parsed = urlparse(url)
+    if parsed.hostname in {'youtube.com','www.youtube.com','m.youtube.com'} and parsed.path == '/playlist':
+        ident = parse_qs(parsed.query).get('list',[''])[0]
+        if re.fullmatch(r'[A-Za-z0-9_-]+',ident):
+            return 'playlist:'+ident
     if parsed.hostname in {'twitch.tv','www.twitch.tv'} and re.fullmatch(r'/[A-Za-z0-9_]+/?',parsed.path):
         return 'twitch-live:'+parsed.path.strip('/').lower()
     return None
@@ -111,7 +115,11 @@ def fetch_png(ident):
         return path.read_bytes()
     except FileNotFoundError:
         pass
-    if ':' in ident:
+    if ident.startswith('playlist:'):
+        thumbnail = json.loads((LIBRARY/'playlist-covers'/(ident.split(':',1)[1]+'.json')).read_text())['url']
+        if urlparse(thumbnail).scheme not in {'https','http'}:
+            raise ValueError('No playlist cover available')
+    elif ':' in ident:
         kind, value = ident.split(':',1)
         url = ('https://www.twitch.tv/videos/'+value if kind == 'twitch' else
                'https://clips.twitch.tv/'+value if kind == 'twitch-clip' else

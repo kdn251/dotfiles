@@ -27,6 +27,7 @@ import time
 import tty
 from newsboat_random_prompt import Prompt
 from newsboat_loading import Renderer, GraphicsStream, nested_view_environment
+from newsboat_thumbnails import selection as thumbnail_selection
 
 
 SLIDE_DURATION = 0.5
@@ -294,7 +295,18 @@ def run(args):
             toast_offset = 0
             toast_started = None
             animation_started = time.monotonic()
+            thumbnail_active = False
             def paint_terminal(data):
+                nonlocal thumbnail_active, toast_rows
+                if os.environ.get('NEWSBOAT_THUMBNAIL_OWNER'):
+                    # GraphicsStream keeps selection markers intact. Track the
+                    # visible view, including the half-second thumbnail wait.
+                    for event in re.finditer(rb"\x1b\[2J|\x1b\[\?1049[hl]|\x1b]777;newsboat-thumbnail;([^\x07]*)\x07", data):
+                        thumbnail_active = bool(thumbnail_selection(event[1].decode(errors='replace'))) if event[1] is not None else False
+                    if thumbnail_active and toast_rows:
+                        toast_rows = 0
+                        # Remove any already-painted refresh toast behind the image.
+                        write_all(playlist_master if playlist_master is not None else (nested_master if nested_master is not None else master), b"\x0c")
                 # ncurses can redraw the area behind the toast. Restore the current frame in the same terminal
                 # update rather than leaving it blank until the next tick.
                 if toast_rows:
@@ -551,7 +563,7 @@ def run(args):
                                 # ncurses entering its screen is the handoff.
                                 if b"\x1b[?1049h" in startup_output or b"\x1b[?47h" in startup_output:
                                     startup = False
-                                    write_all(1, bytes(startup_output))
+                                    paint_terminal(bytes(startup_output))
                                     startup_output.clear()
                             elif nested_master is None and playlist_master is None:
                                 if return_deadline is not None:
@@ -579,7 +591,7 @@ def run(args):
                         progress.finished = False
                         finish_at = None
                     cols, rows = os.get_terminal_size(1)
-                    wanted_toast = (9 + int(progress.finished) if cols >= 42 and rows >= 12 else 1) if progress.active and not startup else 0
+                    wanted_toast = (9 + int(progress.finished) if cols >= 42 and rows >= 12 else 1) if progress.active and not startup and not thumbnail_active else 0
                     if wanted_toast != toast_rows:
                         if wanted_toast and not toast_rows:
                             toast_started = now
@@ -594,7 +606,7 @@ def run(args):
                         label = progress.toast_caption() if progress.active else "setting sail"
                         if startup:
                             write_all(1, renderer.draw(frame, label))
-                        elif return_deadline is None:
+                        elif return_deadline is None and toast_rows:
                             width = max(1, min(34, cols - 2))
                             previous_offset = toast_offset
                             if toast_rows == 1:

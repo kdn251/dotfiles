@@ -46,6 +46,7 @@ class ThumbnailTests(unittest.TestCase):
     def test_video_links_and_shared_owner(self):
         for url,expected in [
             ('https://youtu.be/abc123DEF45','abc123DEF45'),
+            ('https://www.youtube.com/playlist?list=PLtest_123','playlist:PLtest_123'),
             ('https://www.youtube.com/shorts/abc123DEF45','abc123DEF45'),
             ('https://www.twitch.tv/videos/12345','twitch:12345'),
             ('https://clips.twitch.tv/TestClip','twitch-clip:TestClip'),
@@ -97,8 +98,13 @@ class ThumbnailTests(unittest.TestCase):
             try:
                 until(b'MIXED');until(b'a=p,')
                 self.assertNotIn(thumbs.MARKER,data)
-                data.clear();os.write(fd,b'R');until(b'feeds refreshed')
-                data.clear();os.write(fd,b'j');until(b'a=d,d=I,')
+                data.clear();os.write(fd,b'R')
+                deadline=time.monotonic()+.8
+                while time.monotonic()<deadline:
+                    if select.select([fd],[],[],.05)[0]:data.extend(os.read(fd,65536))
+                self.assertNotIn(b'feeds refreshed',data)
+                self.assertNotIn('╭'.encode(),data)
+                data.clear();os.write(fd,b'j');until(b'a=d,d=I,');until(b'feeds refreshed')
                 self.assertNotIn(b'\x1b[23;0t',data)  # Article clears only the image.
                 self.assertNotIn(b'set-background-opacity',data)
                 data.clear();os.write(fd,b'j');until(b'a=p,')
@@ -216,6 +222,36 @@ os.read(0,1)
         self.assertIn(b'\x1b[0m\x1b[34X',overlay)
         self.assertIn(b'z=-1,',place)
         self.assertEqual(thumbs.delete(42),b'\x1b_Ga=d,d=I,i=42,q=2\x1b\\')
+
+    def test_creator_playlist_covers_in_native_browser(self):
+        binary=Path.home()/'.local/lib/newsboat-paged/newsboat'
+        if not binary.exists():self.skipTest('custom Newsboat required')
+        with tempfile.TemporaryDirectory() as directory:
+            root=Path(directory);library=root/'library';(library/'thumbnails').mkdir(parents=True)
+            cover=library/'thumbnails/playlist:PLtest_123.png'
+            Image.new('RGB',(480,270),'green').save(cover)
+            rows=[dict(title='A Game',url='https://www.youtube.com/playlist?list=PLtest_123')]
+            cmd,config=ui.prepare_view(root,dict(kind='show',name='Creator',rows=rows))
+            subprocess.run(cmd+['-x','reload'],check=True,capture_output=True)
+            with config.open('a') as out:out.write('run-on-startup open\n')
+            env=dict(os.environ,TERM='xterm-256color',KITTY_WINDOW_ID='1')
+            for key in ('TMUX','STY','NEWSBOAT_THUMBNAIL_OWNER'):env.pop(key,None)
+            with patch.object(thumbs,'LIBRARY',library):
+                pid,fd=pty.fork()
+                if pid==0:
+                    fcntl.ioctl(0,termios.TIOCSWINSZ,struct.pack('HHHH',24,120,1200,480))
+                    os._exit(thumbs.run(cmd,env))
+            data=bytearray();end=time.monotonic()+5
+            try:
+                packet=thumbs.transmit(0x40000000+pid,cover.read_bytes())
+                while time.monotonic()<end:
+                    if select.select([fd],[],[],.05)[0]:data.extend(os.read(fd,65536))
+                    if packet in data and b'a=p,' in data:break
+                self.assertIn(packet,data)
+                self.assertIn(b'a=p,',data)
+                self.assertNotIn(thumbs.MARKER,data)
+            finally:
+                os.kill(pid,signal.SIGTERM);os.waitpid(pid,0);os.close(fd)
 
     def test_real_playlist_selection_search_resize_and_cleanup(self):
         binary=Path.home()/'.local/lib/newsboat-paged/newsboat'

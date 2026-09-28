@@ -164,10 +164,8 @@ def show(kind, url):
                     channel = data.get('channel') or next((r.get('source') for r in data['rows'] if r.get('source')), '')
                     title = ' Playlist · '+data['name']+(' — '+channel if channel else '')
                     out.write('articlelist-title-format '+json.dumps(title.replace('%','%%'),ensure_ascii=False)+'\n')
-        if kind == 'playlist':
-            from newsboat_thumbnails import run
-            return run(cmd,env)
-        return subprocess.call(cmd,env=env)
+        from newsboat_thumbnails import run
+        return run(cmd,env)
 
 
 def background(args):

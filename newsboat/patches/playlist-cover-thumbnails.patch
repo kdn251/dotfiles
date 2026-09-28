@@ -1,0 +1,11 @@
+--- a/src/itemlistformaction.cpp
++++ b/src/itemlistformaction.cpp
+@@ -1488,7 +1488,7 @@
+     if (std::getenv("NEWSBOAT_THUMBNAILS")) {
+         struct winsize size {};
+         ioctl(STDOUT_FILENO, TIOCGWINSZ, &size);
+-        static const std::regex video_link(R"(https?://(?:(?:www\.|m\.)?youtube\.com/(?:watch\?|shorts/|live/|embed/)|youtu\.be/|(?:www\.)?twitch\.tv/|clips\.twitch\.tv/).+)");
++        static const std::regex video_link(R"(https?://(?:(?:www\.|m\.)?youtube\.com/(?:watch\?|playlist\?|shorts/|live/|embed/)|youtu\.be/|(?:www\.)?twitch\.tv/|clips\.twitch\.tv/).+)");
+         const auto cursor = list.get_position();
+         const bool video = cursor < visible_items.size() &&
+             std::regex_match(visible_items[cursor].first->link(), video_link);
