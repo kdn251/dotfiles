@@ -1,0 +1,52 @@
+--- a/src/itemlistformaction.cpp
++++ b/src/itemlistformaction.cpp
+@@ -1435,12 +1435,30 @@
+         visible_items[list.get_position()].first->link();
+ }
+ 
++static std::string library_storage_size(const std::string& title, const std::string& url)
++{
++    const std::string kind = title == "📥 Downloads" || url.find("query:📥 Downloads:") == 0 ? "downloads" :
++        title == "Playlists · 🎮 Playthroughs" || title == "🎮 Playthroughs" ? "playthroughs" : "";
++    if (!kind.empty()) {
++        if (const char* stars = std::getenv("NEWSBOAT_STARRED_STATUS")) {
++            std::ifstream sizes(std::string(stars) + ".storage");
++            std::string line;
++            while (std::getline(sizes, line)) {
++                if (line.find(kind + "\t") == 0) { return "  ·  " + line.substr(kind.size() + 1); }
++            }
++        }
++    }
++    return "";
++}
++
+ void ItemListFormAction::prepare()
+ {
+ 	set_keymap_hints();
+ 
+ 	std::lock_guard<std::mutex> mtx(redraw_mtx);
+ 
++    const auto storage = library_storage_size(feed->title(), feed->rssurl());
++    if (storage != old_storage) { old_storage = storage; do_redraw = true; }
+     const auto status_version = download_revision();
+     if (status_version != download_status_version) {
+         download_status_version = status_version;
+@@ -1700,7 +1718,7 @@
+ 	const unsigned int width = utils::to_u(f.get("title:w"));
+ 	set_title(fmt.do_format(
+ 			cfg->get_configvalue("articlelist-title-format"),
+-			width));
++			width) + library_storage_size(s, url));
+ }
+ 
+ bool ItemListFormAction::jump_to_previous_unread_item(bool start_with_last)
+--- a/include/itemlistformaction.h
++++ b/include/itemlistformaction.h
+@@ -164,6 +164,7 @@
+ 
+ 	std::string download_status_version;
+ 	unsigned int old_width;
++    std::string old_storage;
+     unsigned int thumbnail_height = 0;
+ 	std::optional<ArticleSortStrategy> old_sort_strategy;
+ 

@@ -71,3 +71,6 @@ def publish(state):
         order_path = target.with_name(target.name + '.order')
         if not order_path.exists() or order_path.read_text() != order:
             atomic_write(order_path, order)
+
+        from newsboat_storage import publish as publish_storage
+        publish_storage(state)
