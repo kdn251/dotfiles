@@ -158,8 +158,8 @@ class ThumbnailTests(unittest.TestCase):
         with Image.open(io.BytesIO(thumbs.loading_png(0))) as image:
             self.assertEqual(image.size,(680,400))
         def fetch(ident):
-            time.sleep(.4)
-            return b'ready' if ident=='abc123DEF45' else None
+            time.sleep(.05 if ident=='abc123DEF47' else .9)
+            return b'fast' if ident=='abc123DEF47' else b'ready' if ident=='abc123DEF45' else None
         child = """import os, tty
 tty.setraw(0)
 marker=b'\\x1b]777;newsboat-thumbnail;'
@@ -168,6 +168,7 @@ video(b'abc123DEF45')
 os.read(0,1);os.write(1,marker+b'\\x07moved')
 os.read(0,1);video(b'abc123DEF45')
 os.read(0,1);video(b'abc123DEF46')
+os.read(0,1);video(b'abc123DEF47')
 os.read(0,1)
 """
         env=dict(os.environ,TERM='xterm-256color',KITTY_WINDOW_ID='1')
@@ -188,12 +189,16 @@ os.read(0,1)
                 if select.select([fd],[],[],.05)[0]:data.extend(os.read(fd,65536))
             self.fail(repr(data[-500:]))
         try:
+            started=time.monotonic()
             until(b'[image:loading]')
+            self.assertGreaterEqual(time.monotonic()-started,.5)
             data.clear();os.write(fd,b'j');until(b'moved')
             # Navigation is processed before the slow fetch finishes.
             self.assertNotIn(b'[image:ready]',data)
             data.clear();os.write(fd,b'j');until(b'[image:ready]')
             data.clear();os.write(fd,b'j');until(b'[image:failed]')
+            data.clear();os.write(fd,b'j');until(b'[image:fast]')
+            self.assertNotIn(b'[image:loading]',data)
         finally:
             os.kill(pid,signal.SIGTERM);os.waitpid(pid,0);os.close(fd)
 
@@ -206,6 +211,10 @@ os.read(0,1)
         self.assertTrue(place.startswith(b'\x1b7'))
         self.assertIn(b'\x1b[3;',place)  # First row below the pane's top margin.
         self.assertTrue(place.endswith(b'\x1b8'))
+        overlay=thumbs.placement(42,(82,1,38,21,'abc123DEF45'),struct.pack('HHHH',24,120,1200,480),data,loading=True)
+        self.assertIn(b'z=1,',overlay)
+        self.assertIn(b'\x1b[0m\x1b[34X',overlay)
+        self.assertIn(b'z=-1,',place)
         self.assertEqual(thumbs.delete(42),b'\x1b_Ga=d,d=I,i=42,q=2\x1b\\')
 
     def test_real_playlist_selection_search_resize_and_cleanup(self):

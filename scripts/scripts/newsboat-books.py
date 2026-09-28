@@ -71,7 +71,7 @@ def prepare_view(directory, rows):
     if not source.exists():source=SCRIPTS.parents[1]/'newsboat/.newsboat/config'
     appearance={'color','highlight','highlight-article','scrolloff','text-width'}
     lines=[line for line in source.read_text().splitlines() if line.split() and line.split()[0] in appearance]
-    lines += [line for line in source.read_text().splitlines() if line.startswith('bind 7 ')]
+    lines += [line for line in source.read_text().splitlines() if line.startswith(('bind 7 ', 'bind h '))]
     browser='python3 '+shlex.quote(str(Path(__file__).resolve()))+' open %u'
     lines += ['show-read-feeds yes','show-read-articles yes','confirm-exit no',
               'article-sort-order title-asc','articlelist-title-format " %T"',
@@ -97,15 +97,20 @@ def open_book(url):
     subprocess.Popen(['zathura' if path.suffix.lower()=='.pdf' else 'foliate',str(path)],stdin=subprocess.DEVNULL,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL,start_new_session=True)
 
 
+def view_environment():
+    # Keep session navigation hooks while isolating this local book database.
+    hooks = {'NEWSBOAT_RANDOM_PROMPT_DIR', 'NEWSBOAT_HOME_REQUEST', 'NEWSBOAT_HOME_NESTED'}
+    env={k:v for k,v in os.environ.items() if not k.startswith('NEWSBOAT_') or k in hooks}
+    env['NEWSBOAT_BOOKS_DIR']=str(DIRECTORY)
+    env['NEWSBOAT_DOWNLOAD_STATUS']=str(progress.STATE/'status.tsv')
+    return env
+
+
 def show():
     rows=rebuild()
     with tempfile.TemporaryDirectory(prefix='newsboat-books-') as directory:
         command=prepare_view(directory,rows)
-        env={k:v for k,v in os.environ.items() if not k.startswith('NEWSBOAT_')}
-        if os.environ.get('NEWSBOAT_RANDOM_PROMPT_DIR'):
-            env['NEWSBOAT_RANDOM_PROMPT_DIR']=os.environ['NEWSBOAT_RANDOM_PROMPT_DIR']
-        env['NEWSBOAT_BOOKS_DIR']=str(DIRECTORY)
-        env['NEWSBOAT_DOWNLOAD_STATUS']=str(progress.STATE/'status.tsv')
+        env=view_environment()
         progress.publish(rows,refresh=False)
         subprocess.run(command+['-x','reload'],env=env,check=True,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL,timeout=15)
         with (Path(directory)/'config').open('a') as f:f.write('run-on-startup open\n')

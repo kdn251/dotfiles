@@ -202,7 +202,7 @@ def transmit(image_id, png):
     return b''.join(packets)
 
 
-def placement(image_id, selected, size, png):
+def placement(image_id, selected, size, png, loading=False):
     # Reserve a cell on each edge and retain the thumbnail's aspect ratio.
     from PIL import Image
     rows, cols, pixel_w, pixel_h = struct.unpack('HHHH', size)
@@ -216,9 +216,13 @@ def placement(image_id, selected, size, png):
     width = max(1, min(width, round(height*cell_h*iw/ih/cell_w)))
     left = x+(w-width)//2
     top = y+1
-    # A negative z-index lets toast text remain legible above the preview.
-    return (f'\x1b7\x1b[{top+1};{left+1}H'
-            f'\x1b_Ga=p,i={image_id},p=1,c={width},r={height},z=-1,q=2\x1b\\\x1b8').encode()
+    # The loader is a toast: clear selection styling just inside its footprint,
+    # using the terminal's transparent default background, then draw above text.
+    # Real thumbnails retain their usual layer underneath the feed refresh toast.
+    clear = ''.join(f'\x1b[{row+1};{left+1}H\x1b[0m\x1b[{width}X'
+                    for row in range(top, top+height)) if loading else ''
+    return (f'\x1b7{clear}\x1b[{top+1};{left+1}H'
+            f'\x1b_Ga=p,i={image_id},p=1,c={width},r={height},z={1 if loading else -1},q=2\x1b\\\x1b8').encode()
 
 
 def write(fd, data):
@@ -262,6 +266,7 @@ def run(command, env):
         resized = True
     signal.signal(signal.SIGWINCH, resize)
     last_placeholder = None
+    loader_due = 0.0
     preview_active = False
     configured = False
     def preview_mode(active):
@@ -318,6 +323,7 @@ def run(command, env):
                         if selected != current:
                             write(1, delete(image_id))
                             current, png = selected, None
+                            loader_due = time.monotonic() + 0.5
                             last_placeholder = None
                             if current:
                                 if current[4] in images:
@@ -339,7 +345,7 @@ def run(command, env):
                         write(1, transmit(image_id, png))
                         repaint = True
             display_png = png
-            if current and not png:
+            if current and not png and time.monotonic() >= loader_due:
                 failed = current[4] in images
                 frame = 0 if failed else int(time.monotonic() * 10) % 96
                 placeholder = (frame, failed)
@@ -349,7 +355,7 @@ def run(command, env):
                     last_placeholder = placeholder
                     repaint = True
             if repaint and current and display_png:
-                write(1, placement(image_id, current, size, display_png))
+                write(1, placement(image_id, current, size, display_png, loading=not bool(png)))
             done, exit_status = os.waitpid(pid, os.WNOHANG)
             if done:
                 status = exit_status

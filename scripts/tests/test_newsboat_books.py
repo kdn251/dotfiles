@@ -32,6 +32,14 @@ class BooksTests(unittest.TestCase):
         self.assertIn('VODs',lines[0]);self.assertIn('Books',lines[1]);self.assertIn('Favorites',lines[2])
         self.assertEqual((self.root/'state/starred-urls.txt.books.count').read_text(),'2\n')
         books.rebuild();self.assertEqual((self.root/'urls').read_text().splitlines(),lines)
+    def test_view_preserves_home_navigation_hooks(self):
+        with patch.dict(os.environ,{'NEWSBOAT_HOME_REQUEST':'/tmp/home-request',
+                                   'NEWSBOAT_HOME_NESTED':'1','NEWSBOAT_THUMBNAILS':'1'}):
+            env=books.view_environment()
+        self.assertEqual(env['NEWSBOAT_HOME_REQUEST'],'/tmp/home-request')
+        self.assertEqual(env['NEWSBOAT_HOME_NESTED'],'1')
+        self.assertNotIn('NEWSBOAT_THUMBNAILS',env)
+
     def test_open_is_detached_and_restricts_paths(self):
         p=self.library/'A book.pdf';p.write_text('book')
         with patch.object(books.subprocess,'Popen') as opened:
@@ -62,7 +70,7 @@ class BooksTests(unittest.TestCase):
         opener.write_text('#!/bin/sh\nprintf "%s" "$1" > '+str(view/'opened')+'\n')
         opener.chmod(0o755)
         config += 'browser "'+str(opener)+' %u"\n'
-        with reader(view,config,(view/'urls').read_text(),dict(NEWSBOAT_DOWNLOAD_STATUS=str(view/'status'))) as (_,screen,send,wait):
+        with reader(view,config,(view/'urls').read_text(),dict(NEWSBOAT_DOWNLOAD_STATUS=str(view/'status'),NEWSBOAT_HOME_NESTED='1',NEWSBOAT_HOME_REQUEST=str(view/'home-request'))) as (_,screen,send,wait):
             wait(lambda s:'Books' in s);send('\n')
             wait(lambda s:'A book' in s and 'Z book' in s and 'PDF' in s and 'EPUB' in s)
             self.assertEqual(screen.display[0].strip(),'📚 Books')
@@ -79,6 +87,7 @@ class BooksTests(unittest.TestCase):
             wait(lambda s:'100%' in s and 'A book' in screen.display[1])
             send('/Z book\n');wait(lambda s:'Search' in screen.display[0] and 'Z book' in s)
             self.assertNotIn('A book','\n'.join(screen.display))
+            send('h');wait(lambda s:(view/'home-request').exists())
 
 class BookProgressTests(unittest.TestCase):
     def test_foliate_encoded_identity_and_resume_state_untouched(self):
