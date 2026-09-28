@@ -98,11 +98,57 @@ class ThumbnailTests(unittest.TestCase):
                 until(b'MIXED');until(b'a=p,')
                 self.assertNotIn(thumbs.MARKER,data)
                 data.clear();os.write(fd,b'R');until(b'feeds refreshed')
-                data.clear();os.write(fd,b'j');until(b'\x1b[23;0t')
-                self.assertNotIn(b'a=p,',data[data.index(b'\x1b[23;0t'):])  # Article clears preview.
+                data.clear();os.write(fd,b'j');until(b'a=d,d=I,')
+                self.assertNotIn(b'\x1b[23;0t',data)  # Article clears only the image.
+                self.assertNotIn(b'set-background-opacity',data)
                 data.clear();os.write(fd,b'j');until(b'a=p,')
                 data.clear();os.write(fd,b't');until(b'SAVED');until(b'a=p,')
-                data.clear();os.write(fd,b'h');until(b'Your feeds');until(b'\x1b[23;0t')
+                data.clear();os.write(fd,b'h');until(b'Your feeds')
+                self.assertNotIn(b'\x1b[23;0t',data)
+                self.assertNotIn(b'set-background-opacity',data)
+                data.clear();os.write(fd,b'q');until(b'\x1b[23;0t')
+            finally:
+                os.kill(pid,signal.SIGTERM);os.waitpid(pid,0);os.close(fd)
+
+    def test_titles_use_full_width_below_thumbnail_while_scrolling(self):
+        import pyte
+        binary=Path(os.environ.get('NEWSBOAT_TEST_BINARY',Path.home()/'.local/lib/newsboat-paged/newsboat'))
+        if not binary.exists():self.skipTest('custom Newsboat required')
+        with tempfile.TemporaryDirectory() as directory:
+            root=Path(directory);rss=root/'feed.xml';config=root/'config';urls=root/'urls'
+            rss.write_text('<rss version="2.0"><channel><title>Flow</title><link>https://example.com</link><description>test</description>'+''.join(
+                f'<item><title>Row {i:02d} '+('x'*92)+' TITLE-END</title><guid>'+f'{i:02d}</guid><link>'+('https://youtu.be/abc123DEF45' if i<40 else 'https://example.com/article')+'</link></item>'
+                for i in range(41))+'</channel></rss>')
+            urls.write_text(rss.as_uri()+'\n')
+            config.write_text('show-read-feeds yes\nshow-read-articles yes\nconfirm-exit no\narticle-sort-order guid-asc\narticlelist-format "%t"\nrun-on-startup open\nbind-key j down\nbind-key k up\nbind-key G end\n')
+            cmd=[str(binary),'-C',str(config),'-u',str(urls),'-c',str(root/'cache')]
+            subprocess.run(cmd+['-x','reload'],capture_output=True,check=True)
+            pid,fd=pty.fork()
+            if pid==0:
+                fcntl.ioctl(0,termios.TIOCSWINSZ,struct.pack('HHHH',24,120,1200,480))
+                os.execve(str(binary),cmd,dict(os.environ,TERM='xterm-256color',NEWSBOAT_THUMBNAILS='1'))
+            screen=pyte.Screen(120,24);stream=pyte.ByteStream(screen);decoder=thumbs.Decoder();markers=[]
+            def read_screen():
+                end=time.monotonic()+.5
+                while time.monotonic()<end:
+                    if select.select([fd],[],[],.05)[0]:
+                        for kind,value in decoder.feed(os.read(fd,65536)):
+                            if kind=='screen':stream.feed(value)
+                            else:markers.append(thumbs.selection(value))
+            def check_flow():
+                self.assertTrue(markers[-1])
+                x,y,w,h,_=markers[-1]
+                self.assertEqual((x,w,h),(82,38,13))
+                self.assertIn('TITLE-END',screen.display[y])
+                self.assertNotIn('TITLE-END',screen.display[y+1])
+                self.assertIn('TITLE-END',screen.display[y+h-2])
+            try:
+                read_screen();check_flow()
+                os.write(fd,b'j'*25);read_screen();check_flow()
+                os.write(fd,b'k'*20);read_screen();check_flow()
+                os.write(fd,b'G');read_screen()
+                self.assertIsNone(markers[-1])
+                self.assertIn('TITLE-END',screen.display[2])
             finally:
                 os.kill(pid,signal.SIGTERM);os.waitpid(pid,0);os.close(fd)
 

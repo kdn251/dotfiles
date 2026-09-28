@@ -253,6 +253,10 @@ def run(command, env):
         preview_active = active
     try:
         tty.setraw(0)
+        # Keep one compositing mode for the whole session. Switching between
+        # compositor opacity and Kitty background opacity on each row changes
+        # the apparent background brightness even with the same numeric alpha.
+        preview_mode(True)
         while True:
             if resized:
                 size = fcntl.ioctl(1, termios.TIOCGWINSZ, bytes(8))
@@ -305,7 +309,6 @@ def run(command, env):
                     if png:
                         write(1, transmit(image_id, png))
                         repaint = True
-            preview_mode(current is not None)
             if repaint and current and png:
                 write(1, placement(image_id, current, size, png))
             done, exit_status = os.waitpid(pid, os.WNOHANG)

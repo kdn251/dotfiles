@@ -1,0 +1,112 @@
+--- a/include/listwidgetbackend.h
++++ b/include/listwidgetbackend.h
+@@ -26,6 +26,7 @@
+ 	std::uint32_t get_width();
+ 	std::uint32_t get_height();
+ 	std::uint32_t get_num_lines();
++    void reserve_top_right(std::uint32_t rows, std::uint32_t columns);
+ 
+ 	void invalidate_list_content(std::uint32_t num_lines,
+ 		std::function<StflRichText(std::uint32_t, std::uint32_t)> get_line_method);
+@@ -42,7 +43,9 @@
+ 	ListFormatter listfmt;
+ 	std::uint32_t num_lines;
+ 	std::uint32_t scroll_offset;
+-	std::map<std::uint32_t, StflRichText> line_cache;
++    std::uint32_t reserved_rows = 0;
++    std::uint32_t reserved_columns = 0;
++	std::map<std::pair<std::uint32_t, std::uint32_t>, StflRichText> line_cache;
+ 	std::function<StflRichText(std::uint32_t, std::uint32_t)> get_formatted_line;
+ };
+ 
+--- a/src/listwidgetbackend.cpp
++++ b/src/listwidgetbackend.cpp
+@@ -76,6 +76,15 @@
+ 	render();
+ }
+ 
++void ListWidgetBackend::reserve_top_right(std::uint32_t rows, std::uint32_t columns)
++{
++    if (reserved_rows == rows && reserved_columns == columns) { return; }
++    reserved_rows = rows;
++    reserved_columns = columns;
++    line_cache.clear();
++    render();
++}
++
+ void ListWidgetBackend::render()
+ {
+ 	const auto viewport_width = get_width();
+@@ -86,11 +95,16 @@
+ 	for (std::uint32_t i = 0; i < visible_content_lines; ++i) {
+ 		const std::uint32_t line = scroll_offset + i;
+ 		auto formatted_line = StflRichText::from_plaintext("NO FORMATTER DEFINED");
+-		if (line_cache.count(line) >= 1) {
+-			formatted_line = line_cache.at(line);
++        // The image starts one row below the list header. Only adjacent rows
++        // lose title space; cached lines must also account for their width.
++        const auto width = i >= 1 && i <= reserved_rows ?
++            viewport_width - std::min(reserved_columns, viewport_width) : viewport_width;
++        const auto key = std::make_pair(line, width);
++		if (line_cache.count(key) >= 1) {
++			formatted_line = line_cache.at(key);
+ 		} else if (get_formatted_line) {
+-			formatted_line = get_formatted_line(line, viewport_width);
+-			line_cache.insert({line, formatted_line});
++			formatted_line = get_formatted_line(line, width);
++			line_cache.insert({key, formatted_line});
+ 		}
+ 		listfmt.add_line(formatted_line);
+ 	}
+--- a/include/itemlistformaction.h
++++ b/include/itemlistformaction.h
+@@ -164,6 +164,7 @@
+ 
+ 	std::string download_status_version;
+ 	unsigned int old_width;
++    unsigned int thumbnail_height = 0;
+ 	std::optional<ArticleSortStrategy> old_sort_strategy;
+ 
+ 	InvalidationMode invalidation_mode;
+--- a/src/itemlistformaction.cpp
++++ b/src/itemlistformaction.cpp
+@@ -1429,9 +1429,9 @@
+ 
+ std::string ItemListFormAction::thumbnail_request()
+ {
+-    if (f.get("showthumbnail") != "1" || list.get_position() >= visible_items.size()) { return ""; }
+-    return f.get("thumbnail:x") + ";" + f.get("thumbnail:y") + ";" +
+-        f.get("thumbnail:w") + ";" + f.get("thumbnail:h") + ";" +
++    if (!thumbnail_height || list.get_position() >= visible_items.size()) { return ""; }
++    return std::to_string(utils::to_u(f.get("items:x")) + list.get_width() - 38) + ";" +
++        f.get("items:y") + ";38;" + std::to_string(thumbnail_height + 3) + ";" +
+         visible_items[list.get_position()].first->link();
+ }
+ 
+@@ -1474,8 +1474,15 @@
+         const auto cursor = list.get_position();
+         const bool video = cursor < visible_items.size() &&
+             std::regex_match(visible_items[cursor].first->link(), video_link);
+-        set_value("showthumbnail", video && size.ws_col >= 100 && size.ws_row >= 16 ? "1" : "0");
+-        recalculate_widget_dimensions();
++        // Keep the list full-width and reserve only the rows beside the image.
++        const double cell_width = size.ws_xpixel && size.ws_col ?
++            double(size.ws_xpixel) / size.ws_col : 10.0;
++        const double cell_height = size.ws_ypixel && size.ws_row ?
++            double(size.ws_ypixel) / size.ws_row : 20.0;
++        const auto image_rows = static_cast<unsigned int>(34 * cell_width * 9 / 16 / cell_height + 0.5);
++        thumbnail_height = video && size.ws_col >= 100 && size.ws_row >= 16 && list.get_height() > 3 ?
++            std::max(1u, std::min(list.get_height() - 3, image_rows)) : 0;
++        list.reserve_top_right(thumbnail_height, thumbnail_height ? 38 : 0);
+     }
+ 
+ 	if (cfg->get_configvalue_as_bool("mark-as-read-on-hover")) {
+@@ -1586,7 +1593,7 @@
+ 
+ 	fmt.register_fmt('L', item.first->length());
+ 
+-	const auto formattedLine = fmt.do_format(itemlist_format, width);
++	const auto formattedLine = utils::substr_with_width(fmt.do_format(itemlist_format, width), width);
+ 	auto stflFormattedLine = item.first->unread() > 0
+ 		? StflRichText::from_plaintext_with_style(formattedLine, "<unread>")
+ 		: StflRichText::from_plaintext(formattedLine);
