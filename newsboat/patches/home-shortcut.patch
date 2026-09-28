@@ -1,0 +1,76 @@
+--- a/include/view.h
++++ b/include/view.h
+@@ -139,6 +139,7 @@
+ 	void prepare_query_feed(std::shared_ptr<RssFeed> feed);
+ 
+ 	void force_redraw();
++    void go_home();
+ 
+ 	void notify_itemlist_change(std::shared_ptr<RssFeed> feed);
+ 
+--- a/include/feedlistformaction.h
++++ b/include/feedlistformaction.h
+@@ -25,6 +25,7 @@
+ 		RegexManager& r);
+ 	~FeedListFormAction() override = default;
+ 	void prepare() override;
++    void go_home();
+ 	void init() override;
+ 	void set_feedlist(std::vector<std::shared_ptr<RssFeed>>& feeds);
+ 	void update_visible_feeds(std::vector<std::shared_ptr<RssFeed>>& feeds);
+--- a/src/view.cpp
++++ b/src/view.cpp
+@@ -1316,6 +1316,22 @@
+     return true;
+ }
+ 
++void View::go_home()
++{
++    if (std::getenv("NEWSBOAT_HOME_NESTED")) {
++        if (const char* path = std::getenv("NEWSBOAT_HOME_REQUEST")) {
++            std::ofstream(path) << "home\n";
++            return;
++        }
++    }
++    if (!feedlist_form) { return; }
++    formaction_stack = {feedlist_form};
++    current_formaction = 0;
++    feedlist_form->go_home();
++    feedlist_form->recalculate_widget_dimensions();
++    feedlist_form->prepare();
++}
++
+ void View::force_redraw()
+ {
+ 	std::shared_ptr<FormAction> fa = get_current_formaction();
+--- a/src/feedlistformaction.cpp
++++ b/src/feedlistformaction.cpp
+@@ -66,6 +66,13 @@
+ 	 * DownloadThreads.
+ 	 */
+ 	v.get_ctrl().get_reloader()->spawn_reloadthread();
++}
++
++void FeedListFormAction::go_home()
++{
++    tag.clear();
++    if (all_sources) { process_operation(OP_QUIT, {}); }
++    do_redraw = true;
+ }
+ 
+ void FeedListFormAction::prepare()
+--- a/src/formaction.cpp
++++ b/src/formaction.cpp
+@@ -200,7 +200,11 @@
+ 			if (args.size() == 2) {
+ 				const std::string key = args.at(0);
+ 				const std::string value = args.at(1);
+-				if (key == "browser" && value == "newsboat-random://starred") {
++				if (key == "browser" && value == "newsboat-home://show") {
++                    v.go_home();
++                    return true;
++                }
++                if (key == "browser" && value == "newsboat-random://starred") {
+ 					// Detached helper owns the window; keep the reader responsive.
+ 					std::system("python3 ~/scripts/newsboat-random.py </dev/null >/dev/null 2>&1 &");
+ 					return true;

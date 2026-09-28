@@ -137,7 +137,8 @@ class PlaylistTests(unittest.TestCase):
 
 class PlaylistTerminalTests(unittest.TestCase):
     def test_open_search_back_and_episode_order(self):
-        import fcntl,pty,select,signal,struct,termios,time
+        import fcntl,pty,select,signal,struct,termios,time,re
+        from newsboat_loading import GraphicsStream
         try:import pyte
         except ImportError:self.skipTest('pyte required')
         binary=Path.home()/'.local/lib/newsboat-paged/newsboat'
@@ -164,6 +165,7 @@ else:
                 os.environ.clear();os.environ.update(env);os.execv(sys.executable,[sys.executable,str(SCRIPTS/'newsboat-playlists.py'),'show',URL])
             fcntl.ioctl(fd,termios.TIOCSWINSZ,struct.pack('HHHH',24,120,0,0))
             screen=pyte.Screen(120,24);stream=pyte.ByteStream(screen)
+            graphics=GraphicsStream()
             captured=bytearray()
             def wait(predicate):
                 deadline=time.monotonic()+8
@@ -172,7 +174,7 @@ else:
                         try:data=os.read(fd,65536)
                         except OSError:break
                         captured.extend(data)
-                        stream.feed(data)
+                        stream.feed(re.sub(rb'\x1b(?:_G|P).*?\x1b\\',b'',graphics.feed(data),flags=re.S))
                     if predicate('\n'.join(screen.display)):return
                 self.fail('\n'.join(screen.display))
             try:

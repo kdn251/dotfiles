@@ -61,6 +61,7 @@ def show(ident=None):
     with tempfile.TemporaryDirectory(prefix='newsboat-playthroughs-') as directory:
         command,config,group=prepare_view(directory,ident)
         env=nested_view_environment(directory)
+        env.pop('NEWSBOAT_THUMBNAILS',None)
         for key in ('NEWSBOAT_LIVE_QUERIES','NEWSBOAT_NESTED_VIEWS','NEWSBOAT_STARRED_VIEW','NEWSBOAT_STARRED_REMOVALS','NEWSBOAT_VODS_VIEW_DIR','NEWSBOAT_PLAYLIST_CONTEXT'):
             env.pop(key,None)
         if group:
@@ -73,6 +74,9 @@ def show(ident=None):
             env.pop('NEWSBOAT_PLAYTHROUGH_ID',None)
         subprocess.run(command+['-x','reload'],env=env,capture_output=True,check=True,timeout=15)
         with config.open('a') as out:out.write('run-on-startup open\n')
+        if group:
+            from newsboat_thumbnails import run
+            return run(command,env)
         return subprocess.call(command,env=env)
 
 

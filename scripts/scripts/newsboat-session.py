@@ -26,7 +26,7 @@ import termios
 import time
 import tty
 from newsboat_random_prompt import Prompt
-from newsboat_loading import Renderer, nested_view_environment
+from newsboat_loading import Renderer, GraphicsStream, nested_view_environment
 
 
 SLIDE_DURATION = 0.5
@@ -198,6 +198,9 @@ def run(args):
     nested_master = None
     playlist_pid = None
     playlist_master = None
+    playlist_graphics = GraphicsStream()
+    nested_graphics = GraphicsStream()
+    home_pending = False
     vod_monitor = None
     status = None
     startup_error = b""
@@ -219,6 +222,8 @@ def run(args):
         os.environ["NEWSBOAT_REFRESH_REQUEST"] = str(refresh_request)
         playlist_request = Path(directory)/"playlist-request"
         os.environ['NEWSBOAT_PLAYLIST_REQUEST'] = str(playlist_request)
+        home_request = Path(directory)/"home-request"
+        os.environ['NEWSBOAT_HOME_REQUEST'] = str(home_request)
         # Match the terminal by process ancestry, even if focus changed at startup.
         try:
             ancestors = set()
@@ -231,6 +236,7 @@ def run(args):
             if terminal:os.environ['NEWSBOAT_WINDOW_ADDRESS'] = terminal['address']
         except (OSError,ValueError,subprocess.SubprocessError):pass
         view_env = nested_view_environment(directory)
+        view_env['NEWSBOAT_HOME_NESTED'] = '1'
         if live_queries:
             view_env["NEWSBOAT_SYNC_VIEW"] = "1"
         fifo = Path(directory) / "events"
@@ -322,6 +328,21 @@ def run(args):
                 selector.register(0, selectors.EVENT_READ, "input")
                 running = True
                 while running:
+                    if home_request.exists():
+                        home_request.unlink(missing_ok=True)
+                        playlist_request.unlink(missing_ok=True)
+                        home_pending = True
+                        for child in (playlist_pid, nested_pid):
+                            if child:
+                                try:os.killpg(child, signal.SIGTERM)
+                                except ProcessLookupError:pass
+                    if home_pending and playlist_master is None and nested_master is None:
+                        home_pending = False
+                        return_deadline = None
+                        return_output.clear()
+                        starred_return = counting_starred = count_refresh = False
+                        restore_feed = None
+                        write_all(master, b':\x1b:exec set browser "newsboat-home://show"\n\x0c')
                     if remote and startup and time.monotonic() >= startup_deadline:
                         offline_requested = True
                         os.kill(pid, signal.SIGTERM)
@@ -490,26 +511,34 @@ def run(args):
                                 data = b""
                             if key.data == 'playlists':
                                 if data:
-                                    paint_terminal(data.replace(FRAME_READY, b""))
+                                    # A toast must never be inserted halfway
+                                    # through an image's graphics escape packet.
+                                    complete = playlist_graphics.feed(data.replace(FRAME_READY, b""))
+                                    if complete:paint_terminal(complete)
                                 else:
+                                    playlist_graphics = GraphicsStream()
                                     selector.unregister(playlist_master)
                                     os.close(playlist_master)
                                     playlist_master = None
                                     os.waitpid(playlist_pid, 0)
                                     playlist_pid = None
-                                    write_all(nested_master if nested_master is not None else master, b"\x0c")
+                                    if not home_pending:write_all(nested_master if nested_master is not None else master, b"\x0c")
                                 continue
                             if key.data == "nested":
                                 if data:
-                                    if playlist_master is None:paint_terminal(data.replace(FRAME_READY, b""))
+                                    if playlist_master is None:
+                                        complete = nested_graphics.feed(data.replace(FRAME_READY, b""))
+                                        if complete:paint_terminal(complete)
                                 else:
+                                    nested_graphics = GraphicsStream()
                                     selector.unregister(nested_master)
                                     os.close(nested_master)
                                     nested_master = None
                                     os.waitpid(nested_pid, 0)
                                     nested_pid = None
-                                    return_deadline = time.monotonic() + 0.12
-                                    write_all(master, b":\x1b\x0c" if nested_starred_entry else b"\x0c")
+                                    if not home_pending:
+                                        return_deadline = time.monotonic() + 0.12
+                                        write_all(master, b":\x1b\x0c" if nested_starred_entry else b"\x0c")
                                 continue
                             if not data:
                                 running = False

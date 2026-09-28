@@ -26,6 +26,15 @@ spec.loader.exec_module(session)
 
 
 class ProgressTests(unittest.TestCase):
+    def test_graphics_packets_stay_whole_before_toast_is_added(self):
+        packet = b'\x1b_Ga=t,f=100,m=0;YWJj\x1b\\'
+        for split in range(len(packet)+1):
+            stream = session.GraphicsStream()
+            first = stream.feed(b'before'+packet[:split])
+            second = stream.feed(packet[split:]+b'after')
+            self.assertEqual(first+second,b'before'+packet+b'after')
+            self.assertTrue(packet in first or packet in second)
+
     def test_slide_uses_small_monotonic_steps(self):
         entering = [session.slide_offset(i/60, 34) for i in range(31)]
         leaving = [session.slide_offset(i/60, 34, exiting=True) for i in range(31)]

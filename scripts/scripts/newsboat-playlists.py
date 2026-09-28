@@ -109,7 +109,7 @@ def prepare_view(directory, data):
     actions={'bind','bind-key','macro','browser'} if is_playlist else {'bind-key'}
     lines=[line for line in source.read_text().splitlines() if line.split() and line.split()[0] in appearance|actions]
     if not is_playlist:
-        lines += [line for line in source.read_text().splitlines() if line.startswith('bind ? ')]
+        lines += [line for line in source.read_text().splitlines() if line.startswith(('bind ? ','bind h '))]
     lines=[line for line in lines if not line.startswith(('bind H ','bind q ','bind o ','bind O ','bind P ','macro v ','macro d ','macro R ','macro C '))]
     if is_playlist:
         for helper in ('commentary','favorites'):
@@ -122,8 +122,7 @@ def prepare_view(directory, data):
               'searchresult-title-format " Search results"',
               'articlelist-format '+json.dumps('%4i  %-9p %-20a │ %t' if is_playlist else '%4i  %t',ensure_ascii=False),
               'browser '+json.dumps(action),
-              'bind q articlelist hard-quit -- "Back"',
-              'bind h articlelist hard-quit -- "Back"']
+              'bind q articlelist hard-quit -- "Back"']
     for key in ('<ENTER>','o','O','l'):
         lines.append(f'bind {key} articlelist,searchresultslist set browser '+json.dumps(action)+' ; '+browser_op+
                      (' ; toggle-article-read "read" "stay"' if is_playlist else '')+' -- "'+('Play video' if is_playlist else 'Open playlist')+'"')
@@ -145,6 +144,7 @@ def show(kind, url):
     with tempfile.TemporaryDirectory(prefix='newsboat-playlists-') as directory:
         cmd,config=prepare_view(directory,data)
         env=nested_view_environment(directory)
+        env.pop('NEWSBOAT_THUMBNAILS',None)
         for name in ('NEWSBOAT_LIVE_QUERIES','NEWSBOAT_NESTED_VIEWS','NEWSBOAT_STARRED_VIEW','NEWSBOAT_STARRED_REMOVALS','NEWSBOAT_VODS_VIEW_DIR'):
             env.pop(name,None)
         env['NEWSBOAT_CACHE']=str(library.CACHE)
@@ -153,7 +153,20 @@ def show(kind, url):
         if data.get('context'):env['NEWSBOAT_PLAYLIST_CONTEXT']=data['context']
         else:env.pop('NEWSBOAT_PLAYLIST_CONTEXT',None)
         subprocess.run(cmd+['-x','reload'],env=env,check=True,capture_output=True,timeout=15)
-        with config.open('a') as out:out.write('run-on-startup open\n')
+        with config.open('a') as out:
+            out.write('run-on-startup open\n')
+            if kind == 'playlist':
+                from newsboat_thumbnails import supported
+                if supported(env):
+                    # The creator is shared by the whole playlist; leave room
+                    # for episode titles alongside the image pane.
+                    out.write('articlelist-format "%4i  %-9p %t"\n')
+                    channel = data.get('channel') or next((r.get('source') for r in data['rows'] if r.get('source')), '')
+                    title = ' Playlist · '+data['name']+(' — '+channel if channel else '')
+                    out.write('articlelist-title-format '+json.dumps(title.replace('%','%%'),ensure_ascii=False)+'\n')
+        if kind == 'playlist':
+            from newsboat_thumbnails import run
+            return run(cmd,env)
         return subprocess.call(cmd,env=env)
 
 

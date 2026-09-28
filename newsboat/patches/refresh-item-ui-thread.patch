@@ -1,0 +1,39 @@
+--- a/include/view.h
++++ b/include/view.h
+@@ -181,6 +181,7 @@
+ 	std::mutex mtx;
+     const std::thread::id ui_thread = std::this_thread::get_id();
+     std::atomic<bool> feedlist_update_pending {false};
++    std::map<std::string, std::shared_ptr<RssFeed>> pending_itemlist_updates;
+ 
+ 	std::vector<std::shared_ptr<FormAction>> formaction_stack;
+ 	unsigned int current_formaction;
+--- a/src/view.cpp
++++ b/src/view.cpp
+@@ -188,6 +188,12 @@
+ 
+ 	std::vector<KeyCombination> key_sequence;
+ 	while (formaction_stack_size() > 0) {
++        std::map<std::string, std::shared_ptr<RssFeed>> item_updates;
++        {
++            std::lock_guard<std::mutex> lock(mtx);
++            item_updates.swap(pending_itemlist_updates);
++        }
++        for (const auto& update : item_updates) { notify_itemlist_change(update.second); }
+         if (feedlist_update_pending.exchange(false)) {
+             ctrl.update_feedlist();
+         }
+@@ -812,6 +818,13 @@
+ 
+ void View::notify_itemlist_change(std::shared_ptr<RssFeed> feed)
+ {
++    // Dialogs can be opened or closed while feeds refresh. Only the UI thread
++    // may walk that stack or replace an article list's selection and feed.
++    if (std::this_thread::get_id() != ui_thread) {
++        std::lock_guard<std::mutex> lock(mtx);
++        pending_itemlist_updates[feed->rssurl()] = feed;
++        return;
++    }
+ 	for (const auto& form : formaction_stack) {
+ 		if (form != nullptr && form->id() == Dialog::ArticleList) {
+ 			std::shared_ptr<ItemListFormAction> itemlist =

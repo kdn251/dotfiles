@@ -106,7 +106,9 @@ class PlaythroughTests(unittest.TestCase):
                 self.assertIn('A Game — Creator',(view/'playlist.xml').read_text())
 
     def test_native_group_navigation_progress_delete_and_back(self):
-        import fcntl,pty,select,signal,struct,termios,time
+        import fcntl,pty,select,signal,struct,termios,time,re
+        from newsboat_loading import GraphicsStream
+        from PIL import Image
         try:import pyte
         except ImportError:self.skipTest('requires pyte')
         binary=Path.home()/'.local/lib/newsboat-paged/newsboat'
@@ -115,6 +117,11 @@ class PlaythroughTests(unittest.TestCase):
         bindir=self.root/'.local/lib/newsboat-paged';bindir.mkdir(parents=True)
         (bindir/'newsboat').symlink_to(binary);(self.root/'scripts').symlink_to(SCRIPTS)
         env=dict(os.environ,HOME=str(self.root),XDG_STATE_HOME=str(self.root/'state'),NEWSBOAT_VIDEO_DIR=str(media.ROOT),NEWSBOAT_URLS_FILE=str(media.URLS),TERM='xterm-256color')
+        env['KITTY_WINDOW_ID']='1'
+        thumbnails=self.root/'state/newsboat/youtube-playlists/thumbnails'
+        thumbnails.mkdir(parents=True,exist_ok=True)
+        for ident in ('abc123DEF45','abc123DEF46'):
+            Image.new('RGB',(320,180),'red').save(thumbnails/(ident+'.png'))
         for name in list(env):
             if name.startswith('NEWSBOAT_') and name not in {'NEWSBOAT_VIDEO_DIR','NEWSBOAT_URLS_FILE'}:env.pop(name)
         library.publish({})
@@ -124,11 +131,15 @@ class PlaythroughTests(unittest.TestCase):
         if pid==0:os.execve('/usr/bin/python3',['python3',str(SCRIPTS/'newsboat-session.py'),'-C',str(config),'-u',str(media.URLS),'-c',str(self.root/'cache.db')],env)
         fcntl.ioctl(fd,termios.TIOCSWINSZ,struct.pack('HHHH',24,120,0,0))
         screen=pyte.Screen(120,24);stream=pyte.ByteStream(screen)
+        graphics=GraphicsStream();image_seen=[]
         def wait(predicate):
             end=time.monotonic()+7
             while time.monotonic()<end:
                 if select.select([fd],[],[],.05)[0]:
-                    try:stream.feed(os.read(fd,65536))
+                    try:
+                        data=graphics.feed(os.read(fd,65536))
+                        if b'a=p,' in data:image_seen.append(True)
+                        stream.feed(re.sub(rb'\x1b(?:_G|P).*?\x1b\\',b'',data,flags=re.S))
                     except OSError:break
                 text='\n'.join(screen.display)
                 if predicate(text):return
@@ -143,6 +154,7 @@ class PlaythroughTests(unittest.TestCase):
             wait(lambda t:'50%' in t and 'A Game — Creator' in t)
             os.write(fd,b'\n')
             wait(lambda t:'Part one' in t and 'Part two' in t)
+            wait(lambda t:bool(image_seen))
             text='\n'.join(screen.display)
             self.assertIn('0%',text)
             self.assertLess(text.index('Part one'),text.index('Part two'))

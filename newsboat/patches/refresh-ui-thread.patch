@@ -1,0 +1,66 @@
+--- a/include/view.h
++++ b/include/view.h
+@@ -2,6 +2,8 @@
+ #define NEWSBOAT_VIEW_H_
+ 
+ #include <cstdint>
++#include <atomic>
++#include <thread>
+ #include <mutex>
+ #include <map>
+ #include <optional>
+@@ -176,6 +178,8 @@
+ 	ConfigContainer* cfg;
+ 	KeyMap* keys;
+ 	std::mutex mtx;
++    const std::thread::id ui_thread = std::this_thread::get_id();
++    std::atomic<bool> feedlist_update_pending {false};
+ 
+ 	std::vector<std::shared_ptr<FormAction>> formaction_stack;
+ 	unsigned int current_formaction;
+--- a/src/view.cpp
++++ b/src/view.cpp
+@@ -188,6 +188,9 @@
+ 
+ 	std::vector<KeyCombination> key_sequence;
+ 	while (formaction_stack_size() > 0) {
++        if (feedlist_update_pending.exchange(false)) {
++            ctrl.update_feedlist();
++        }
+ 		// first, we take the current formaction.
+ 		std::shared_ptr<FormAction> fa = get_current_formaction();
+ 
+@@ -207,8 +210,7 @@
+ 		const std::string event = fa->draw_form_wait_for_event(
+ 			std::getenv("NEWSBOAT_DOWNLOAD_STATUS") &&
+ 			std::dynamic_pointer_cast<ItemListFormAction>(fa) ? 1000 :
+-			(std::getenv("NEWSBOAT_LIVE_QUERIES") &&
+-			std::dynamic_pointer_cast<FeedListFormAction>(fa) ? 500 : INT_MAX));
++			(std::dynamic_pointer_cast<FeedListFormAction>(fa) ? 500 : INT_MAX));
+ 
+ 		if (ctrl_c_hit) {
+ 			ctrl_c_hit = false;
+@@ -324,8 +326,7 @@
+ 		const std::string event = fa->draw_form_wait_for_event(
+ 			std::getenv("NEWSBOAT_DOWNLOAD_STATUS") &&
+ 			std::dynamic_pointer_cast<ItemListFormAction>(fa) ? 1000 :
+-			(std::getenv("NEWSBOAT_LIVE_QUERIES") &&
+-			std::dynamic_pointer_cast<FeedListFormAction>(fa) ? 500 : INT_MAX));
++			(std::dynamic_pointer_cast<FeedListFormAction>(fa) ? 500 : INT_MAX));
+ 		LOG(Level::DEBUG, "View::run: event = %s", event);
+ 		if (event.empty() || event == "TIMEOUT") {
+ 			continue;
+@@ -524,6 +525,13 @@
+ 
+ void View::set_feedlist(std::vector<std::shared_ptr<RssFeed>> feeds)
+ {
++    // Reload workers must never mutate the list formatter/cache concurrently
++    // with cursor movement or redraws. Coalesce updates and render on the UI
++    // thread, taking the latest container snapshot there.
++    if (std::this_thread::get_id() != ui_thread) {
++        feedlist_update_pending.store(true);
++        return;
++    }
+ 	try {
+ 		std::lock_guard<std::mutex> lock(mtx);
+ 

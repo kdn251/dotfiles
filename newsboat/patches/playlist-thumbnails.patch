@@ -1,0 +1,92 @@
+--- a/stfl/itemlist.stfl
++++ b/stfl/itemlist.stfl
+@@ -19,13 +19,19 @@
+     text[head]:"Articles for '#'"
+     .expand:h
+     .display[showtitle]:1
+-  !list[items]
++  hbox
+     .expand:vh
+-    richtext:1
+-    style_normal[listnormal]:
+-    style_focus[listfocus]:
+-    pos[items_pos]:0
+-    offset[items_offset]:0
++    !list[items]
++      .expand:vh
++      richtext:1
++      style_normal[listnormal]:
++      style_focus[listfocus]:
++      pos[items_pos]:0
++      offset[items_offset]:0
++    label[thumbnail]
++      .display[showthumbnail]:0
++      .expand:v
++      text:"                                      "
+   vbox[hints]
+     .expand:0
+     .display[showhint]:1
+--- a/include/itemlistformaction.h
++++ b/include/itemlistformaction.h
+@@ -32,6 +32,7 @@
+     bool has_visual_selection() const { return visual_active; }
+     std::optional<bool> run_visual_commands(const std::vector<MacroCmd>& commands, BindingType type);
+ 	void prepare() override;
++    std::string thumbnail_request();
+ 	void init() override;
+ 
+ 	void set_feed(std::shared_ptr<RssFeed> fd);
+--- a/src/itemlistformaction.cpp
++++ b/src/itemlistformaction.cpp
+@@ -13,6 +13,8 @@
+ #include <sstream>
+ #include <string>
+ #include <sys/stat.h>
++#include <sys/ioctl.h>
++#include <unistd.h>
+ 
+ 
+ #include "config.h"
+@@ -1424,8 +1426,22 @@
+ 	invalidation_mode = InvalidationMode::NONE;
+ }
+ 
++std::string ItemListFormAction::thumbnail_request()
++{
++    if (f.get("showthumbnail") != "1" || list.get_position() >= visible_items.size()) { return ""; }
++    return f.get("thumbnail:x") + ";" + f.get("thumbnail:y") + ";" +
++        f.get("thumbnail:w") + ";" + f.get("thumbnail:h") + ";" +
++        visible_items[list.get_position()].first->link();
++}
++
+ void ItemListFormAction::prepare()
+ {
++    if (std::getenv("NEWSBOAT_THUMBNAILS")) {
++        struct winsize size {};
++        ioctl(STDOUT_FILENO, TIOCGWINSZ, &size);
++        set_value("showthumbnail", size.ws_col >= 100 && size.ws_row >= 16 ? "1" : "0");
++        recalculate_widget_dimensions();
++    }
+ 	set_keymap_hints();
+ 
+ 	std::lock_guard<std::mutex> mtx(redraw_mtx);
+--- a/src/view.cpp
++++ b/src/view.cpp
+@@ -194,7 +194,16 @@
+ 		// we signal "oh, you will receive an operation soon"
+ 		fa->prepare();
+ 
+-		// we then receive the event and ignore timeouts.
++		// The playlist PTY wrapper consumes this marker and draws images without
++        // letting network work or graphics escape codes enter the curses UI.
++        if (std::getenv("NEWSBOAT_THUMBNAILS")) {
++            fa->draw_form();
++            auto items = std::dynamic_pointer_cast<ItemListFormAction>(fa);
++            std::cout << "\033]777;newsboat-thumbnail;" <<
++                (items ? items->thumbnail_request() : "") << "\007" << std::flush;
++        }
++
++        // we then receive the event and ignore timeouts.
+ 		const std::string event = fa->draw_form_wait_for_event(
+ 			std::getenv("NEWSBOAT_DOWNLOAD_STATUS") &&
+ 			std::dynamic_pointer_cast<ItemListFormAction>(fa) ? 1000 :
