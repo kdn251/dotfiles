@@ -1,0 +1,41 @@
+--- a/src/itemlistformaction.cpp
++++ b/src/itemlistformaction.cpp
+@@ -14,6 +14,7 @@
+ #include <string>
+ #include <sys/stat.h>
+ #include <sys/ioctl.h>
++#include <regex>
+ #include <unistd.h>
+ 
+ 
+@@ -1436,12 +1437,6 @@
+ 
+ void ItemListFormAction::prepare()
+ {
+-    if (std::getenv("NEWSBOAT_THUMBNAILS")) {
+-        struct winsize size {};
+-        ioctl(STDOUT_FILENO, TIOCGWINSZ, &size);
+-        set_value("showthumbnail", size.ws_col >= 100 && size.ws_row >= 16 ? "1" : "0");
+-        recalculate_widget_dimensions();
+-    }
+ 	set_keymap_hints();
+ 
+ 	std::lock_guard<std::mutex> mtx(redraw_mtx);
+@@ -1471,6 +1466,17 @@
+ 				_("Error: applying the filter failed: %s"), e.what()));
+ 		return;
+ 	}
++
++    if (std::getenv("NEWSBOAT_THUMBNAILS")) {
++        struct winsize size {};
++        ioctl(STDOUT_FILENO, TIOCGWINSZ, &size);
++        static const std::regex video_link(R"(https?://(?:(?:www\.|m\.)?youtube\.com/(?:watch\?|shorts/|live/|embed/)|youtu\.be/|(?:www\.)?twitch\.tv/|clips\.twitch\.tv/).+)");
++        const auto cursor = list.get_position();
++        const bool video = cursor < visible_items.size() &&
++            std::regex_match(visible_items[cursor].first->link(), video_link);
++        set_value("showthumbnail", video && size.ws_col >= 100 && size.ws_row >= 16 ? "1" : "0");
++        recalculate_widget_dimensions();
++    }
+ 
+ 	if (cfg->get_configvalue_as_bool("mark-as-read-on-hover")) {
+ 		if (!visible_items.empty()) {

@@ -15,7 +15,7 @@ class GraphicsStream:
         self.pending = b''
         offset = 0
         while True:
-            positions = [pos for prefix in (b'\x1b_G',b'\x1bP') if (pos := data.find(prefix,offset)) >= 0]
+            positions = [pos for prefix in (b'\x1b_G',b'\x1bP',b'\x1b]') if (pos := data.find(prefix,offset)) >= 0]
             start = min(positions) if positions else -1
             if start < 0:
                 keep = 2 if data.endswith(b'\x1b_') else int(data.endswith(b'\x1b'))
@@ -24,10 +24,15 @@ class GraphicsStream:
                     return data[:-keep]
                 return data
             end = data.find(b'\x1b\\', start+3)
+            terminator = 2
+            if data[start:start+2] == b'\x1b]':
+                bell = data.find(b'\x07',start+2)
+                if bell >= 0 and (end < 0 or bell < end):
+                    end, terminator = bell, 1
             if end < 0:
                 self.pending = data[start:]
                 return data[:start]
-            offset = end+2
+            offset = end+terminator
 
 
 class Renderer:

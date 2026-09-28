@@ -1,0 +1,70 @@
+--- a/include/view.h
++++ b/include/view.h
+@@ -181,6 +181,8 @@
+ 	std::mutex mtx;
+     const std::thread::id ui_thread = std::this_thread::get_id();
+     std::atomic<bool> feedlist_update_pending {false};
++    std::atomic<bool> redraw_pending {false};
++    std::optional<std::string> pending_status;
+     std::map<std::string, std::shared_ptr<RssFeed>> pending_itemlist_updates;
+ 
+ 	std::vector<std::shared_ptr<FormAction>> formaction_stack;
+--- a/src/view.cpp
++++ b/src/view.cpp
+@@ -110,6 +110,11 @@
+ void View::set_status(const std::string& msg)
+ {
+ 	std::lock_guard<std::mutex> lock(mtx);
++    if (std::this_thread::get_id() != ui_thread) {
++        pending_status = msg;
++        return;
++    }
++    pending_status.reset();
+ 
+ 	auto fa = get_current_formaction();
+ 	if (fa != nullptr
+@@ -188,6 +193,15 @@
+ 
+ 	std::vector<KeyCombination> key_sequence;
+ 	while (formaction_stack_size() > 0) {
++        {
++            std::lock_guard<std::mutex> lock(mtx);
++            if (pending_status) {
++                auto current = get_current_formaction();
++                if (current) { current->set_status(*pending_status); }
++                pending_status.reset();
++            }
++        }
++        if (redraw_pending.exchange(false)) { force_redraw(); }
+         std::map<std::string, std::shared_ptr<RssFeed>> item_updates;
+         {
+             std::lock_guard<std::mutex> lock(mtx);
+@@ -216,7 +230,7 @@
+ 		const std::string event = fa->draw_form_wait_for_event(
+ 			std::getenv("NEWSBOAT_DOWNLOAD_STATUS") &&
+ 			std::dynamic_pointer_cast<ItemListFormAction>(fa) ? 1000 :
+-			(std::dynamic_pointer_cast<FeedListFormAction>(fa) ? 500 : INT_MAX));
++			(std::dynamic_pointer_cast<FeedListFormAction>(fa) ? 500 : 1000));
+ 
+ 		if (ctrl_c_hit) {
+ 			ctrl_c_hit = false;
+@@ -332,7 +346,7 @@
+ 		const std::string event = fa->draw_form_wait_for_event(
+ 			std::getenv("NEWSBOAT_DOWNLOAD_STATUS") &&
+ 			std::dynamic_pointer_cast<ItemListFormAction>(fa) ? 1000 :
+-			(std::dynamic_pointer_cast<FeedListFormAction>(fa) ? 500 : INT_MAX));
++			(std::dynamic_pointer_cast<FeedListFormAction>(fa) ? 500 : 1000));
+ 		LOG(Level::DEBUG, "View::run: event = %s", event);
+ 		if (event.empty() || event == "TIMEOUT") {
+ 			continue;
+@@ -1347,6 +1361,10 @@
+ 
+ void View::force_redraw()
+ {
++    if (std::this_thread::get_id() != ui_thread) {
++        redraw_pending.store(true);
++        return;
++    }
+ 	std::shared_ptr<FormAction> fa = get_current_formaction();
+ 	if (fa != nullptr
+ 		&& std::dynamic_pointer_cast<EmptyFormAction>(fa) == nullptr) {

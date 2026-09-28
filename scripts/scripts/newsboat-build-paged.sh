@@ -71,6 +71,8 @@ patch -p1 < "$repo/newsboat/patches/playlist-thumbnails.patch"
 patch -p1 < "$repo/newsboat/patches/refresh-ui-thread.patch"
 patch -p1 < "$repo/newsboat/patches/home-shortcut.patch"
 patch -p1 < "$repo/newsboat/patches/refresh-item-ui-thread.patch"
+patch -p1 < "$repo/newsboat/patches/list-thumbnails.patch"
+patch -p1 < "$repo/newsboat/patches/refresh-redraw-ui-thread.patch"
 make -j"${NEWSBOAT_BUILD_JOBS:-4}" WARNFLAGS="-Werror -Wall -Wextra -Wunreachable-code -Wno-error=unused-function" newsboat
 install -m 755 newsboat "$install_dir/newsboat.new"
 mv "$install_dir/newsboat.new" "$install_dir/newsboat"

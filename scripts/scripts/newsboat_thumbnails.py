@@ -1,4 +1,4 @@
-"""Kitty thumbnail pane for the nested playlist browser.
+"""Shared Kitty thumbnail pane for Newsboat's video item lists.
 
 Newsboat reserves the pane and publishes its actual selection/geometry. This
 relay owns all terminal output; a background worker only fetches image bytes.
@@ -21,8 +21,10 @@ import termios
 import threading
 import tty
 from urllib.request import Request, urlopen
+from urllib.parse import urlparse
 
 from newsboat_youtube_playlists import LIBRARY
+from newsboat_media import identity
 
 MARKER = b'\x1b]777;newsboat-thumbnail;'
 
@@ -77,14 +79,25 @@ class Decoder:
             data = data[end+1:]
 
 
+def video_key(url):
+    key = identity(url)
+    if key:
+        return key[1] if key[0] == 'youtube' else ':'.join(key)
+    parsed = urlparse(url)
+    if parsed.hostname in {'twitch.tv','www.twitch.tv'} and re.fullmatch(r'/[A-Za-z0-9_]+/?',parsed.path):
+        return 'twitch-live:'+parsed.path.strip('/').lower()
+    return None
+
+
 def selection(value):
-    match = re.fullmatch(r'(\d+);(\d+);(\d+);(\d+);https://(?:www\.)?youtube\.com/watch\?v=([A-Za-z0-9_-]{11})', value)
+    match = re.fullmatch(r'(\d+);(\d+);(\d+);(\d+);(.+)', value)
     if not match:
         return None
     x, y, w, h = map(int, match.groups()[:4])
     if w < 10 or h < 4:
         return None
-    return x, y, w, h, match[5]
+    key = video_key(match[5])
+    return (x, y, w, h, key) if key else None
 
 
 def fetch_png(ident):
@@ -95,7 +108,22 @@ def fetch_png(ident):
         return path.read_bytes()
     except FileNotFoundError:
         pass
-    request = Request('https://i.ytimg.com/vi/'+ident+'/mqdefault.jpg',
+    if ':' in ident:
+        kind, value = ident.split(':',1)
+        url = ('https://www.twitch.tv/videos/'+value if kind == 'twitch' else
+               'https://clips.twitch.tv/'+value if kind == 'twitch-clip' else
+               'https://www.twitch.tv/'+value)
+        executable = Path.home()/'.local/bin/yt-dlp'
+        result = subprocess.run([str(executable) if executable.exists() else 'yt-dlp',
+            '--ignore-config','--skip-download','--no-playlist','--socket-timeout','4',
+            '--retries','0','--print','%(thumbnail)s','--',url],
+            capture_output=True,text=True,timeout=12,check=True)
+        thumbnail = result.stdout.strip().splitlines()[-1]
+        if urlparse(thumbnail).scheme not in {'https','http'}:
+            raise ValueError('No thumbnail available')
+    else:
+        thumbnail = 'https://i.ytimg.com/vi/'+ident+'/mqdefault.jpg'
+    request = Request(thumbnail,
                       headers={'User-Agent': 'Newsboat thumbnail preview'})
     with urlopen(request, timeout=5) as response:
         data = response.read(2*1024*1024)
@@ -174,11 +202,15 @@ def write(fd, data):
 
 
 def run(command, env):
+    if env.get('NEWSBOAT_THUMBNAIL_OWNER'):
+        # A single outer relay renders the current view. Nested playlist helpers
+        # must not reserve a second graphics owner or change terminal opacity.
+        return subprocess.call(command,env=dict(env,NEWSBOAT_THUMBNAILS='1'))
     if not supported(env):
         return subprocess.call(command, env=env)
     original = termios.tcgetattr(0)
     size = fcntl.ioctl(1, termios.TIOCGWINSZ, bytes(8))
-    child_env = dict(env, NEWSBOAT_THUMBNAILS='1')
+    child_env = dict(env, NEWSBOAT_THUMBNAILS='1',NEWSBOAT_THUMBNAIL_OWNER='1')
     opacity = background_opacity(env)
     previous_opacity = env.get('NEWSBOAT_PREVIEW_OPACITY')
     child_env['NEWSBOAT_PREVIEW_OPACITY'] = str(opacity)
@@ -204,12 +236,23 @@ def run(command, env):
         nonlocal resized
         resized = True
     signal.signal(signal.SIGWINCH, resize)
+    preview_active = False
+    configured = False
+    def preview_mode(active):
+        nonlocal preview_active, configured
+        if active == preview_active:
+            return
+        if active:
+            setup = kitty_command('load-config',{}) if not configured else b''
+            write(1, setup+opacity_command(env,opacity)+
+                  b'\x1b[22;0t\x1b]2;Newsboat Playlist Preview\x07')
+            configured = True
+        else:
+            restore = opacity_command(env,float(previous_opacity)) if previous_opacity else opacity_command(env,opacity,toggle=True)
+            write(1,b'\x1b[23;0t'+restore)
+        preview_active = active
     try:
         tty.setraw(0)
-        # Move transparency from the compositor to Kitty's background. Graphics
-        # stay opaque, while the background retains its usual transparency.
-        write(1, kitty_command('load-config',{})+opacity_command(env,opacity)+
-              b'\x1b[22;0t\x1b]2;Newsboat Playlist Preview\x07')
         while True:
             if resized:
                 size = fcntl.ioctl(1, termios.TIOCGWINSZ, bytes(8))
@@ -262,6 +305,7 @@ def run(command, env):
                     if png:
                         write(1, transmit(image_id, png))
                         repaint = True
+            preview_mode(current is not None)
             if repaint and current and png:
                 write(1, placement(image_id, current, size, png))
             done, exit_status = os.waitpid(pid, os.WNOHANG)
@@ -273,8 +317,8 @@ def run(command, env):
         signal.signal(signal.SIGTERM, previous_term)
         signal.signal(signal.SIGWINCH, previous_winch)
         try:
-            restore = opacity_command(env,float(previous_opacity)) if previous_opacity else opacity_command(env,opacity,toggle=True)
-            write(1, delete(image_id)+b'\x1b[23;0t'+restore)
+            write(1, delete(image_id))
+            preview_mode(False)
             termios.tcsetattr(0, termios.TCSANOW, original)
         except (OSError, termios.error):
             pass  # The enclosing terminal may already have closed.

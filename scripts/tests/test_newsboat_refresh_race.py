@@ -30,7 +30,7 @@ class RefreshRaceTests(unittest.TestCase):
         try:
             with tempfile.TemporaryDirectory() as directory:
                 root=Path(directory);config=root/'config';urls=root/'urls';log=root/'log'
-                config.write_text('reload-threads 100\nshow-read-feeds yes\nconfirm-exit no\nbind-key j down\nbind-key k up\n')
+                config.write_text('reload-threads 100\nshow-read-feeds yes\nconfirm-exit no\nbind-key j down\nbind-key k up\nbind R feedlist,articlelist reload-all\n')
                 urls.write_text(''.join(f'http://127.0.0.1:{server.server_port}/{i}\n' for i in range(100)))
                 pid,fd=pty.fork()
                 if pid==0:
@@ -43,6 +43,7 @@ class RefreshRaceTests(unittest.TestCase):
                     # Give the first screen time to initialize.
                     time.sleep(.2)
                     for repeat in range(5):
+                        if repeat%2:os.write(fd,b'\n')
                         os.write(fd,b'R')
                         deadline=time.monotonic()+20
                         count=0
@@ -62,6 +63,7 @@ class RefreshRaceTests(unittest.TestCase):
                             count+=1
                             time.sleep(.01)
                         else:self.fail('Parallel refresh did not finish')
+                        if repeat%2:os.write(fd,b'q')
                     os.write(fd,b'q')
                 finally:
                     if not reaped:

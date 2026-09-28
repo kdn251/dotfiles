@@ -200,6 +200,7 @@ def run(args):
     playlist_master = None
     playlist_graphics = GraphicsStream()
     nested_graphics = GraphicsStream()
+    main_graphics = GraphicsStream()
     home_pending = False
     vod_monitor = None
     status = None
@@ -342,7 +343,7 @@ def run(args):
                         return_output.clear()
                         starred_return = counting_starred = count_refresh = False
                         restore_feed = None
-                        write_all(master, b':\x1b:exec set browser "newsboat-home://show"\n\x0c')
+                        write_all(master, b':\x1bh\x0c')
                     if remote and startup and time.monotonic() >= startup_deadline:
                         offline_requested = True
                         os.kill(pid, signal.SIGTERM)
@@ -543,6 +544,8 @@ def run(args):
                             if not data:
                                 running = False
                                 break
+                            data = main_graphics.feed(data)
+                            if not data:continue
                             if startup:
                                 startup_output.extend(data)
                                 # ncurses entering its screen is the handoff.
@@ -677,4 +680,11 @@ def run(args):
 
 
 if __name__ == "__main__":
+    from newsboat_thumbnails import run as with_thumbnails, supported
+    # Keep CLI modes untouched; the relay wraps the interactive session once,
+    # so native and saved lists share one selected-video preview.
+    if (len(sys.argv) == 1 and os.isatty(0) and os.isatty(1)
+            and supported(os.environ) and not os.environ.get('NEWSBOAT_THUMBNAIL_OWNER')
+            and (Path.home()/'.local/lib/newsboat-paged/newsboat').is_file()):
+        sys.exit(with_thumbnails([sys.executable,str(Path(__file__).resolve())],os.environ.copy()))
     sys.exit(run(sys.argv[1:]))

@@ -35,6 +35,15 @@ class ProgressTests(unittest.TestCase):
             self.assertEqual(first+second,b'before'+packet+b'after')
             self.assertTrue(packet in first or packet in second)
 
+    def test_selection_and_remote_commands_stay_whole_before_toast(self):
+        for packet in (b'\x1b]777;newsboat-thumbnail;82;1;38;21;https://youtu.be/abc123DEF45\x07',
+                       b'\x1bP@kitty-cmd{"cmd":"set-background-opacity"}\x1b\\'):
+            for split in range(len(packet)+1):
+                stream=session.GraphicsStream()
+                chunks=[stream.feed(packet[:split]),stream.feed(packet[split:])]
+                self.assertEqual(b''.join(chunks),packet)
+                self.assertIn(packet,chunks)
+
     def test_slide_uses_small_monotonic_steps(self):
         entering = [session.slide_offset(i/60, 34) for i in range(31)]
         leaving = [session.slide_offset(i/60, 34, exiting=True) for i in range(31)]
