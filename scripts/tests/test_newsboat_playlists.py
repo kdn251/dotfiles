@@ -39,6 +39,8 @@ class PlaylistTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as d:
             cmd,config=ui.prepare_view(d,dict(kind='playlist',name=title,rows=rows))
             self.assertIn('article-sort-order guid-asc',config.read_text())
+            self.assertIn('│ %t',config.read_text())
+            self.assertNotIn(r'\u2502',config.read_text())
             self.assertIn('macro d ',config.read_text())
             self.assertIn('bind s ',config.read_text())
             self.assertIn('bind V ',config.read_text())

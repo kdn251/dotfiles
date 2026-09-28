@@ -120,7 +120,7 @@ def prepare_view(directory, data):
     lines += ['urls-source local','auto-reload no','show-read-feeds yes','show-read-articles yes',
               'confirm-exit no','article-sort-order guid-asc','articlelist-title-format " %T"',
               'searchresult-title-format " Search results"',
-              'articlelist-format '+json.dumps('%4i  %-9p %-20a │ %t' if is_playlist else '%4i  %t'),
+              'articlelist-format '+json.dumps('%4i  %-9p %-20a │ %t' if is_playlist else '%4i  %t',ensure_ascii=False),
               'browser '+json.dumps(action),
               'bind q articlelist hard-quit -- "Back"',
               'bind h articlelist hard-quit -- "Back"']
