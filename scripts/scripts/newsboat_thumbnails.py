@@ -107,12 +107,26 @@ def selection(value):
     return (x, y, w, h, key) if key else None
 
 
+def frame_thumbnail(data):
+    """Match the loader's rounded white frame without altering cached originals."""
+    from PIL import Image, ImageDraw
+    with Image.open(io.BytesIO(data)) as source:
+        height=max(1,round(680*source.height/source.width))
+        picture=source.convert('RGBA').resize((680,height),Image.Resampling.LANCZOS)
+    mask=Image.new('L',picture.size,0)
+    ImageDraw.Draw(mask).rounded_rectangle((2,2,677,height-3),radius=20,fill=255)
+    picture.putalpha(mask)
+    ImageDraw.Draw(picture).rounded_rectangle((2,2,677,height-3),radius=20,outline='#ffffff',width=4)
+    output=io.BytesIO();picture.save(output,format='PNG')
+    return output.getvalue()
+
+
 def fetch_png(ident):
     from PIL import Image
     directory = LIBRARY/'thumbnails'
     path = directory/(ident+'.png')
     try:
-        return path.read_bytes()
+        return frame_thumbnail(path.read_bytes())
     except FileNotFoundError:
         pass
     if ident.startswith('playlist:'):
@@ -147,7 +161,7 @@ def fetch_png(ident):
     temp = path.with_suffix('.'+str(os.getpid())+'.tmp')
     temp.write_bytes(data)
     temp.replace(path)
-    return data
+    return frame_thumbnail(data)
 
 
 class Fetcher:

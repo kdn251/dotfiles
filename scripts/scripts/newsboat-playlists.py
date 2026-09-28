@@ -192,8 +192,13 @@ def work(action, url, extra=()):
         helper,operation=extra
         if helper not in ('commentary','favorites') or operation not in ('save','remove','restore'):
             raise ValueError('Unknown collection action')
-        library.ensure_entry(url)
-        launcher=[sys.executable,str(SCRIPTS/f'newsboat-{helper}.py'),operation,url]
+        from newsboat_actions import begin, finish
+        marker=begin(url,remove=helper if operation=='remove' else '')
+        try:
+            library.ensure_entry(url)
+            return subprocess.call([sys.executable,str(SCRIPTS/f'newsboat-{helper}.py'),operation,url])
+        finally:
+            finish(marker)
     else:
         row=library.saved_item(url) or {}
         launcher=[str(SCRIPTS/'newsboat-play-video.sh'),url,row.get('title','')]

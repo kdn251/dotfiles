@@ -1,0 +1,124 @@
+--- a/src/itemlistformaction.cpp
++++ b/src/itemlistformaction.cpp
+@@ -6,6 +6,7 @@
+ #include <cstring>
+ #include <cstdlib>
+ #include <fstream>
++#include <filesystem>
+ #include <map>
+ #include <set>
+ #include <langinfo.h>
+@@ -45,6 +46,40 @@
+ static std::map<std::string, double> downloaded_at;
+ static std::string last_opened_url;
+ static std::set<std::string> noted_urls;
++static std::set<std::string> pending_actions;
++static std::set<std::pair<std::string, std::string>> pending_removals;
++static unsigned int action_frame = 0;
++static std::string pending_action_revision()
++{
++    pending_actions.clear();
++    pending_removals.clear();
++    if (const char* stars = std::getenv("NEWSBOAT_STARRED_STATUS")) {
++        const auto directory = std::filesystem::path(stars).parent_path() / "actions-pending";
++        std::error_code error;
++        for (std::filesystem::directory_iterator it(directory, error), end; !error && it != end; it.increment(error)) {
++            if (it->path().extension() != ".txt") { continue; }
++            std::ifstream input(it->path());
++            std::string url, owner;
++            if (std::getline(input, url) && std::getline(input, owner) && !url.empty()) {
++                struct stat info {};
++                if (stat(owner.c_str(), &info) == 0) {
++                    pending_actions.insert(url);
++                    std::string kind;
++                    if (std::getline(input, kind) && !kind.empty()) { pending_removals.insert({url, kind}); }
++                }
++            }
++        }
++    }
++    const auto ticks = std::chrono::duration_cast<std::chrono::milliseconds>(
++        std::chrono::steady_clock::now().time_since_epoch()).count();
++    action_frame = (ticks / 100) % 10;
++    std::string revision;
++    for (const auto& url : pending_actions) { revision += url + "\n"; }
++    for (const auto& removal : pending_removals) { revision += removal.first + "\t" + removal.second + "\n"; }
++    if (!revision.empty()) { revision += std::to_string(action_frame); }
++    return revision;
++}
++
+ static std::string download_revision()
+ {
+     const char* path = std::getenv("NEWSBOAT_DOWNLOAD_STATUS");
+@@ -1457,6 +1492,9 @@
+ 
+ 	std::lock_guard<std::mutex> mtx(redraw_mtx);
+ 
++    const auto actions = pending_action_revision();
++    const bool actions_changed = actions != old_actions;
++    old_actions = actions;
+     const auto storage = library_storage_size(feed->title(), feed->rssurl());
+     if (storage != old_storage) { old_storage = storage; do_redraw = true; }
+     const auto status_version = download_revision();
+@@ -1525,6 +1563,7 @@
+ 	}
+ 
+ 	if (invalidation_mode == InvalidationMode::NONE) {
++        if (actions_changed) { draw_items(); }
+ 		return;
+ 	}
+ 
+@@ -1552,10 +1591,10 @@
+ 	fmt.register_fmt('e', item.first->enclosure_url());
+     const auto status = download_status.find(item.first->link());
+     const std::vector<std::string> markers = {
+-        starred_urls.count(item.first->link()) ? "󰓎" : "",
++        !pending_removals.count({item.first->link(), "star"}) && starred_urls.count(item.first->link()) ? "󰓎" : "",
+         status != download_status.end() ? status->second : feed->rssurl().find("query:🎬 VODs:") == 0 ? "📥" : "",
+-        commentary_urls.count(item.first->link()) ? "📣" : "",
+-        favorites_urls.count(item.first->link()) ? "" : ""
++        !pending_removals.count({item.first->link(), "commentary"}) && commentary_urls.count(item.first->link()) ? "📣" : "",
++        !pending_removals.count({item.first->link(), "favorites"}) && favorites_urls.count(item.first->link()) ? "" : ""
+     };
+     size_t primary = 0; // New, All and source feeds: star, download, commentary.
+     if (feed->title() == "📥 Downloads" || feed->title() == "🎬 VODs") { primary = 1; }
+@@ -1577,6 +1616,10 @@
+     }
+     if (!last_opened_url.empty() && item.first->link() == last_opened_url) {
+         badges = "📌 " + badges;
++    }
++    if (pending_actions.count(item.first->link())) {
++        static const char* frames[] = {"⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"};
++        badges = std::string(frames[action_frame]) + (badges.empty() ? "" : " " + badges);
+     }
+     fmt.register_fmt('p', badges);
+     const auto progress = watched_progress.find(item.first->link());
+--- a/include/itemlistformaction.h
++++ b/include/itemlistformaction.h
+@@ -165,6 +165,7 @@
+ 	std::string download_status_version;
+ 	unsigned int old_width;
+     std::string old_storage;
++    std::string old_actions;
+     unsigned int thumbnail_height = 0;
+ 	std::optional<ArticleSortStrategy> old_sort_strategy;
+ 
+--- a/src/view.cpp
++++ b/src/view.cpp
+@@ -229,7 +229,7 @@
+         // we then receive the event and ignore timeouts.
+ 		const std::string event = fa->draw_form_wait_for_event(
+ 			std::getenv("NEWSBOAT_DOWNLOAD_STATUS") &&
+-			std::dynamic_pointer_cast<ItemListFormAction>(fa) ? 1000 :
++			std::dynamic_pointer_cast<ItemListFormAction>(fa) ? 100 :
+ 			(std::dynamic_pointer_cast<FeedListFormAction>(fa) ? 500 : 1000));
+ 
+ 		if (ctrl_c_hit) {
+@@ -345,7 +345,7 @@
+ 
+ 		const std::string event = fa->draw_form_wait_for_event(
+ 			std::getenv("NEWSBOAT_DOWNLOAD_STATUS") &&
+-			std::dynamic_pointer_cast<ItemListFormAction>(fa) ? 1000 :
++			std::dynamic_pointer_cast<ItemListFormAction>(fa) ? 100 :
+ 			(std::dynamic_pointer_cast<FeedListFormAction>(fa) ? 500 : 1000));
+ 		LOG(Level::DEBUG, "View::run: event = %s", event);
+ 		if (event.empty() || event == "TIMEOUT") {

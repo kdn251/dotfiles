@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """A persistent local collection for things saved for commentary."""
 from contextlib import closing
+from newsboat_actions import busy
 from email.utils import formatdate
 import hashlib
 import importlib.util
@@ -35,6 +36,7 @@ def entries():
         return db.execute('SELECT url,title,source,content,saved FROM items ORDER BY saved DESC').fetchall()
 
 
+@busy
 def save(url):
     if urlparse(url).scheme not in {'http', 'https'}:
         return
@@ -57,6 +59,7 @@ def save(url):
     rebuild()
 
 
+@busy
 def remove(url):
     with closing(database()) as db, db:
         db.execute('INSERT OR REPLACE INTO removed SELECT * FROM items WHERE url=?', (url,))
@@ -65,6 +68,7 @@ def remove(url):
     rebuild()
 
 
+@busy
 def restore(url, saved):
     if saved:
         with closing(database()) as db, db:
@@ -143,8 +147,11 @@ def show():
 
 if __name__ == '__main__':
     action=sys.argv[1]
-    if action=='save':save(sys.argv[2])
-    elif action=='remove':remove(sys.argv[2])
-    elif action=='restore':restore(sys.argv[2],sys.argv[3]=='saved')
+    if action in {'save','remove','restore'}:
+        from newsboat_actions import enqueue_collection
+        enqueue_collection(str(Path(__file__).resolve()),STATE,sys.argv[1:])
+    elif action=='work':
+        from newsboat_actions import drain_collection
+        drain_collection(str(Path(__file__).resolve()),STATE,{'save':save,'remove':remove,'restore':restore})
     elif action=='rebuild':rebuild()
     elif action=='show':sys.exit(show())

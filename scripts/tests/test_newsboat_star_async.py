@@ -54,6 +54,7 @@ class AsyncStarTests(unittest.TestCase):
                                    env=env, check=True, timeout=2, capture_output=True)
                     self.assertTrue(started.wait(2))
                     self.assertEqual(changes, [])
+                    self.assertEqual(len(list((root/'newsboat/actions-pending').glob('*.txt'))),1)
                     subprocess.run([sys.executable, str(SCRIPT), 'remove', row['url']],
                                    env=env, check=True, timeout=2, capture_output=True)
                     self.assertEqual(changes, [])
@@ -66,6 +67,7 @@ class AsyncStarTests(unittest.TestCase):
                     time.sleep(.02)
                 self.assertEqual(changes, [True, False])
                 self.assertEqual(list(queue.glob('*.json')), [])
+                self.assertEqual(list((root/'newsboat/actions-pending').glob('*.txt')), [])
                 self.assertEqual((root/'newsboat/starred-urls.txt').read_text(), '')
                 subprocess.run([sys.executable, str(SCRIPT), 'restore', row['url'], 'star', 'unread'],
                                env=env, check=True, timeout=2, capture_output=True)

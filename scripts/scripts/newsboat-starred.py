@@ -103,13 +103,19 @@ def enqueue_star(url, desired, restore_unread=None):
     queue = STARRED_STATUS.parent/'star-actions'
     queue.mkdir(parents=True, exist_ok=True)
     job = queue/f'{time.time_ns():020d}-{os.getpid()}.json'
-    atomic_write(job, json.dumps({'url': url, 'desired': desired, 'cache': str(CACHE), 'restore_unread': restore_unread,
-                                 'playlist_context':os.environ.get('NEWSBOAT_PLAYLIST_CONTEXT')}))
+    action = {'url': url, 'desired': desired, 'cache': str(CACHE), 'restore_unread': restore_unread,
+              'playlist_context':os.environ.get('NEWSBOAT_PLAYLIST_CONTEXT')}
+    from newsboat_actions import begin, finish
+    marker = None
     try:
+        marker = begin(url, STARRED_STATUS.parent, owner=job, remove='star' if desired is False else '')
+        action['pending_marker'] = str(marker)
+        atomic_write(job, json.dumps(action))
         subprocess.Popen([sys.executable, str(Path(__file__).resolve()), 'work'],
                          stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
                          stderr=subprocess.DEVNULL, start_new_session=True)
     except Exception:
+        finish(marker)
         job.unlink(missing_ok=True)
         raise
     if desired is False and restore_unread is None and os.environ.get('NEWSBOAT_STARRED_REMOVALS'):
@@ -127,6 +133,7 @@ def drain_star_actions():
         fcntl.flock(lock, fcntl.LOCK_EX)
         while jobs := sorted(queue.glob('*.json')):
             for job in jobs:
+                action = {}
                 try:
                     action = json.loads(job.read_text())
                     CACHE = Path(action['cache'])
@@ -155,6 +162,8 @@ def drain_star_actions():
                                     'Star change failed',
                                     'Could not update Miniflux. Reopen Starred after syncing and try again.'], check=False)
                 finally:
+                    from newsboat_actions import finish
+                    finish(action.get('pending_marker'))
                     job.unlink(missing_ok=True)
 
 

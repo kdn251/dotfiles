@@ -208,6 +208,13 @@ os.read(0,1)
         finally:
             os.kill(pid,signal.SIGTERM);os.waitpid(pid,0);os.close(fd)
 
+    def test_thumbnail_frame_matches_loader_and_preserves_center(self):
+        source=io.BytesIO();Image.new('RGB',(320,180),'red').save(source,format='PNG')
+        with Image.open(io.BytesIO(thumbs.frame_thumbnail(source.getvalue()))) as image:
+            self.assertEqual(image.getpixel((0,0))[3],0)
+            self.assertEqual(image.getpixel((340,2)),(255,255,255,255))
+            self.assertEqual(image.getpixel((340,100)),(255,0,0,255))
+
     def test_graphics_packets_and_geometry(self):
         out=io.BytesIO();Image.new('RGB',(320,180),'red').save(out,'PNG')
         data=out.getvalue()
@@ -243,7 +250,7 @@ os.read(0,1)
                     os._exit(thumbs.run(cmd,env))
             data=bytearray();end=time.monotonic()+5
             try:
-                packet=thumbs.transmit(0x40000000+pid,cover.read_bytes())
+                packet=thumbs.transmit(0x40000000+pid,thumbs.frame_thumbnail(cover.read_bytes()))
                 while time.monotonic()<end:
                     if select.select([fd],[],[],.05)[0]:data.extend(os.read(fd,65536))
                     if packet in data and b'a=p,' in data:break
@@ -282,7 +289,7 @@ os.read(0,1)
                 self.fail(repr(bytes(data[-500:])))
             image_id=0x40000000+pid
             try:
-                until(thumbs.transmit(image_id,(library/'thumbnails/abc123DEF45.png').read_bytes()))
+                until(thumbs.transmit(image_id,thumbs.frame_thumbnail((library/'thumbnails/abc123DEF45.png').read_bytes())))
                 until(b'a=p,')
                 self.assertIn(b'\x1b[22;0t\x1b]2;Newsboat Playlist Preview\x07',data)
                 self.assertNotIn(thumbs.MARKER,data)
