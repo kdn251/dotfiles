@@ -43,6 +43,7 @@ export NEWSBOAT_MAINTENANCE="$(dirname "$(readlink -f "$0")")/newsboat-maintenan
 READY_OPTS=("--script=$(dirname "$(readlink -f "$0")")/newsboat-watch-completion.lua")
 READY_OPTS+=("--script=$(dirname "$(readlink -f "$0")")/newsboat-local-playback.lua")
 READY_OPTS+=("--script=$(dirname "$(readlink -f "$0")")/newsboat-copy-url.lua")
+READY_OPTS+=("--script=$(dirname "$(readlink -f "$0")")/newsboat-playlists.lua")
 if [ -n "${NEWSBOAT_RANDOM_LIFECYCLE:-}" ]; then
   READY_OPTS+=("--script=$(dirname "$(readlink -f "$0")")/newsboat-random-lifecycle.lua")
 fi

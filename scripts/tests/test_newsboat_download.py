@@ -313,6 +313,54 @@ class RecoveryTests(unittest.TestCase):
         module.recover()
         self.assertEqual(self.spawn.call_count, 1)
 
+    def test_playlist_queue_is_persistent_deduplicated_and_bounded(self):
+        urls=[f'https://www.youtube.com/watch?v=abc123DEF4{i}' for i in range(5)]
+        for url in urls:module.enqueue(url,'Episode',batch='playlist',defer=True)
+        self.spawn.assert_not_called()
+        first=module.read_job(module.job_key(urls[0]))
+        self.assertEqual(module.detail(first),'Queued')
+        module.enqueue(urls[0],'Episode',batch='playlist',defer=True)
+        self.assertEqual(module.read_job(first['key'])['worker_token'],first['worker_token'])
+        module.recover()
+        self.assertEqual(self.spawn.call_count,3)
+        module.recover()
+        self.assertEqual(self.spawn.call_count,3)
+        started=self.spawn.call_args_list[0].args[0][2]
+        key=module.job_key(started);job=module.read_job(key)
+        job['status']='done';module.save(job)
+        module.recover()
+        self.assertEqual(self.spawn.call_count,4)
+        self.assertEqual(len(list(self.state.glob('*.json'))),5)
+
+    def test_playlist_worker_cannot_exceed_three_download_slots(self):
+        import fcntl
+        from contextlib import ExitStack
+        self.job(batch='playlist',worker_token='current')
+        with ExitStack() as stack:
+            for number in range(3):
+                slot=stack.enter_context((self.state/f'.playlist-slot-{number}.lock').open('a'))
+                fcntl.flock(slot,fcntl.LOCK_EX|fcntl.LOCK_NB)
+            self.assertEqual(module.download(URL,worker_token='current'),0)
+            self.assertEqual(module.read_job(self.key)['status'],'waiting')
+
+    def test_completed_workers_do_not_occupy_playlist_slots(self):
+        for i in range(3):
+            url=f'https://www.youtube.com/watch?v=abc123DEF4{i}'
+            key=module.job_key(url)
+            module.save(dict(key=key,url=url,status='done',batch='playlist',auto_resume=True,
+                             pid=os.getpid(),process_start=module.process_start(os.getpid())))
+        module.enqueue(URL,'Next episode',batch='playlist',defer=True)
+        module.recover()
+        self.assertEqual(self.spawn.call_count,1)
+
+    def test_zombie_worker_is_not_alive(self):
+        pid=os.fork()
+        if pid==0:os._exit(0)
+        try:
+            os.waitid(os.P_PID,pid,os.WEXITED|os.WNOWAIT)
+            self.assertIsNone(module.process_start(pid))
+        finally:os.waitpid(pid,0)
+
     def test_reopening_retries_failed_but_excludes_finished_deleted_cancelled_legacy(self):
         for status in ('done', 'deleted', 'cancelled'):
             self.job(status)

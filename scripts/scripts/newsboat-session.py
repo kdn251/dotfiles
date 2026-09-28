@@ -10,6 +10,7 @@ ScopeMeasure events supply the numerator, even with concurrent downloads.
 import errno
 import fcntl
 import gettext
+import json
 import os
 from pathlib import Path
 import pty
@@ -25,6 +26,7 @@ import termios
 import time
 import tty
 from newsboat_random_prompt import Prompt
+from newsboat_loading import Renderer, nested_view_environment
 
 
 SLIDE_DURATION = 0.5
@@ -108,105 +110,12 @@ class Progress:
         return caption
 
 
-class Renderer:
-    def __init__(self):
-        launcher = Path(__file__).with_name("newsboat-launch.sh")
-        self.process = subprocess.Popen(
-            ["bash", str(launcher), "--render"],
-            stdin=subprocess.PIPE, stdout=subprocess.PIPE,
-        )
-
-    def draw(self, frame, caption):
-        cols, rows = os.get_terminal_size(1)
-        # Small windows cannot fit the boat; keep the counter usable instead.
-        if cols < 28 or rows < 20:
-            return ("\x1b[?25l\x1b[H\x1b[2J" + caption[:cols - 1]).encode()
-        self.process.stdin.write(f"{frame}\t{caption}\t{cols}\t{rows}\n".encode())
-        self.process.stdin.flush()
-        data = bytearray(b"\x1b[?25l")
-        while True:
-            char = self.process.stdout.read(1)
-            if char == b"\0":
-                return bytes(data).replace(b"\n", b"\r\n")
-            if not char:
-                raise RuntimeError("Boat renderer exited unexpectedly")
-            data.extend(char)
-
-    def close(self):
-        self.process.stdin.close()
-        self.process.wait(timeout=2)
-        self.process.stdout.close()
-
-    @staticmethod
-    def compact(frame, caption, cols, rows, height, offset=0):
-        """Paint a small top-right toast, preserving Newsboat's cursor."""
-        width = max(1, min(34, cols - 2))
-        if height == 1:
-            lines = ['🚢  ' + caption.splitlines()[-1][:max(0, width-4)]]
-        else:
-            smoke = [list(' ' * 18) for _ in range(2)]
-            for stack in (7, 11):
-                for puff_offset in (0, 6):
-                    age = (frame // 2 + puff_offset + (2 if stack == 11 else 0)) % 12
-                    smoke[1-age//6][stack+age//4] = 'o' if 3 <= age < 9 else '.'
-            art = [''.join(line) for line in smoke] + [
-                '      |#| |#|     ',
-                '   ___|[]_[]|___  ',
-                '   \\_o_o_o_o__/   ',
-            ]
-            colors = [244,244,203,255,203]
-            if 6 <= frame % 32 < 22:
-                art = art[1:] + [' ' * 18]
-                colors = colors[1:] + [244]
-            wave = '~^~~-~~^~~-~~^~~-~~^~~-~~'
-            shift = (frame//2) % 6
-            art.append(wave[shift:shift+18])
-            colors.append(38)
-            inner = width - 2
-            art = [line.center(inner) for line in art[:-1]] + [(wave * 3)[shift:shift+inner]]
-            lines = [f'│\x1b[38;5;{color}m{line}\x1b[0m│' for color,line in zip(colors,art)]
-            lines.extend('│' + line[:inner].center(inner) + '│' for line in caption.splitlines())
-            lines = ['╭' + '─' * inner + '╮'] + lines + ['╰' + '─' * inner + '╯']
-        visible = max(0, width-offset)
-        if not visible:
-            return b''
-        output = bytearray(b'\x1b7')
-        for index,line in enumerate(lines):
-            # Clip the moving toast at the right margin without wrapping ANSI
-            # colors or border characters onto the next terminal row.
-            clipped = []
-            remaining = visible
-            for part in re.split(r'(\x1b\[[0-?]*[ -/]*[@-~])', line):
-                if part.startswith('\x1b'):
-                    clipped.append(part)
-                elif remaining:
-                    clipped.append(part[:remaining])
-                    remaining -= len(part[:remaining])
-            output.extend(f'\x1b[{min(2, rows)+index};{max(1, cols-width-1+offset)}H\x1b[0m\x1b[{visible}X'.encode())
-            output.extend(''.join(clipped).encode())
-        output.extend(b'\x1b[0m\x1b8')
-        return bytes(output)
-
 
 def write_all(fd, data):
     while data:
         data = data[os.write(fd, data):]
 
 
-
-def nested_view_environment(directory):
-    """Nested views share the wrapper's alternate screen instead of leaving it."""
-    env = os.environ.copy()
-    term = env.get('TERM', 'xterm-256color')
-    result = subprocess.run(['infocmp', '-1', term], capture_output=True, text=True, check=True)
-    description = re.sub(r'^\s*(?:smcup|rmcup)=.*\n', '', result.stdout, flags=re.MULTILINE)
-    terminfo = Path(directory)/'terminfo'
-    terminfo.mkdir(exist_ok=True)
-    source = Path(directory)/'nested.terminfo'
-    source.write_text(description)
-    subprocess.run(['tic', '-x', '-o', str(terminfo), str(source)], check=True, capture_output=True)
-    env['TERMINFO'] = str(terminfo)
-    return env
 
 
 def run(args):
@@ -259,12 +168,15 @@ def run(args):
     query_offset = int(settings.get('urls-source') == 'miniflux'
                        and settings.get('miniflux-show-special-feeds', 'yes') == 'yes')
     os.environ['NEWSBOAT_URLS_FILE'] = str(urls)
+    os.environ['NEWSBOAT_CACHE'] = str(cache.resolve())
+    os.environ['NEWSBOAT_PLAYLIST_IMPORTS'] = str(Path(os.environ.get('XDG_STATE_HOME', Path.home()/'.local/state'))/'newsboat/youtube-playlists/imports.tsv')
     remote = settings.get('urls-source') == 'miniflux'
     if remote:
         subprocess.run([sys.executable, str(Path(__file__).with_name('newsboat-commentary.py')), 'rebuild'], check=False, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         subprocess.run([sys.executable, str(Path(__file__).with_name('newsboat-favorites.py')), 'rebuild'], check=False, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         subprocess.Popen([sys.executable, str(Path(__file__).with_name('newsboat-vods.py')), 'rebuild'], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         subprocess.Popen([sys.executable, str(Path(__file__).with_name('newsboat-books.py')), 'rebuild'], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        subprocess.Popen([sys.executable, str(Path(__file__).with_name('newsboat-playthroughs.py')), 'rebuild'], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     startup_deadline = time.monotonic() + 5
     if remote:
         try:
@@ -284,6 +196,8 @@ def run(args):
     master = None
     nested_pid = None
     nested_master = None
+    playlist_pid = None
+    playlist_master = None
     vod_monitor = None
     status = None
     startup_error = b""
@@ -303,6 +217,19 @@ def run(args):
         random_prompt = Prompt(random_directory)
         refresh_request = Path(directory)/"refresh-request"
         os.environ["NEWSBOAT_REFRESH_REQUEST"] = str(refresh_request)
+        playlist_request = Path(directory)/"playlist-request"
+        os.environ['NEWSBOAT_PLAYLIST_REQUEST'] = str(playlist_request)
+        # Match the terminal by process ancestry, even if focus changed at startup.
+        try:
+            ancestors = set()
+            ancestor = os.getpid()
+            while ancestor > 1:
+                ancestors.add(ancestor)
+                ancestor = int(Path(f'/proc/{ancestor}/stat').read_text().rsplit(')',1)[1].split()[1])
+            clients = json.loads(subprocess.check_output(['hyprctl','-j','clients'], text=True, timeout=2))
+            terminal = next((client for client in clients if client.get('pid') in ancestors), None)
+            if terminal:os.environ['NEWSBOAT_WINDOW_ADDRESS'] = terminal['address']
+        except (OSError,ValueError,subprocess.SubprocessError):pass
         view_env = nested_view_environment(directory)
         if live_queries:
             view_env["NEWSBOAT_SYNC_VIEW"] = "1"
@@ -327,6 +254,8 @@ def run(args):
                 fcntl.ioctl(master, termios.TIOCSWINSZ, size)
                 if nested_master is not None:
                     fcntl.ioctl(nested_master, termios.TIOCSWINSZ, size)
+                if playlist_master is not None:
+                    fcntl.ioctl(playlist_master, termios.TIOCSWINSZ, size)
 
             def forward_signal(signum, _):
                 # Avoid Newsboat's terminal-reset SIGHUP handler after the
@@ -397,6 +326,15 @@ def run(args):
                         offline_requested = True
                         os.kill(pid, signal.SIGTERM)
                         break
+                    if not startup and playlist_master is None and playlist_request.exists():
+                        playlist_url = playlist_request.read_text().strip()
+                        playlist_request.unlink(missing_ok=True)
+                        playlist_pid, playlist_master = pty.fork()
+                        if playlist_pid == 0:
+                            os.execve(sys.executable,
+                                [sys.executable,str(Path(__file__).with_name('newsboat-playlists.py')), 'show', playlist_url],view_env)
+                        resize()
+                        selector.register(playlist_master, selectors.EVENT_READ, 'playlists')
                     if not startup and random_prompt.poll():
                         cols, rows = os.get_terminal_size(1)
                         write_all(1, random_prompt.draw(cols, rows))
@@ -492,6 +430,8 @@ def run(args):
                                     view_script = "newsboat-vods.py"
                                 if b"FeedListFormAction: opening Books view" in line:
                                     view_script = "newsboat-books.py"
+                                if b"FeedListFormAction: opening Playthroughs view" in line:
+                                    view_script = "newsboat-playthroughs.py"
                                 if view_script and not live_queries:
                                     termios.tcsetattr(0, termios.TCSADRAIN, original)
                                     try:
@@ -538,9 +478,9 @@ def run(args):
                                 break
                             if random_prompt.current:
                                 if random_prompt.handle(data):
-                                    write_all(nested_master if nested_master is not None else master, b"\x0c")
+                                    write_all(playlist_master if playlist_master is not None else (nested_master if nested_master is not None else master), b"\x0c")
                                 continue
-                            write_all(nested_master if nested_master is not None else master, data)
+                            write_all(playlist_master if playlist_master is not None else (nested_master if nested_master is not None else master), data)
                         else:
                             try:
                                 data = os.read(key.fd, 65536)
@@ -548,9 +488,20 @@ def run(args):
                                 if error.errno != errno.EIO:
                                     raise
                                 data = b""
-                            if key.data == "nested":
+                            if key.data == 'playlists':
                                 if data:
                                     paint_terminal(data.replace(FRAME_READY, b""))
+                                else:
+                                    selector.unregister(playlist_master)
+                                    os.close(playlist_master)
+                                    playlist_master = None
+                                    os.waitpid(playlist_pid, 0)
+                                    playlist_pid = None
+                                    write_all(nested_master if nested_master is not None else master, b"\x0c")
+                                continue
+                            if key.data == "nested":
+                                if data:
+                                    if playlist_master is None:paint_terminal(data.replace(FRAME_READY, b""))
                                 else:
                                     selector.unregister(nested_master)
                                     os.close(nested_master)
@@ -570,7 +521,7 @@ def run(args):
                                     startup = False
                                     write_all(1, bytes(startup_output))
                                     startup_output.clear()
-                            elif nested_master is None:
+                            elif nested_master is None and playlist_master is None:
                                 if return_deadline is not None:
                                     return_output.extend(data)
                                 else:
@@ -603,7 +554,7 @@ def run(args):
                         toast_rows = wanted_toast
                         if not toast_rows:
                             # Restore the list underneath the dismissed toast.
-                            write_all(nested_master if nested_master is not None else master, b"\x0c")
+                            write_all(playlist_master if playlist_master is not None else (nested_master if nested_master is not None else master), b"\x0c")
                         next_frame = 0
                     if (startup or progress.active) and now >= next_frame:
                         frame = int((now-animation_started)/0.08)
@@ -626,7 +577,7 @@ def run(args):
                             if toast_offset > previous_offset:
                                 # Repaint the newly exposed list behind the
                                 # departing toast, then composite in one update.
-                                write_all(nested_master if nested_master is not None else master, b"\x0c")
+                                write_all(playlist_master if playlist_master is not None else (nested_master if nested_master is not None else master), b"\x0c")
                             else:
                                 write_all(1, b"\x1b[?2026h" +
                                           renderer.compact(frame, label, cols, rows, toast_rows, toast_offset) +
@@ -654,6 +605,13 @@ def run(args):
                     except ProcessLookupError:
                         pass
                 vod_monitor.wait(timeout=3)
+            if playlist_pid:
+                try:
+                    os.killpg(playlist_pid, signal.SIGTERM)
+                    os.waitpid(playlist_pid, 0)
+                except ProcessLookupError:pass
+            if playlist_master is not None:
+                os.close(playlist_master)
             if nested_pid:
                 try:
                     os.killpg(nested_pid, signal.SIGTERM)

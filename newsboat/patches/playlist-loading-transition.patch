@@ -1,0 +1,18 @@
+--- a/src/view.cpp
++++ b/src/view.cpp
+@@ -478,9 +478,15 @@
+ 	}
+ 
+ 	if (interactive) {
++        // Keep the old terminal screen hidden until the playlist helper paints
++        // its first complete loading frame and ends the synchronized update.
++        const bool playlist_browser = browser_str.find("newsboat-playlists.py") != std::string::npos;
++        if (playlist_browser) { std::cout << "\033[?2026h" << std::flush; }
+ 		push_empty_formaction();
+ 		Stfl::reset();
+ 		const auto ret = utils::run_interactively(cmdline, "View::open_in_browser");
++        // Also release the update if the helper failed before drawing a frame.
++        if (playlist_browser) { std::cout << "\033[?2026l" << std::flush; }
+ 		drop_queued_input();
+ 		pop_current_formaction();
+ 		return ret;

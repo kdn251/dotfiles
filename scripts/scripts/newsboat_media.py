@@ -242,6 +242,8 @@ def rebuild_unlocked():
             key = library_identity(job['url'])
             if key:
                 keys.add(key)
+    from newsboat_playthroughs import member_keys, publish as publish_playthroughs
+    keys.difference_update(member_keys())
     patterns = []
     youtube = sorted(value for platform, value in keys if platform == 'youtube')
     twitch = sorted(value for platform, value in keys if platform == 'twitch')
@@ -274,6 +276,7 @@ def rebuild_unlocked():
     if content != current:
         atomic_write(URLS, content)
     atomic_write(index_path, json.dumps(index))
+    publish_playthroughs(index)
     from newsboat_download_status import publish
     publish(STATE)
     return len(keys)

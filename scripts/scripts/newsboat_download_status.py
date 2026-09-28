@@ -47,6 +47,7 @@ def publish(state):
                     key = filename_identity(Path(path))
                     if key:
                         statuses.setdefault(key, '📥')
+                        if key[0]=='youtube':urls.setdefault('https://www.youtube.com/watch?v='+key[1],key)
                         completed.setdefault(key, record.get('downloaded_at', Path(path).stat().st_ctime))
         except (OSError, ValueError):
             pass

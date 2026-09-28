@@ -1,0 +1,115 @@
+--- a/src/controller.cpp
++++ b/src/controller.cpp
+@@ -868,12 +868,26 @@
+ 		return;
+ 	}
+ 
++    // Explicit playlist selections may have been imported into the cache by
++    // a helper while this process was displaying another list.
++    static std::string playlist_revision;
++    std::string incoming_revision;
++    std::set<std::string> imported_feeds;
++    if (const char* path = std::getenv("NEWSBOAT_PLAYLIST_IMPORTS")) {
++        std::ifstream input(path);
++        std::string line;
++        while (std::getline(input, line)) {
++            incoming_revision += line + "\n";
++            imported_feeds.insert(line.substr(0, line.find('\t')));
++        }
++    }
++    if (incoming_revision == playlist_revision) { imported_feeds.clear(); }
+ 	std::vector<std::shared_ptr<RssFeed>> new_feeds;
+ 	unsigned int i = 0;
+ 
+ 	for (const auto& [url, origin] : urlcfg->get_urls()) {
+ 		const auto feed = feedcontainer.get_feed_by_url(url);
+-		if (feed) {
++		if (feed && !imported_feeds.count(url)) {
+ 			feed->set_origin(origin);
+ 			feed->set_tags(urlcfg->get_tags(url));
+ 			feed->set_order(i);
+@@ -908,6 +922,7 @@
+ 		feedcontainer.populate_query_feeds();
+ 	}
+ 	feedcontainer.sort_feeds(cfg.get_feed_sort_strategy());
++    playlist_revision = incoming_revision;
+ 	update_feedlist();
+ }
+ 
+--- a/src/minifluxurlreader.cpp
++++ b/src/minifluxurlreader.cpp
+@@ -6,8 +6,22 @@
+ #include "remoteapi.h"
+ #include "minifluxapi.h"
+ #include "utils.h"
++#include <fstream>
++#include <cstdlib>
++#include <algorithm>
+ 
+ namespace newsboat {
++
++static std::set<std::string> playlist_imports()
++{
++    std::set<std::string> result;
++    if (const char* path = std::getenv("NEWSBOAT_PLAYLIST_IMPORTS")) {
++        std::ifstream input(path);
++        std::string line;
++        while (std::getline(input, line)) { result.insert(line); }
++    }
++    return result;
++}
+ 
+ MinifluxUrlReader::MinifluxUrlReader(ConfigContainer* c,
+ 	const Filepath& url_file,
+@@ -22,12 +36,14 @@
+ 
+ std::optional<utils::ReadTextFileError> MinifluxUrlReader::reload()
+ {
++    const auto imports_before_sync = playlist_imports();
+     auto refreshed = api->get_subscribed_urls();
+     const auto miniflux = dynamic_cast<MinifluxApi*>(api);
+     // A successful empty result means all subscriptions were removed. A failed
+     // request after waking must leave the known subscriptions available.
+     if (!miniflux || miniflux->subscriptions_available()) {
+         subscribed_urls = std::move(refreshed);
++        playlist_imports_at_sync = imports_before_sync;
+     }
+     return reload_local();
+ }
+@@ -59,6 +75,18 @@
+ 		}
+ 	}
+ 
++    // A helper can create a manual-only creator source after our last remote
++    // subscription fetch. Expose its cached episode immediately, without a
++    // blocking HTTP refresh. A later successful sync remains authoritative.
++    for (const auto& imported : playlist_imports()) {
++        if (playlist_imports_at_sync.count(imported)) { continue; }
++        const auto id = imported.substr(0, imported.find('\t'));
++        if (id.empty() || id.find_first_not_of("0123456789") != std::string::npos) { continue; }
++        if (std::none_of(urls.begin(), urls.end(), [&id](const auto& row) { return row.first == id; })) {
++            urls.push_back({id, FeedOrigin{}});
++        }
++    }
++
+ 	return {};
+ }
+ 
+--- a/include/minifluxurlreader.h
++++ b/include/minifluxurlreader.h
+@@ -3,6 +3,7 @@
+ 
+ #include "urlreader.h"
+ #include "remoteapi.h"
++#include <set>
+ 
+ namespace newsboat {
+ 
+@@ -17,6 +18,7 @@
+ 	std::string get_source() const override;
+ 
+ private:
++    std::set<std::string> playlist_imports_at_sync;
+     std::vector<TaggedFeedUrl> subscribed_urls;
+ 	ConfigContainer* cfg;
+ 	Filepath file;

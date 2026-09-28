@@ -28,8 +28,8 @@ class StarredTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             base = Server().rows[1]
             rows = [dict(base, id=1, published_at='2026-08-10T14:30:00-04:00'),
-                    dict(base, id=2, published_at='2026-09-21T09:15:00Z'),
-                    dict(base, id=3, published_at='invalid', created_at='2026-07-01T12:00:00Z')]
+                    dict(base, id=2, url='https://example.com/two', published_at='2026-09-21T09:15:00Z'),
+                    dict(base, id=3, url='https://example.com/three', published_at='invalid', created_at='2026-07-01T12:00:00Z')]
             def dates():
                 starred.write_feed(directory, rows)
                 return [parsedate_to_datetime(item.findtext('pubDate')).isoformat()
@@ -51,8 +51,8 @@ class StarredTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             base = Server().rows[1]
             rows = [dict(base, id=1, title='OldestArticle', published_at='2026-07-01T12:00:00Z'),
-                    dict(base, id=2, title='NewestArticle', published_at='2026-09-23T12:00:00Z'),
-                    dict(base, id=3, title='MiddleArticle', published_at='2026-08-01T12:00:00Z')]
+                    dict(base, id=2, url='https://example.com/two', title='NewestArticle', published_at='2026-09-23T12:00:00Z'),
+                    dict(base, id=3, url='https://example.com/three', title='MiddleArticle', published_at='2026-08-01T12:00:00Z')]
             command, config = starred.prepare_view(directory, rows)
             command[0] = str(binary)
             subprocess.run(command+['-x','reload'],check=True,capture_output=True)

@@ -51,7 +51,8 @@ def job_key(url):
 
 def process_start(pid):
     try:
-        return Path(f'/proc/{pid}/stat').read_text().rsplit(')', 1)[1].split()[19]
+        fields=Path(f'/proc/{pid}/stat').read_text().rsplit(')', 1)[1].split()
+        return None if fields[0] in {'Z','X'} else fields[19]
     except (OSError, IndexError):
         return None
 
@@ -195,7 +196,7 @@ def resumable(job, reopened=False):
         (reopened and job.get('status') == 'failed'))
 
 
-def enqueue(url, title='', automatic=False, reopened=False, online=True):
+def enqueue(url, title='', automatic=False, reopened=False, online=True, batch='', defer=False):
     platform, url = canonical_url(url)
     STATE.mkdir(parents=True, exist_ok=True, mode=0o700)
     key = job_key(url)
@@ -206,30 +207,41 @@ def enqueue(url, title='', automatic=False, reopened=False, online=True):
         if automatic and not resumable(job, reopened):return 0
         if (job.get('status') in ACTIVE and alive(job)) or child_alive(job):return 0
         if job.get('status') == 'done' and any(Path(p).is_file() for p in job.get('files',[])):return 0
+        if defer and job.get('status') == 'waiting' and job.get('auto_resume'):return 0
         if automatic and job.get('wait_reason') == 'queued' and time.time()-job.get('updated',0) < 30:return 0
         if automatic and not online and job.get('status') == 'waiting':return 0
         (STATE / f'{key}.cancel').unlink(missing_ok=True)
         token = uuid.uuid4().hex
         job.update(worker_token=token,key=key,url=url,platform=platform,title=title or job.get('title') or 'Fetching video details',
                    status='waiting',auto_resume=True,percent=None,
-                   wait_reason='queued' if online else 'network',pid=0,process_start=None,
+                   wait_reason='playlist-queue' if defer else ('queued' if online else 'network'),
+                   batch=batch or job.get('batch',''),pid=0,process_start=None,
                    child_pid=0,child_start=None)
         save(job)
         # A token prevents an older queued worker from restarting a finished job.
-    if online:detached(['--worker', token, url, job['title']])
-    if not automatic:start_watcher()
+    if online and not defer:detached(['--worker', token, url, job['title']])
+    if not automatic and not defer:start_watcher()
     return 0
 
 
 def recover(reopened=False):
     connectivity = {}
+    batch_running = 0
+    for path in STATE.glob('*.json'):
+        job = read_job(path.stem)
+        if job.get('batch') and job.get('status') in ACTIVE|{'waiting'} and (alive(job) or child_alive(job) or
+            (job.get('status') == 'waiting' and job.get('wait_reason') == 'queued' and time.time()-job.get('updated',0)<30)):
+            batch_running += 1
     for path in STATE.glob('*.json'):
         try:
             job = json.loads(path.read_text())
             if not resumable(job,reopened) or alive(job) or child_alive(job):continue
+            if job.get('batch') and job.get('status') == 'waiting' and job.get('wait_reason') == 'queued' and time.time()-job.get('updated',0)<30:continue
+            if job.get('batch') and batch_running >= 3:continue
             url = job['url'];host = urlparse(url).netloc
             if host not in connectivity:connectivity[host] = reachable(url)
             enqueue(url,job.get('title',''),automatic=True,reopened=reopened,online=connectivity[host])
+            if job.get('batch') and connectivity[host]:batch_running += 1
         except (OSError,ValueError,KeyError):continue
 
 
@@ -239,6 +251,12 @@ def watch():
         try:fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
         except BlockingIOError:return 0
         while True:
+            # Detached workers are our children; reap completed ones before
+            # checking capacity instead of mistaking zombies for live workers.
+            while True:
+                try:
+                    if os.waitpid(-1,os.WNOHANG)[0]==0:break
+                except ChildProcessError:break
             recover()
             if not any(resumable(read_job(path.stem)) for path in STATE.glob('*.json')):return 0
             time.sleep(15)
@@ -258,8 +276,20 @@ def download(url, title='', worker_token=None):
     if worker_token and (previous.get('worker_token') != worker_token or previous.get('status') != 'waiting'):
         lock.close()
         return 0
+    batch_slot = None
+    if previous.get('batch'):
+        for number in range(3):
+            slot = (STATE/f'.playlist-slot-{number}.lock').open('a')
+            try:
+                fcntl.flock(slot,fcntl.LOCK_EX|fcntl.LOCK_NB)
+                batch_slot = slot
+                break
+            except BlockingIOError:slot.close()
+        if batch_slot is None:
+            lock.close()
+            return 0
     job = dict(key=key, url=url, platform=platform, title=title or previous.get('title') or 'Fetching video details',
-               creator='', icon='', status='preparing', bytes=0, percent=None,
+               creator='', icon='', status='preparing', bytes=0, percent=None, batch=previous.get('batch',''),
                pid=os.getpid(), process_start=process_start(os.getpid()),
                log=str(STATE / f'{key}.log'), auto_resume=True,
                notification_id=previous.get('notification_id',0),
@@ -437,6 +467,7 @@ def download(url, title='', worker_token=None):
                 if stream is not None:stream.close()
         for sig, handler in previous_handlers.items():signal.signal(sig, handler)
         lock.close()
+        if batch_slot is not None:batch_slot.close()
 
 
 def legacy_downloads():
@@ -485,6 +516,8 @@ def detail(job):
               'done': 'Complete', 'failed': 'Failed', 'cancelled': 'Cancelled',
               'retrying': 'Retrying', 'waiting': 'Waiting to resume'}
     text = labels[job['status']]
+    if job['status']=='waiting' and job.get('wait_reason') in {'queued','playlist-queue'}:
+        text='Queued'
     if job.get('percent') is not None and job['status'] == 'downloading':
         text += f' {job["percent"]:.0f}%'
     if job.get('bytes'):

@@ -37,6 +37,8 @@ def record(url, position, duration):
             pass
         content = ''.join(f'{url}\t{values[key]}\n' for url, key in sorted(urls.items())
                           if not any(c in url for c in '\t\r\n'))
+        from newsboat_playthroughs import with_group_progress
+        content = with_group_progress(content)
         target = STATE/'download-status.tsv.watched'
         if not target.exists() or target.read_text() != content:
             media.atomic_write(target, content)

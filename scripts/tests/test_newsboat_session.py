@@ -179,8 +179,16 @@ class TerminalIntegrationTests(unittest.TestCase):
                 shutil.copyfile(SCRIPT, wrapper)
                 (root/'newsboat-launch.sh').symlink_to(SCRIPT.with_name('newsboat-launch.sh'))
                 (root/'newsboat-starred.py').write_text(
-                    'import os, tty\ntty.setraw(0)\n'
+                    'import os, tty\nfrom pathlib import Path\ntty.setraw(0)\n'
                     'os.write(1,b"\\x1b[H\\x1b[2JNESTED_VIEW")\n'
+                    'while True:\n'
+                    ' key=os.read(0,1)\n'
+                    ' if key == b"q": break\n'
+                    ' if key == b"P": Path(os.environ["NEWSBOAT_PLAYLIST_REQUEST"]).write_text("https://www.youtube.com/watch?v=abc123DEF45")\n'
+                    ' if key == b"\\x0c": os.write(1,b"\\x1b[H\\x1b[2JNESTED_RESTORED")\n')
+                (root/'newsboat-playlists.py').write_text(
+                    'import os, tty\ntty.setraw(0)\n'
+                    'os.write(1,b"\\x1b[H\\x1b[2JPLAYLIST_OVERLAY")\n'
                     'while os.read(0,1) != b"q": pass\n')
                 binary = Path.home()/'.local/lib/newsboat-paged/newsboat'
                 target = root/'.local/lib/newsboat-paged'
@@ -241,6 +249,10 @@ class TerminalIntegrationTests(unittest.TestCase):
                         expected_summary = '0 new · 0 sources updated' if repeat else '6 new · 6 sources updated'
                         until(lambda data: expected_summary.encode() in data)
                         self.assertIn('╭'.encode(), captured[captured.find(b'NESTED_VIEW'):])
+                        os.write(fd, b'P')
+                        until(lambda data: b'PLAYLIST_OVERLAY' in data)
+                        os.write(fd, b'q')
+                        until(lambda data: b'NESTED_RESTORED' in data[data.find(b'PLAYLIST_OVERLAY'):])
                         os.write(fd, b'q')
                         counts = [int(v) for v in re.findall(rb'(\d+)/7 feeds (?:refreshed|checked)', captured)]
                         self.assertTrue(any(0 < count < 7 for count in counts), counts)

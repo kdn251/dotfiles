@@ -76,6 +76,11 @@ def resolve_ids(url, client):
                     raise
     except sqlite3.Error:
         pass
+    if not ids:
+        from newsboat_youtube_playlists import ensure_entry
+        entry_id = ensure_entry(url, client)
+        if entry_id:
+            ids.add(entry_id)
     return ids
 
 
@@ -98,7 +103,8 @@ def enqueue_star(url, desired, restore_unread=None):
     queue = STARRED_STATUS.parent/'star-actions'
     queue.mkdir(parents=True, exist_ok=True)
     job = queue/f'{time.time_ns():020d}-{os.getpid()}.json'
-    atomic_write(job, json.dumps({'url': url, 'desired': desired, 'cache': str(CACHE), 'restore_unread': restore_unread}))
+    atomic_write(job, json.dumps({'url': url, 'desired': desired, 'cache': str(CACHE), 'restore_unread': restore_unread,
+                                 'playlist_context':os.environ.get('NEWSBOAT_PLAYLIST_CONTEXT')}))
     try:
         subprocess.Popen([sys.executable, str(Path(__file__).resolve()), 'work'],
                          stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
@@ -126,6 +132,11 @@ def drain_star_actions():
                     CACHE = Path(action['cache'])
                     if action.get('restore_unread') is None:
                         set_star(action['url'], action['desired'], mark_read=bool(action['desired']))
+                        if action['desired'] and action.get('playlist_context'):
+                            from newsboat_playthroughs import record, publish
+                            from newsboat_media import library_lock
+                            record(action['url'],action['playlist_context'])
+                            with library_lock():publish()
                     else:
                         client = Client()
                         ids = resolve_ids(action['url'], client)
