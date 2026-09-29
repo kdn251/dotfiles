@@ -62,6 +62,24 @@ def publish(state):
             pass
         content = ''.join(f'{url}\t{statuses[key]}\n' for url,key in sorted(urls.items())
                           if key in statuses and not any(c in url for c in '\t\r\n'))
+        # Playlist rows share the native animated pending indicator. Derive their
+        # state from episode jobs, including queued/retrying downloads, so it
+        # clears automatically when the last job completes or fails.
+        active = {key for key, value in statuses.items() if value == '…' or value.startswith('↓')}
+        playlist_urls = set()
+        for path in (state.parent/'youtube-playlists/playthroughs').glob('*.json'):
+            try:
+                group = json.loads(path.read_text())
+                if not any(identity(row['url']) in active for row in group.get('rows', [])):
+                    continue
+                playlist_urls.add('newsboat-playthroughs://'+group['id'])
+                playlist_urls.add('https://www.youtube.com/playlist?list='+group['id'])
+                if group.get('url'):
+                    playlist_urls.add(group['url'])
+            except (OSError, ValueError, KeyError, TypeError):
+                continue
+        content += ''.join(f'{url}\t…\n' for url in sorted(playlist_urls)
+                           if not any(c in url for c in '\t\r\n'))
         target = state.parent/'download-status.tsv'
         if not target.exists() or target.read_text() != content:
             atomic_write(target, content)

@@ -102,8 +102,75 @@ class PlaythroughTests(unittest.TestCase):
             else:
                 self.assertIn('newsboat-playthroughs.py group',text)
                 self.assertIn('🎮 Playthroughs',text)
+                self.assertIn('macro D set browser',text)
+                self.assertIn('download-playlist %u',text)
+                self.assertIn('%4w  %p %t',text)
+                self.assertIn('delete-downloaded.sh',text)
                 self.assertNotIn('bind s ',text)
                 self.assertIn('A Game — Creator',(view/'playlist.xml').read_text())
+
+    def test_playlist_spinner_tracks_all_child_downloads(self):
+        from newsboat_download_status import publish
+        library.record(URL,self.context)
+        target=media.STATE.parent/'download-status.tsv'
+        for status in ('waiting','preparing','downloading','processing','retrying'):
+            (media.STATE/'one.json').write_text(json.dumps(dict(url=URL,status=status,
+                pid=os.getpid(),process_start=media.start_time(os.getpid()),percent=35)))
+            publish(media.STATE)
+            self.assertIn('newsboat-playthroughs://PLseries\t…\n',target.read_text())
+            self.assertIn('https://www.youtube.com/playlist?list=PLseries\t…\n',target.read_text())
+        (media.STATE/'one.json').write_text(json.dumps(dict(url=URL,status='failed')))
+        self.pending(OTHER,'waiting')
+        publish(media.STATE)
+        self.assertIn('newsboat-playthroughs://PLseries\t…\n',target.read_text())
+        self.pending(OTHER,'done')
+        publish(media.STATE)
+        self.assertNotIn('newsboat-playthroughs://',target.read_text())
+        self.assertNotIn('playlist?list=',target.read_text())
+
+    def test_local_playlist_download_queues_every_episode_without_fetching(self):
+        from unittest.mock import Mock
+        library.record(URL,self.context)
+        downloader=Mock()
+        with patch.object(ui.ui.library,'LIBRARY',self.root/'playlists'), \
+                patch.object(ui.ui,'fetch') as fetch, \
+                patch.object(ui.ui,'downloader_module',return_value=downloader), \
+                patch.object(ui.ui.subprocess,'run'),patch.object(media,'rebuild'):
+            self.assertEqual(ui.ui.download_playlist('newsboat-playthroughs://PLseries'),0)
+        fetch.assert_not_called()
+        self.assertEqual([call.args[0] for call in downloader.enqueue.call_args_list],[URL,OTHER])
+        self.assertTrue(all(call.kwargs['defer'] for call in downloader.enqueue.call_args_list))
+        downloader.start_watcher.assert_called_once()
+        self.assertEqual(set(library.groups()[0]['selected_urls']),{URL,OTHER})
+
+    def test_delete_whole_playlist_preserves_catalog_and_unrelated_files(self):
+        library.record(URL,self.context)
+        first=media.ROOT/'Part one [abc123DEF45].mp4';first.write_bytes(b'one')
+        second=media.ROOT/'Part two [abc123DEF46].mp4';second.write_bytes(b'two')
+        unrelated=media.ROOT/'Other [abc123DEF47].mp4';unrelated.write_bytes(b'other')
+        inventory=[(media.identity(URL),first),(media.identity(OTHER),second),
+                   (('youtube','abc123DEF47'),unrelated)]
+        with patch.object(media,'candidates',return_value=inventory),patch.object(media,'rebuild') as rebuild:
+            self.assertEqual(media.delete('newsboat-playthroughs://PLseries'),2)
+        self.assertFalse(first.exists());self.assertFalse(second.exists())
+        self.assertTrue(unrelated.exists())
+        self.assertEqual(len(library.groups()[0]['rows']),2)
+        rebuild.assert_called_once()
+
+    def test_creator_playlist_deletion_can_be_undone_as_a_group(self):
+        import newsboat_download_undo as undo
+        library.record(URL,self.context)
+        first=media.ROOT/'Part one [abc123DEF45].mp4';first.write_bytes(b'one')
+        second=media.ROOT/'Part two [abc123DEF46].mp4';second.write_bytes(b'two')
+        url='https://www.youtube.com/playlist?list=PLseries'
+        with patch.dict(os.environ,NEWSBOAT_DOWNLOAD_UNDO_TOKEN='playlist-delete',
+                        NEWSBOAT_UNDO_FILE=str(self.root/'undo')), \
+                patch.object(media,'candidates',return_value=[(media.identity(URL),first),(media.identity(OTHER),second)]), \
+                patch.object(media,'rebuild'),patch.object(media,'rebuild_unlocked'):
+            self.assertEqual(media.delete(url),2)
+            self.assertFalse(first.exists());self.assertFalse(second.exists())
+            undo.restore(url,'playlist-delete')
+            self.assertEqual(first.read_bytes(),b'one');self.assertEqual(second.read_bytes(),b'two')
 
     def test_native_group_navigation_progress_delete_and_back(self):
         import fcntl,pty,select,signal,struct,termios,time,re
@@ -148,6 +215,14 @@ class PlaythroughTests(unittest.TestCase):
             wait(lambda t:'Your feeds' in t and 'Playthroughs' in t)
             os.write(fd,b'\n')
             wait(lambda t:'🎮 Playthroughs' in t and 'A Game — Creator' in t)
+            import sqlite3
+            with sqlite3.connect(media.STATE.parent/'history.db') as db:
+                db.execute('CREATE TABLE IF NOT EXISTS history (url TEXT PRIMARY KEY, title TEXT, source TEXT, mode TEXT, opened REAL)')
+                db.execute('INSERT INTO history VALUES (?,?,?,?,?)',(URL,'Previously opened video','Creator','video',time.time()))
+            os.write(fd,b'H')
+            wait(lambda t:'Previously opened video' in t)
+            os.write(fd,b'q')
+            wait(lambda t:'🎮 Playthroughs' in t and 'A Game — Creator' in t)
             import newsboat_watch_progress as progress
             with patch.object(progress,'STATE',media.STATE.parent),patch.dict(os.environ,NEWSBOAT_CACHE=str(self.root/'cache.db')):
                 progress.record(URL,100,100)
@@ -155,6 +230,10 @@ class PlaythroughTests(unittest.TestCase):
             os.write(fd,b'\n')
             wait(lambda t:'Part one' in t and 'Part two' in t)
             wait(lambda t:bool(image_seen))
+            os.write(fd,b'H')
+            wait(lambda t:'Previously opened video' in t)
+            os.write(fd,b'q')
+            wait(lambda t:'Part one' in t and 'Part two' in t)
             text='\n'.join(screen.display)
             self.assertIn('0%',text)
             self.assertLess(text.index('Part one'),text.index('Part two'))

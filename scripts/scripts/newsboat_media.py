@@ -287,7 +287,12 @@ def rebuild():
         return rebuild_unlocked()
 
 
-def delete(url):
+def delete(url, refresh=True):
+    parsed = urlparse(url)
+    if parsed.scheme == 'newsboat-playthroughs' or (
+            parsed.hostname in {'youtube.com', 'www.youtube.com'} and parsed.path == '/playlist'):
+        from newsboat_playthroughs import delete_downloads
+        return delete_downloads(url)
     key = library_identity(url)
     if not key:
         raise ValueError('Could not identify the selected download')
@@ -331,7 +336,8 @@ def delete(url):
         if key[0] == 'twitch' and archive.exists():
             lines = [line for line in archive.read_text().splitlines() if line.rsplit(':', 1)[-1] != key[1]]
             atomic_write(archive, '\n'.join(lines) + ('\n' if lines else ''))
-        rebuild_unlocked()
+        if refresh:
+            rebuild_unlocked()
         return len(paths)
 
 

@@ -205,7 +205,7 @@ def prepare_view(directory, rows):
     history=importlib.util.module_from_spec(spec);spec.loader.exec_module(history)
     command,config=history.prepare_view(directory)
     write_feed(directory,rows)
-    lines=[line for line in config.read_text().splitlines() if not line.startswith(('macro C ','bind S ','bind H ','show-read-articles ','article-sort-order '))]
+    lines=[line for line in config.read_text().splitlines() if not line.startswith(('macro C ','bind S ','show-read-articles ','article-sort-order '))]
     # Opening a saved item leaves it selected so S can remove it when finished.
     # Keep advancement for explicit read/star/download actions unchanged.
     lines = [line.replace('toggle-article-read "read"', 'toggle-article-read "read" "stay"')

@@ -78,6 +78,7 @@ patch -p1 < "$repo/newsboat/patches/list-storage-totals.patch"
 patch -p1 < "$repo/newsboat/patches/playlist-cover-thumbnails.patch"
 patch -p1 < "$repo/newsboat/patches/action-spinner.patch"
 patch -p1 < "$repo/newsboat/patches/download-pending-spinner.patch"
+patch -p1 < "$repo/newsboat/patches/history-everywhere.patch"
 make -j"${NEWSBOAT_BUILD_JOBS:-4}" WARNFLAGS="-Werror -Wall -Wextra -Wunreachable-code -Wno-error=unused-function" newsboat
 install -m 755 newsboat "$install_dir/newsboat.new"
 mv "$install_dir/newsboat.new" "$install_dir/newsboat"

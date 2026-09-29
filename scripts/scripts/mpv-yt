@@ -58,9 +58,11 @@ if [[ "$URL" =~ ^https?://(www\.)?twitch\.tv/videos/[0-9]+ ]]; then
   READY_OPTS+=("--script=$(dirname "$(readlink -f "$0")")/newsboat-twitch-notify.lua")
 fi
 
-# Only stop players, never downloads.
-pkill -f "mpv.*ytdl-format" 2>/dev/null
-pkill -f "streamlink.*--player" 2>/dev/null
+# Replace the current player, including local files without ytdl-format.
+# SIGTERM lets MPV shut down normally and save playback progress. Match the
+# executable exactly so download workers and their helpers are left running.
+pkill -u "$(id -u)" -x mpv 2>/dev/null
+pkill -u "$(id -u)" -f "streamlink.*--player" 2>/dev/null
 
 if [ -n "$DOWNLOADED" ]; then
   [ -n "$TITLE" ] || TITLE=$(python3 "$MEDIA_HELPER" title "$URL" 2>/dev/null)

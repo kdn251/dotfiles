@@ -130,3 +130,36 @@ def publish(index=None):
         feed=(Path(view)/'playlist.xml').as_uri()
         media.atomic_write(Path(view)/'urls',group_query(selected)+'\n'+feed+'\n')
     return current
+
+
+def delete_downloads(url):
+    """Delete exact episode identities using only the locally saved catalog."""
+    ident = url.split('://', 1)[1] if url.startswith('newsboat-playthroughs://') else playlist_id(url)
+    group = next((g for g in read_groups() if g['id'] == ident), None)
+    if group is None:
+        return 0
+    urls = list(dict.fromkeys(row['url'] for row in group['rows']))
+    token = os.environ.get('NEWSBOAT_DOWNLOAD_UNDO_TOKEN')
+    children = [(item, token+':'+str(i)) for i, item in enumerate(urls)] if token else []
+    if token:
+        from newsboat_download_undo import directory
+        folder = directory(token)
+        folder.mkdir(parents=True, mode=0o700, exist_ok=False)
+        media.atomic_write(folder/'manifest.json', json.dumps(dict(url=url, children=children)))
+    count = 0
+    failures = []
+    try:
+        for i, item in enumerate(urls):
+            if token:
+                os.environ['NEWSBOAT_DOWNLOAD_UNDO_TOKEN'] = children[i][1]
+            try:
+                count += media.delete(item, refresh=False)
+            except (OSError, ValueError) as error:
+                failures.append(str(error))
+    finally:
+        if token:
+            os.environ['NEWSBOAT_DOWNLOAD_UNDO_TOKEN'] = token
+        media.rebuild()
+    if failures:
+        raise ValueError(f'Deleted {count} files; {len(failures)} episodes could not be removed: '+failures[0])
+    return count

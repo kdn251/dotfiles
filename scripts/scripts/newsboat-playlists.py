@@ -109,8 +109,8 @@ def prepare_view(directory, data):
     actions={'bind','bind-key','macro','browser'} if is_playlist else {'bind-key'}
     lines=[line for line in source.read_text().splitlines() if line.split() and line.split()[0] in appearance|actions]
     if not is_playlist:
-        lines += [line for line in source.read_text().splitlines() if line.startswith(('bind ? ','bind h '))]
-    lines=[line for line in lines if not line.startswith(('bind H ','bind q ','bind o ','bind O ','bind P ','macro v ','macro d ','macro R ','macro C '))]
+        lines += [line for line in source.read_text().splitlines() if line.startswith(('bind ? ','bind h ','bind H '))]
+    lines=[line for line in lines if not line.startswith(('bind q ','bind o ','bind O ','bind P ','macro v ','macro d ','macro R ','macro C '))]
     if is_playlist:
         for helper in ('commentary','favorites'):
             lines=[line.replace('python3 ~/scripts/newsboat-'+helper+'.py',
@@ -120,7 +120,7 @@ def prepare_view(directory, data):
     lines += ['urls-source local','auto-reload no','show-read-feeds yes','show-read-articles yes',
               'confirm-exit no','article-sort-order guid-asc','articlelist-title-format " %T"',
               'searchresult-title-format " Search results"',
-              'articlelist-format '+json.dumps('%4i  %-9p %-20a │ %t' if is_playlist else '%4i  %t',ensure_ascii=False),
+              'articlelist-format '+json.dumps('%4i  %-9p %-20a │ %t' if is_playlist else '%4i  %p %t',ensure_ascii=False),
               'browser '+json.dumps(action),
               'bind q articlelist hard-quit -- "Back"']
     for key in ('<ENTER>','o','O','l'):
@@ -132,6 +132,7 @@ def prepare_view(directory, data):
                   'bind P articlelist,article,searchresultslist set browser '+json.dumps(command('show'))+' ; open-in-browser -- "Browse creator playlists"']
     else:
         lines.append('macro d set browser '+json.dumps(command('download-playlist'))+' ; open-in-browser-noninteractively -- "Download this whole playlist to Playthroughs"')
+        lines.append('macro D set browser '+json.dumps(str(SCRIPT.with_name('delete-downloaded.sh'))+' %u')+' ; open-in-browser-noninteractively -- "Delete this playlist’s downloaded videos"')
     config=directory/'config';config.write_text('\n'.join(lines)+'\n')
     binary=Path.home()/'.local/lib/newsboat-paged/newsboat'
     return [str(binary) if binary.exists() else 'newsboat','-q','-C',str(config),'-u',str(directory/'urls'),'-c',str(directory/'cache.db')],config
@@ -212,15 +213,22 @@ def downloader_module():
 
 
 def download_playlist(url):
-    from newsboat_playthroughs import playlist_id, record_rows
+    from newsboat_playthroughs import playlist_id, record_rows, read_groups
     from newsboat_media import rebuild
+    saved = None
+    if url.startswith('newsboat-playthroughs://'):
+        ident = url.split('://', 1)[1]
+        saved = next((group for group in read_groups() if group['id'] == ident), None)
+        if saved is None:
+            raise ValueError('This saved playlist is no longer available')
+        url = saved['url']
     url=library.playlist_url(url)
     library.LIBRARY.mkdir(parents=True,exist_ok=True)
     with (library.LIBRARY/('batch-'+playlist_id(url)+'.lock')).open('a') as lock:
         try:fcntl.flock(lock,fcntl.LOCK_EX|fcntl.LOCK_NB)
         except BlockingIOError:return 0
         subprocess.run(['notify-send','-a','Newsboat','-t','4000','Preparing playlist download','Loading the playlist’s available videos…'])
-        data=fetch('playlist',url)
+        data=saved if saved is not None else fetch('playlist',url)
         rows=list({row['url']:row for row in data['rows']}.values())
         if not rows:raise ValueError('This playlist has no available videos to download')
         record_rows(data,rows)

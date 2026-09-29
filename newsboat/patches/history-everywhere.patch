@@ -1,0 +1,19 @@
+--- a/src/formaction.cpp
++++ b/src/formaction.cpp
+@@ -200,6 +200,16 @@
+ 			if (args.size() == 2) {
+ 				const std::string key = args.at(0);
+ 				const std::string value = args.at(1);
++                if (key == "browser" && value == "newsboat-history://show") {
++                    {
++                        const auto previous = cfg->get_configvalue("browser");
++                        cfg->set_configvalue("browser", "python3 ~/scripts/newsboat-history.py show");
++                        v.open_in_browser("", "", "", "", true);
++                        cfg->set_configvalue("browser", previous);
++                        set_redraw(true);
++                    }
++                    return true;
++                }
+ 				if (key == "browser" && value == "newsboat-home://show") {
+                     v.go_home();
+                     return true;

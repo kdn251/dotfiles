@@ -37,8 +37,8 @@ def prepare_view(directory, ident=None):
     lines=[line for line in lines if not line.startswith('articlelist-title-format ')]
     lines.append('articlelist-title-format '+json.dumps(' '+title.replace('%','%%'),ensure_ascii=False))
     if group is None:
-        lines=[line for line in lines if not line.startswith(('articlelist-format ','macro d '))]
-        lines.append('articlelist-format "%4i  %4w  %t"')
+        lines=[line for line in lines if not line.startswith('articlelist-format ')]
+        lines.append('articlelist-format "%4i  %4w  %p %t"')
         action='python3 '+str(Path(__file__).resolve())+' group %u'
         lines=[line.replace(ui.command('playlist'),action) for line in lines]
         if not groups:

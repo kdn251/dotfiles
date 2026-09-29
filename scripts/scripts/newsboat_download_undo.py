@@ -44,6 +44,16 @@ def preserve(url, paths, jobs, archive_lines, token):
 
 def restore(url, token):
     import newsboat_media as media
+    folder = directory(token)
+    if folder.exists():
+        manifest = json.loads((folder/'manifest.json').read_text())
+        if manifest['url'] != url:
+            raise ValueError('Undo URL does not match deleted download')
+        if 'children' in manifest:
+            for child_url, child_token in manifest['children']:
+                restore(child_url, child_token)
+            shutil.rmtree(folder)
+            return
     with media.library_lock():
         folder = directory(token)
         # The native checkpoint precedes deletion. A rejected action (e.g. an

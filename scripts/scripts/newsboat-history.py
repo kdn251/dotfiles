@@ -94,7 +94,7 @@ def prepare_view(directory):
               'confirm-exit no', 'confirm-delete-all-articles yes',
               'macro C clear-filter ; delete-all-articles ; purge-deleted -- "Clear history (asks for confirmation)"',
               'bind q articlelist hard-quit',
-              'bind H articlelist hard-quit -- "Return from history"']
+              'bind H everywhere set browser "newsboat-history://show" -- "Open History"']
     config = directory/'config'
     config.write_text('\n'.join(lines) + '\n')
     command = ['newsboat', '-q', '-C', str(config), '-u', str(urls), '-c', str(directory/'cache.db')]
@@ -118,8 +118,15 @@ def show():
         subprocess.run(command + ['-x', 'reload'], check=True, stdout=subprocess.DEVNULL,
                        stderr=subprocess.DEVNULL, timeout=15)
         with config.open('a') as output:
-            output.write('run-on-startup open\n')
-        process = subprocess.Popen(command)
+            output.write('run-on-startup open\nbind H everywhere redraw -- "Already in History"\n')
+        from newsboat_loading import nested_view_environment
+        env = nested_view_environment(directory)
+        for key in ('NEWSBOAT_PLAYLIST_CONTEXT', 'NEWSBOAT_PLAYTHROUGH_VIEW',
+                    'NEWSBOAT_PLAYTHROUGH_ID', 'NEWSBOAT_STARRED_VIEW',
+                    'NEWSBOAT_STARRED_REMOVALS', 'NEWSBOAT_SYNC_VIEW',
+                    'NEWSBOAT_VODS_VIEW_DIR', 'NEWSBOAT_LIVE_QUERIES', 'NEWSBOAT_NESTED_VIEWS'):
+            env.pop(key, None)
+        process = subprocess.Popen(command, env=env)
         while True:
             try:
                 process.wait(timeout=0.2)
