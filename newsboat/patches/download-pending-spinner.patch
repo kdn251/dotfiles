@@ -1,0 +1,44 @@
+--- a/src/itemlistformaction.cpp
++++ b/src/itemlistformaction.cpp
+@@ -49,6 +49,11 @@
+ static std::set<std::string> pending_actions;
+ static std::set<std::pair<std::string, std::string>> pending_removals;
+ static unsigned int action_frame = 0;
++static std::string action_spinner()
++{
++    static const char* frames[] = {"⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"};
++    return frames[action_frame];
++}
+ static std::string pending_action_revision()
+ {
+     pending_actions.clear();
+@@ -76,6 +81,9 @@
+     std::string revision;
+     for (const auto& url : pending_actions) { revision += url + "\n"; }
+     for (const auto& removal : pending_removals) { revision += removal.first + "\t" + removal.second + "\n"; }
++    for (const auto& status : download_status) {
++        if (status.second == "…") { revision += "download:" + status.first + "\n"; }
++    }
+     if (!revision.empty()) { revision += std::to_string(action_frame); }
+     return revision;
+ }
+@@ -1592,7 +1600,8 @@
+     const auto status = download_status.find(item.first->link());
+     const std::vector<std::string> markers = {
+         !pending_removals.count({item.first->link(), "star"}) && starred_urls.count(item.first->link()) ? "󰓎" : "",
+-        status != download_status.end() ? status->second : feed->rssurl().find("query:🎬 VODs:") == 0 ? "📥" : "",
++        status != download_status.end() ? (status->second == "…" ?
++            (pending_actions.count(item.first->link()) ? "" : action_spinner()) : status->second) : feed->rssurl().find("query:🎬 VODs:") == 0 ? "📥" : "",
+         !pending_removals.count({item.first->link(), "commentary"}) && commentary_urls.count(item.first->link()) ? "📣" : "",
+         !pending_removals.count({item.first->link(), "favorites"}) && favorites_urls.count(item.first->link()) ? "" : ""
+     };
+@@ -1618,8 +1627,7 @@
+         badges = "📌 " + badges;
+     }
+     if (pending_actions.count(item.first->link())) {
+-        static const char* frames[] = {"⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"};
+-        badges = std::string(frames[action_frame]) + (badges.empty() ? "" : " " + badges);
++        badges = action_spinner() + (badges.empty() ? "" : " " + badges);
+     }
+     fmt.register_fmt('p', badges);
+     const auto progress = watched_progress.find(item.first->link());

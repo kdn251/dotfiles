@@ -296,6 +296,8 @@ def run(args):
             toast_started = None
             animation_started = time.monotonic()
             thumbnail_active = False
+            graphics_toast = bool(os.environ.get('NEWSBOAT_THUMBNAIL_OWNER'))
+            draw_toast = renderer.overlay if graphics_toast else renderer.compact
             def paint_terminal(data):
                 nonlocal thumbnail_active, toast_rows
                 if os.environ.get('NEWSBOAT_THUMBNAIL_OWNER'):
@@ -305,6 +307,7 @@ def run(args):
                         thumbnail_active = bool(thumbnail_selection(event[1].decode(errors='replace'))) if event[1] is not None else False
                     if thumbnail_active and toast_rows:
                         toast_rows = 0
+                        if graphics_toast:write_all(1,renderer.clear_overlay())
                         # Remove any already-painted refresh toast behind the image.
                         write_all(playlist_master if playlist_master is not None else (nested_master if nested_master is not None else master), b"\x0c")
                 # ncurses can redraw the area behind the toast. Restore the current frame in the same terminal
@@ -312,7 +315,7 @@ def run(args):
                 if toast_rows:
                     cols, rows = os.get_terminal_size(1)
                     data = data.replace(b"\x1b[?2026h", b"").replace(b"\x1b[?2026l", b"")
-                    data += renderer.compact(frame, progress.toast_caption(),
+                    data += draw_toast(frame, progress.toast_caption(),
                                              cols, rows, toast_rows, toast_offset)
                     data = b"\x1b[?2026h" + data + b"\x1b[?2026l"
                 if random_prompt.current:
@@ -597,6 +600,7 @@ def run(args):
                             toast_started = now
                         toast_rows = wanted_toast
                         if not toast_rows:
+                            if graphics_toast:write_all(1,renderer.clear_overlay())
                             # Restore the list underneath the dismissed toast.
                             write_all(playlist_master if playlist_master is not None else (nested_master if nested_master is not None else master), b"\x0c")
                         next_frame = 0
@@ -618,13 +622,13 @@ def run(args):
                                 elapsed = now-toast_started if toast_started is not None else SLIDE_DURATION
                                 toast_offset = slide_offset(elapsed, width)
                                 sliding = elapsed < SLIDE_DURATION
-                            if toast_offset > previous_offset:
+                            if toast_offset > previous_offset and not graphics_toast:
                                 # Repaint the newly exposed list behind the
                                 # departing toast, then composite in one update.
                                 write_all(playlist_master if playlist_master is not None else (nested_master if nested_master is not None else master), b"\x0c")
                             else:
                                 write_all(1, b"\x1b[?2026h" +
-                                          renderer.compact(frame, label, cols, rows, toast_rows, toast_offset) +
+                                          draw_toast(frame, label, cols, rows, toast_rows, toast_offset) +
                                           b"\x1b[?2026l")
                         if random_prompt.current:
                             write_all(1, random_prompt.draw(cols, rows))
@@ -639,7 +643,7 @@ def run(args):
             # releasing its database lock.
             try:
                 termios.tcsetattr(0, termios.TCSADRAIN, original)
-                write_all(1, b"\x1b[0m\x1b[?1049l\x1b[?25h")
+                write_all(1, renderer.clear_overlay()+b"\x1b[0m\x1b[?1049l\x1b[?25h")
             except (OSError, termios.error):
                 pass
             if vod_monitor is not None:

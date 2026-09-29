@@ -88,6 +88,28 @@ class Renderer:
         self.process.wait(timeout=2)
         self.process.stdout.close()
 
+    OVERLAY_ID = 0x3ffffffe
+
+    @staticmethod
+    def clear_overlay():
+        return f'\x1b_Ga=d,d=I,i={Renderer.OVERLAY_ID},q=2\x1b\\'.encode()
+
+    @staticmethod
+    def overlay(frame, caption, cols, rows, height, offset=0):
+        from newsboat_thumbnails import loading_png, transmit
+        from PIL import Image
+        import io
+        width=max(1,min(34,cols-2));visible=max(0,width-offset)
+        if not visible:return Renderer.clear_overlay()
+        data=loading_png(frame % 96,caption=caption)
+        if visible < width:
+            with Image.open(io.BytesIO(data)) as source:
+                clipped=source.crop((0,0,round(source.width*visible/width),source.height))
+                output=io.BytesIO();clipped.save(output,format='PNG');data=output.getvalue()
+        return (transmit(Renderer.OVERLAY_ID,data)+
+                f'\x1b7\x1b[{min(2,rows)};{max(1,cols-width-1+offset)}H'
+                f'\x1b_Ga=p,i={Renderer.OVERLAY_ID},p=1,c={visible},r={height},z=2,q=2\x1b\\\x1b8'.encode())
+
     @staticmethod
     def compact(frame, caption, cols, rows, height, offset=0):
         """Paint a small top-right toast, preserving Newsboat's cursor."""

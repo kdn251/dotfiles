@@ -68,3 +68,12 @@ class ActionTests(unittest.TestCase):
                     wait(lambda s:not(set(s) & frames) and symbol in screen.display[1])
                     self.assertIn('Item 1',screen.display[screen.cursor.y])
 
+
+                (root/'downloads').write_text('https://example.com/0\t…\n')
+                wait(lambda s:bool(set(screen.display[1]) & frames))
+                self.assertNotIn('…',screen.display[1])
+                first=screen.display[1]
+                wait(lambda s:screen.display[1]!=first)
+                (root/'downloads').write_text('https://example.com/0\t↓ 35%\n')
+                wait(lambda s:'↓ 35%' in screen.display[1] and not(set(screen.display[1]) & frames))
+                self.assertIn('Item 1',screen.display[screen.cursor.y])

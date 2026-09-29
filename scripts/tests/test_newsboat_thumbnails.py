@@ -103,8 +103,9 @@ class ThumbnailTests(unittest.TestCase):
                 while time.monotonic()<deadline:
                     if select.select([fd],[],[],.05)[0]:data.extend(os.read(fd,65536))
                 self.assertNotIn(b'feeds refreshed',data)
+                self.assertNotIn(b'a=p,i=1073741822,',data)
                 self.assertNotIn('╭'.encode(),data)
-                data.clear();os.write(fd,b'j');until(b'a=d,d=I,');until(b'feeds refreshed')
+                data.clear();os.write(fd,b'j');until(b'a=d,d=I,');until(b'a=p,i=1073741822,')
                 self.assertNotIn(b'\x1b[23;0t',data)  # Article clears only the image.
                 self.assertNotIn(b'set-background-opacity',data)
                 data.clear();os.write(fd,b'j');until(b'a=p,')
@@ -163,6 +164,9 @@ class ThumbnailTests(unittest.TestCase):
         self.assertNotEqual(thumbs.loading_png(0),thumbs.loading_png(0,True))
         with Image.open(io.BytesIO(thumbs.loading_png(0))) as image:
             self.assertEqual(image.size,(680,400))
+            self.assertEqual(image.getpixel((340,10)),(30,30,46,255))
+            self.assertEqual(image.getpixel((340,390)),(30,30,46,255))
+            self.assertEqual(image.getpixel((0,0))[3],0)
         def fetch(ident):
             time.sleep(.05 if ident=='abc123DEF47' else .9)
             return b'fast' if ident=='abc123DEF47' else b'ready' if ident=='abc123DEF45' else None
@@ -226,7 +230,7 @@ os.read(0,1)
         self.assertTrue(place.endswith(b'\x1b8'))
         overlay=thumbs.placement(42,(82,1,38,21,'abc123DEF45'),struct.pack('HHHH',24,120,1200,480),data,loading=True)
         self.assertIn(b'z=1,',overlay)
-        self.assertIn(b'\x1b[0m\x1b[34X',overlay)
+        self.assertNotIn(b'\x1b[34X',overlay)
         self.assertIn(b'z=-1,',place)
         self.assertEqual(thumbs.delete(42),b'\x1b_Ga=d,d=I,i=42,q=2\x1b\\')
 

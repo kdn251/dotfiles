@@ -54,6 +54,15 @@ class ProgressTests(unittest.TestCase):
         self.assertGreater(len(set(entering)), 20)
         self.assertLessEqual(max(abs(a-b) for a,b in zip(entering, entering[1:])), 2)
 
+    def test_graphics_toast_does_not_erase_underlying_rows(self):
+        for offset in (0,8,33):
+            output=session.Renderer.overlay(0,'2/5 feeds refreshed',80,24,9,offset)
+            self.assertIn(b'z=2,',output)
+            self.assertIn(f'c={34-offset},r=9'.encode(),output)
+            self.assertNotIn(b'\x1b[0m',output)
+            self.assertNotIn(f'\x1b[{34-offset}X'.encode(),output)
+        self.assertEqual(session.Renderer.overlay(0,'done',80,24,9,34),session.Renderer.clear_overlay())
+
     def test_slide_clips_at_right_margin(self):
         for offset in (0, 8, 20, 33):
             output = session.Renderer.compact(0, '2/5 feeds refreshed', 80, 24, 9, offset)

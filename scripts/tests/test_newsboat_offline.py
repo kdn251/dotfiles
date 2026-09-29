@@ -1,6 +1,7 @@
-"""A stalled feed server must not prevent opening local Downloads."""
+"""A stalled feed server must not prevent browsing the offline library."""
 import fcntl
 import http.server
+import json
 import os
 from pathlib import Path
 import pty
@@ -19,7 +20,7 @@ BINARY=Path.home()/'.local/lib/newsboat-paged/newsboat'
 
 @unittest.skipUnless(BINARY.exists(), 'requires custom Newsboat')
 class OfflineTests(unittest.TestCase):
-    def test_stalled_server_opens_cached_downloads_within_budget(self):
+    def test_stalled_server_opens_offline_home_within_budget(self):
         release=threading.Event()
         class Handler(http.server.BaseHTTPRequestHandler):
             def do_GET(self): release.wait(12)
@@ -39,6 +40,11 @@ class OfflineTests(unittest.TestCase):
                 subprocess.run([str(BINARY),'-C',str(config),'-u',str(home/'urls'),'-c',str(home/'cache.db'),'-x','reload'],check=True,capture_output=True)
                 config.write_text('urls-source miniflux\nshow-read-feeds yes\n')
                 (home/'miniflux_creds.conf').write_text(f'miniflux-url "http://127.0.0.1:{server.server_port}"\nminiflux-login test\nminiflux-password test\n')
+                saved=root/'state/newsboat/youtube-playlists/playthroughs'
+                saved.mkdir(parents=True)
+                (saved/'PLoffline.json').write_text(json.dumps(dict(schema=2,id='PLoffline',
+                    name='Saved adventure',channel='Offline creator',selected_urls=['https://www.youtube.com/watch?v=abcdefghijk'],
+                    rows=[dict(title='Episode one',url='https://www.youtube.com/watch?v=abcdefghijk',position=1,source='Offline creator')])) )
                 started=time.monotonic();pid,fd=pty.fork()
                 if pid==0:
                     os.environ.update(HOME=d,TERM='xterm-256color',XDG_STATE_HOME=str(root/'state'),NEWSBOAT_MINIFLUX_CONFIG=str(home/'miniflux_creds.conf'))
@@ -47,11 +53,43 @@ class OfflineTests(unittest.TestCase):
                 try:
                     output=b''
                     while time.monotonic()-started < 8:
-                        if select.select([fd],[],[],.05)[0]: output+=os.read(fd,65536)
-                        if 'Downloads — offline'.encode() in output and b'Offline video' in output:break
-                    self.assertIn('Downloads — offline'.encode(),output)
-                    self.assertIn(b'Offline video',output)
+                        if select.select([fd],[],[],.05)[0]:
+                            try: output+=os.read(fd,65536)
+                            except OSError: self.fail(output.decode(errors='replace'))
+                        if 'Newsboat — offline'.encode() in output and b'Playthroughs' in output:break
+                    self.assertIn('Newsboat — offline'.encode(),output)
+                    self.assertIn(b'Downloads',output)
+                    self.assertIn(b'Playthroughs',output)
                     self.assertLess(time.monotonic()-started,8)
+                    os.write(fd,b'\r')
+                    deadline=time.monotonic()+3
+                    output=b''
+                    while time.monotonic()<deadline:
+                        if select.select([fd],[],[],.05)[0]:
+                            try: output+=os.read(fd,65536)
+                            except OSError: self.fail(output.decode(errors='replace'))
+                        if b'Offline video' in output:break
+                    self.assertIn(b'Offline video',output)
+                    os.write(fd,b'q')
+                    time.sleep(.2)
+                    os.write(fd,b'j\r')
+                    deadline=time.monotonic()+3
+                    output=b''
+                    while time.monotonic()<deadline:
+                        if select.select([fd],[],[],.05)[0]: output+=os.read(fd,65536)
+                        if b'Saved adventure' in output:break
+                    self.assertIn(b'Saved adventure',output)
+                    os.write(fd,b'\r')
+                    deadline=time.monotonic()+4
+                    output=b''
+                    while time.monotonic()<deadline:
+                        if select.select([fd],[],[],.05)[0]: output+=os.read(fd,65536)
+                        if b'Episode one' in output:break
+                    self.assertIn(b'Episode one',output)
+                    os.write(fd,b'q')
+                    time.sleep(.2)
+                    os.write(fd,b'q')
+                    time.sleep(.2)
                     os.write(fd,b'q')
                     deadline=time.monotonic()+3
                     while time.monotonic()<deadline:

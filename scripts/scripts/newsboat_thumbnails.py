@@ -188,10 +188,13 @@ class Fetcher:
 
 
 @lru_cache(maxsize=97)
-def loading_png(frame, failed=False):
+def loading_png(frame, failed=False, caption=None):
     """Render the refresh ship inside the existing image placement, not curses."""
     from PIL import Image, ImageDraw, ImageFont
-    canvas = Image.new('RGBA', (680, 400), (0, 0, 0, 0))
+    caption = caption or ('Thumbnail unavailable' if failed else 'Loading thumbnail…')
+    lines = caption.splitlines()
+    height = 400 + 40*(len(lines)-1)
+    canvas = Image.new('RGBA', (680, height), (0, 0, 0, 0))
     draw = ImageDraw.Draw(canvas)
     font_path = '/usr/share/fonts/TTF/JetBrainsMonoNerdFontMono-Regular.ttf'
     try:
@@ -199,11 +202,11 @@ def loading_png(frame, failed=False):
     except OSError:
         font = ImageFont.load_default(size=28)
     colors = {244:'#808080',203:'#ff5f5f',255:'#eeeeee',38:'#00afd7'}
-    draw.rounded_rectangle((2,2,677,397),radius=20,outline='#ffffff',width=4)
+    draw.rounded_rectangle((2,2,677,height-3),radius=20,fill='#1e1e2e',outline='#ffffff',width=4)
     for row,(color,line) in enumerate(ship_art(frame, 34)):
         draw.text((340,40+row*40),line,font=font,fill=colors[color],anchor='mt')
-    caption = 'Thumbnail unavailable' if failed else 'Loading thumbnail…'
-    draw.text((340,330),caption,font=font,fill='#cdd6f4',anchor='mt')
+    for i,line in enumerate(lines):
+        draw.text((340,330+40*i),line,font=font,fill='#cdd6f4',anchor='mt')
     output = io.BytesIO()
     canvas.save(output,format='PNG')
     return output.getvalue()
@@ -238,11 +241,9 @@ def placement(image_id, selected, size, png, loading=False):
     width = max(1, min(width, round(height*cell_h*iw/ih/cell_w)))
     left = x+(w-width)//2
     top = y+1
-    # The loader is a toast: clear selection styling just inside its footprint,
-    # using the terminal's transparent default background, then draw above text.
-    # Real thumbnails retain their usual layer underneath the feed refresh toast.
-    clear = ''.join(f'\x1b[{row+1};{left+1}H\x1b[0m\x1b[{width}X'
-                    for row in range(top, top+height)) if loading else ''
+    # Graphics cover the highlight inside the rounded frame, without changing
+    # any terminal cells underneath or cutting the selected row at the edges.
+    clear = ''
     return (f'\x1b7{clear}\x1b[{top+1};{left+1}H'
             f'\x1b_Ga=p,i={image_id},p=1,c={width},r={height},z={1 if loading else -1},q=2\x1b\\\x1b8').encode()
 
