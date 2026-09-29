@@ -215,6 +215,7 @@ class PlaythroughTests(unittest.TestCase):
             wait(lambda t:'Your feeds' in t and 'Playthroughs' in t)
             os.write(fd,b'\n')
             wait(lambda t:'🎮 Playthroughs' in t and 'A Game — Creator' in t)
+            wait(lambda t:bool(image_seen))
             import sqlite3
             with sqlite3.connect(media.STATE.parent/'history.db') as db:
                 db.execute('CREATE TABLE IF NOT EXISTS history (url TEXT PRIMARY KEY, title TEXT, source TEXT, mode TEXT, opened REAL)')

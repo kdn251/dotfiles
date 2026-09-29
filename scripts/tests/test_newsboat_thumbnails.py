@@ -47,6 +47,7 @@ class ThumbnailTests(unittest.TestCase):
         for url,expected in [
             ('https://youtu.be/abc123DEF45','abc123DEF45'),
             ('https://www.youtube.com/playlist?list=PLtest_123','playlist:PLtest_123'),
+            ('newsboat-playthroughs://PLtest_123','playlist:PLtest_123'),
             ('https://www.youtube.com/shorts/abc123DEF45','abc123DEF45'),
             ('https://www.twitch.tv/videos/12345','twitch:12345'),
             ('https://clips.twitch.tv/TestClip','twitch-clip:TestClip'),
@@ -56,6 +57,17 @@ class ThumbnailTests(unittest.TestCase):
         with patch.object(thumbs.subprocess,'call',return_value=0) as call:
             thumbs.run(['newsboat'],env)
             self.assertEqual(call.call_args.kwargs['env']['NEWSBOAT_THUMBNAILS'],'1')
+
+    def test_old_saved_playlist_uses_cached_episode_cover_offline(self):
+        import json
+        with tempfile.TemporaryDirectory() as directory:
+            root=Path(directory)
+            (root/'playthroughs').mkdir();(root/'thumbnails').mkdir()
+            (root/'playthroughs/PLsaved.json').write_text(json.dumps(dict(rows=[dict(url='https://youtu.be/abc123DEF45')])))
+            Image.new('RGB',(320,180),'red').save(root/'thumbnails/abc123DEF45.png')
+            with patch.object(thumbs,'LIBRARY',root):
+                image=Image.open(io.BytesIO(thumbs.fetch_png('playlist:PLsaved')))
+            self.assertEqual(image.getpixel((340,190)),(255,0,0,255))
 
     def test_session_previews_mixed_items_and_saved_views(self):
         import shutil

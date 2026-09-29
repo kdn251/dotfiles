@@ -74,10 +74,8 @@ def show(ident=None):
             env.pop('NEWSBOAT_PLAYTHROUGH_ID',None)
         subprocess.run(command+['-x','reload'],env=env,capture_output=True,check=True,timeout=15)
         with config.open('a') as out:out.write('run-on-startup open\n')
-        if group:
-            from newsboat_thumbnails import run
-            return run(command,env)
-        return subprocess.call(command,env=env)
+        from newsboat_thumbnails import run
+        return run(command,env)
 
 
 if __name__=='__main__':

@@ -87,6 +87,8 @@ def video_key(url):
     if key:
         return key[1] if key[0] == 'youtube' else ':'.join(key)
     parsed = urlparse(url)
+    if parsed.scheme == 'newsboat-playthroughs' and re.fullmatch(r'[A-Za-z0-9_-]+', parsed.netloc):
+        return 'playlist:'+parsed.netloc
     if parsed.hostname in {'youtube.com','www.youtube.com','m.youtube.com'} and parsed.path == '/playlist':
         ident = parse_qs(parsed.query).get('list',[''])[0]
         if re.fullmatch(r'[A-Za-z0-9_-]+',ident):
@@ -130,7 +132,18 @@ def fetch_png(ident):
     except FileNotFoundError:
         pass
     if ident.startswith('playlist:'):
-        thumbnail = json.loads((LIBRARY/'playlist-covers'/(ident.split(':',1)[1]+'.json')).read_text())['url']
+        playlist_id = ident.split(':',1)[1]
+        try:
+            thumbnail = json.loads((LIBRARY/'playlist-covers'/(playlist_id+'.json')).read_text())['url']
+        except FileNotFoundError:
+            # Older saved playlists may predate cover metadata. Use their first
+            # episode's thumbnail, including its cached copy when offline.
+            group = json.loads((LIBRARY/'playthroughs'/(playlist_id+'.json')).read_text())
+            first = next((video_key(row['url']) for row in group.get('rows', [])
+                          if identity(row.get('url', ''))), None)
+            if not first:
+                raise ValueError('No playlist cover available')
+            return fetch_png(first)
         if urlparse(thumbnail).scheme not in {'https','http'}:
             raise ValueError('No playlist cover available')
     elif ':' in ident:
