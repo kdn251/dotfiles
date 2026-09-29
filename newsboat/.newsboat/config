@@ -99,7 +99,8 @@ bind S articlelist,searchresultslist undo-checkpoint unstar ; set browser "pytho
 bind S article undo-checkpoint unstar ; set browser "python3 ~/scripts/newsboat-starred.py remove %u" ; open-in-browser-noninteractively ; set browser "~/scripts/newsboat-brave-app.sh %u" -- "Unstar item"
 bind s articlelist,article,searchresultslist undo-checkpoint star ; set browser "python3 ~/scripts/newsboat-starred.py save %u" ; open-in-browser-noninteractively ; set browser "~/scripts/newsboat-brave-app.sh %u" ; toggle-article-read "read" "group" -- "Star item, mark read, and advance"
 bind U everywhere undo-action -- "Undo recent read, star, Commentary, or Favorites changes (repeat U)"
-bind n articlelist,article,searchresultslist toggle-article-read -- "Toggle read/unread (same as N)"
+bind n articlelist,article,searchresultslist toggle-article-read "read" -- "Mark read and advance"
+bind N articlelist,article,searchresultslist toggle-article-read "read" -- "Mark read and advance"
 bind-key j down
 bind-key k up
 bind-key g home
