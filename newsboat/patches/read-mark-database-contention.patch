@@ -1,0 +1,25 @@
+--- a/src/cache.cpp
++++ b/src/cache.cpp
+@@ -267,6 +267,10 @@
+ 			error);
+ 		throw DbException(db);
+ 	}
++
++    // Background read/star/download helpers share this cache. A brief writer
++    // lock must not discard a foreground read mark (SQLITE_BUSY).
++    sqlite3_busy_timeout(db, 5000);
+ 
+ 	populate_tables();
+ 	set_pragmas();
+--- a/src/itemlistformaction.cpp
++++ b/src/itemlistformaction.cpp
+@@ -581,6 +581,9 @@
+ 				v.get_statusline().show_error(strprintf::fmt(
+ 						_("Error while toggling read flag: %s"),
+ 						e.what()));
++                // Keep this item selected if persistence failed. Advancing here
++                // silently skipped unread rows during rapid keypresses.
++                return false;
+ 			}
+ 			const bool keep_position = args.size() > 1 && args[1] == "stay";
+ 			if (!keep_position && cfg->get_configvalue_as_bool(

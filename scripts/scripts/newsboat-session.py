@@ -149,6 +149,11 @@ def run(args):
     subprocess.Popen([sys.executable, str(Path(__file__).with_name('newsboat-download.py')), '--recover'],
                      stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
                      start_new_session=True)
+    action_queue = Path(os.environ.get('XDG_STATE_HOME', Path.home()/'.local/state'))/'newsboat/star-actions'
+    if any(action_queue.glob('*.json')):
+        subprocess.Popen([sys.executable, str(Path(__file__).with_name('newsboat-starred.py')), 'work'],
+                         stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                         start_new_session=True)
     urls = Path(os.environ.get('NEWSBOAT_URLS_FILE', Path.home()/'.newsboat/urls'))
     config = Path.home()/'.newsboat/config'
     cache = Path.home()/'.newsboat/cache.db'

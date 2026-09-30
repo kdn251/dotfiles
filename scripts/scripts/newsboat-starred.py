@@ -61,8 +61,8 @@ def rebuild_query(rows):
         temporary.replace(target)
 
 
-def resolve_ids(url, client):
-    ids = {row['id'] for row in client.starred() if row['url'] == url}
+def resolve_ids(url, client, read_only=False):
+    ids = set() if read_only else {row['id'] for row in client.starred() if row['url'] == url}
     try:
         with closing(sqlite3.connect(CACHE.as_uri()+'?mode=ro',uri=True,timeout=3)) as db:
             candidates = {int(row[0]) for row in db.execute('SELECT guid FROM rss_item WHERE url=?',(url,)) if str(row[0]).isdigit()}
@@ -76,6 +76,8 @@ def resolve_ids(url, client):
                     raise
     except sqlite3.Error:
         pass
+    if not ids and read_only:
+        ids = {row['id'] for row in client.starred() if row['url'] == url}
     if not ids:
         from newsboat_youtube_playlists import ensure_entry
         entry_id = ensure_entry(url, client)
@@ -124,47 +126,59 @@ def enqueue_star(url, desired, restore_unread=None):
             atomic_write(markers/hashlib.sha256(url.encode()).hexdigest(), url)
 
 
-def drain_star_actions():
+def apply_queued_action(action):
     global CACHE
+    CACHE = Path(action['cache'])
+    if action.get('restore_unread') is None:
+        set_star(action['url'], action['desired'], mark_read=bool(action['desired']))
+        if action['desired'] and action.get('playlist_context'):
+            from newsboat_playthroughs import record, publish
+            from newsboat_media import library_lock
+            record(action['url'],action['playlist_context'])
+            with library_lock():publish()
+    else:
+        client = Client()
+        read_only = action['desired'] is None
+        ids = resolve_ids(action['url'], client, read_only=read_only)
+        if not ids:
+            raise ValueError('Item no longer available in Miniflux')
+        if not read_only:
+            client.request('entries', {'entry_ids': sorted(ids), 'starred': action['desired']}, method='PUT')
+        client.request('entries', {'entry_ids': sorted(ids),
+            'status': 'unread' if action['restore_unread'] else 'read'}, method='PUT')
+        with closing(sqlite3.connect(CACHE, timeout=3)) as db, db:
+            db.executemany('UPDATE rss_item SET unread=? WHERE guid=?',
+                [(int(action['restore_unread']), str(i)) for i in ids])
+        # A read mark does not change membership. Fetching/rebuilding Starred
+        # here made rapid n presses wait behind multiple paginated API calls.
+        if not read_only:
+            rebuild_query(client.starred())
+
+
+def drain_star_actions():
     queue = STARRED_STATUS.parent/'star-actions'
     queue.mkdir(parents=True, exist_ok=True)
-    # Serialize rapid s/S requests so the final state follows keypress order.
+    # Preserve keypress order, including undo. Never discard failed read marks.
     with (queue/'worker.lock').open('a') as lock:
         fcntl.flock(lock, fcntl.LOCK_EX)
         while jobs := sorted(queue.glob('*.json')):
             for job in jobs:
-                action = {}
-                try:
-                    action = json.loads(job.read_text())
-                    CACHE = Path(action['cache'])
-                    if action.get('restore_unread') is None:
-                        set_star(action['url'], action['desired'], mark_read=bool(action['desired']))
-                        if action['desired'] and action.get('playlist_context'):
-                            from newsboat_playthroughs import record, publish
-                            from newsboat_media import library_lock
-                            record(action['url'],action['playlist_context'])
-                            with library_lock():publish()
-                    else:
-                        client = Client()
-                        ids = resolve_ids(action['url'], client)
-                        if not ids:
-                            raise ValueError('Item no longer available in Miniflux')
-                        if action['desired'] is not None:
-                            client.request('entries', {'entry_ids': sorted(ids), 'starred': action['desired']}, method='PUT')
-                        client.request('entries', {'entry_ids': sorted(ids),
-                            'status': 'unread' if action['restore_unread'] else 'read'}, method='PUT')
-                        with closing(sqlite3.connect(CACHE, timeout=3)) as db, db:
-                            db.executemany('UPDATE rss_item SET unread=? WHERE guid=?',
-                                [(int(action['restore_unread']), str(i)) for i in ids])
-                        rebuild_query(client.starred())
-                except Exception:
-                    subprocess.run(['notify-send', '-a', 'Newsboat', '-t', '5000',
-                                    'Star change failed',
-                                    'Could not update Miniflux. Reopen Starred after syncing and try again.'], check=False)
-                finally:
-                    from newsboat_actions import finish
-                    finish(action.get('pending_marker'))
-                    job.unlink(missing_ok=True)
+                action = json.loads(job.read_text())
+                for attempt in range(3):
+                    try:
+                        apply_queued_action(action)
+                        break
+                    except Exception:
+                        if attempt < 2:
+                            time.sleep(.25 * (2 ** attempt))
+                        else:
+                            subprocess.run(['notify-send', '-a', 'Newsboat', '-t', '5000',
+                                            'Read/star update pending',
+                                            'Your change is saved and will retry on the next action or Newsboat restart.'], check=False)
+                            return
+                from newsboat_actions import finish
+                finish(action.get('pending_marker'))
+                job.unlink(missing_ok=True)
 
 
 def write_feed(directory, rows):
