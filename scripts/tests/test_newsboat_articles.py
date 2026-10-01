@@ -152,12 +152,13 @@ assert all(text in page for text in ('Post tail','Reply text.','Reply tail'))
           <entry><id>t1_reply2</id><link href="https://www.reddit.com/r/test/comments/abc123/title/reply2/"/><content type="html">Duplicate</content></entry>
           <entry><id>t1_wrong</id><link href="https://www.reddit.com/r/test/comments/other1/title/wrong/"/><content type="html">Wrong thread</content></entry>
         </feed>'''
-        with patch.object(articles,'fetch',side_effect=[OSError('403 Blocked'),(rss.encode(),'application/atom+xml','https://www.reddit.com')]) as fetch:
+        with patch.object(articles,'reddit_comment_parents',return_value={'t1_reply1':'t3_abc123','t1_reply2':'t1_reply1'}), patch.object(articles,'fetch',side_effect=[OSError('403 Blocked'),(rss.encode(),'application/atom+xml','https://www.reddit.com')]) as fetch:
             content,warnings=articles.reddit_comments('https://old.reddit.com/r/test/comments/abc123/title/')
         self.assertEqual(warnings,[])
         self.assertIn('Comments (2 saved)',content)
         self.assertIn('u/Alice',content);self.assertIn('A reply',content)
-        self.assertIn('reply nesting and scores are not supplied',content)
+        self.assertIn('data-thread-known="yes"',content)
+        self.assertIn('grouped beneath their parent',content)
         self.assertNotIn('Post text',content);self.assertNotIn('Duplicate',content);self.assertNotIn('Wrong thread',content)
         self.assertEqual(fetch.call_args.args[0],'https://www.reddit.com/comments/abc123/.rss?limit=200&sort=top')
         code='''import sys
@@ -166,9 +167,46 @@ import newsboat_articles as a
 page,title,warnings=a.render('<p>Post body.</p>','https://www.reddit.com/r/test/comments/abc123/title/','Test Reddit post',reddit=True,comments=sys.stdin.read())
 assert 'Comments (2 saved)' in page and 'u/Alice' in page and 'A reply &amp; more text.' in page
 assert '<section id="article-comments">' in page
+assert 'Reply level 1 · replying to u/Alice' in page
 assert page.count('<script') == 1
 '''
         subprocess.run([str(PYTHON),'-c',code,str(SCRIPTS)],input=content,text=True,check=True)
+
+    def test_comment_thread_labels_survive_rendering_and_upgrade_saved_pages(self):
+        code='''import sys
+sys.path.insert(0,sys.argv[1])
+import newsboat_articles as a
+from lxml import html
+comments='<h2>Comments</h2><blockquote><p><strong>u/parent · 3 points</strong></p><p>Parent body</p><blockquote><p>Quoted words, not a reply</p></blockquote><blockquote><p><strong>u/child · 2 points</strong></p><p>Reply body</p><blockquote><p><strong>u/grandchild · 1 points</strong></p><p>Nested reply</p></blockquote></blockquote></blockquote>'
+page,_,_=a.render('<p>Post</p>','https://www.reddit.com/r/test/comments/abc123/title/','Test',reddit=True,comments=comments)
+tree=html.document_fromstring(page)
+rows=tree.xpath('//blockquote[@class="reddit-comment"]')
+assert [row.get('data-depth') for row in rows]==['0','1','2']
+assert 'Top-level comment' in rows[0].find('p').text_content()
+assert 'Reply level 1 · replying to u/parent' in rows[1].find('p').text_content()
+assert 'Reply level 2 · replying to u/child' in rows[2].find('p').text_content()
+assert len(tree.xpath('//blockquote[not(@class)]'))==1
+assert a.keyboard_support(page)==page
+legacy='<html><head></head><body><section id="article-comments">'+comments+'</section></body></html>'
+assert 'Reply level 2' in a.comment_thread_support(legacy)
+flat=legacy.replace('<h2>Comments</h2>','<p>reply nesting and scores are not supplied by this feed</p>')
+flat=a.comment_thread_support(flat)
+assert 'Reply nesting unavailable' not in flat and 'Top-level comment' not in flat and 'Reply level' not in flat
+assert 'reply nesting and scores are not supplied' in flat
+'''
+        subprocess.run([str(PYTHON),'-c',code,str(SCRIPTS)],check=True)
+
+    def test_context_feed_recovers_parent_and_reuses_cached_relationship(self):
+        from unittest.mock import patch
+        import newsboat_media
+        ns='http://www.w3.org/2005/Atom'
+        feed=f'<feed xmlns="{ns}"><entry><id>t3_post1</id></entry><entry><id>t1_parent</id></entry><entry><id>t1_child</id></entry></feed>'.encode()
+        with tempfile.TemporaryDirectory() as directory, patch.object(newsboat_media,'STATE',Path(directory)/'downloads'),patch.object(articles.time,'sleep'),patch.object(articles,'fetch',return_value=(feed,'application/atom+xml','')) as fetch:
+            rows=[dict(id='t1_child',url='https://www.reddit.com/comments/post1/title/child/')]
+            self.assertEqual(articles.reddit_comment_parents('post1',rows),{'t1_child':'t1_parent'})
+            articles.reddit_comment_parents('post1',rows)
+            fetch.assert_called_once()
+            self.assertIn('context=1',fetch.call_args.args[0])
 
     def test_reddit_rss_rejects_unrelated_or_block_pages(self):
         for response in (b'<html><body>Blocked</body></html>',b'<feed xmlns="http://www.w3.org/2005/Atom"><entry><id>t3_other</id></entry></feed>'):

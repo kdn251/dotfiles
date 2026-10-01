@@ -111,6 +111,61 @@ def reddit_snapshot(url, seen=None):
     raise ValueError('Reddit supplied no post text, and the original could not be fetched. No offline copy was saved')
 
 
+def reddit_comment_parents(post_id, rows):
+    """A focused RSS thread with context=1 contains the direct parent first."""
+    from newsboat_media import STATE, atomic_write
+    from urllib.error import HTTPError
+    cache = STATE.parent/'reddit-comment-parents'/(post_id+'.json')
+    try: parents = json.loads(cache.read_text())
+    except (OSError, ValueError): parents = {}
+    deadline = time.monotonic()+240
+    ns = {'a':'http://www.w3.org/2005/Atom'}
+    for row in rows:
+        ident = row['id']
+        if ident in parents: continue
+        if time.monotonic() >= deadline: break
+        endpoint = row['url'].split('?')[0].rstrip('/')+'/.rss?context=1&limit=10'
+        try:
+            raw, _, _ = fetch(endpoint, 4*1024*1024, 'application/atom+xml')
+            entries = ET.fromstring(raw).findall('a:entry', ns)
+            ids = [entry.findtext('a:id','',ns) for entry in entries]
+            comments = [value for value in ids if value.startswith('t1_')]
+            if 't3_'+post_id not in ids or ident not in comments: continue
+            # With one ancestor requested, the focused comment is first for a
+            # top-level comment, or second immediately after its parent.
+            if comments[0] == ident: parents[ident] = 't3_'+post_id
+            elif len(comments)>1 and comments[1] == ident: parents[ident] = comments[0]
+            atomic_write(cache, json.dumps(parents))
+        except HTTPError as error:
+            if error.code in {403,429}: break
+        except (OSError, ValueError, ET.ParseError):
+            pass
+        time.sleep(2)
+    return parents
+
+
+def reddit_rss_tree(rows, parents, post_id):
+    by_id = {row['id']:row for row in rows}
+    children = {}
+    roots = []
+    for row in rows:
+        parent = parents.get(row['id'])
+        if parent in by_id and parent != row['id']:
+            children.setdefault(parent, []).append(row)
+        else: roots.append(row)
+    visited = set()
+    def render(row, rooted=False):
+        if row['id'] in visited:return ''
+        visited.add(row['id'])
+        rooted = rooted or parents.get(row['id']) == 't3_'+post_id
+        kind = 'yes' if rooted else 'partial'
+        return ('<blockquote data-thread-known="'+kind+'"><p>'+row['label']+'</p>'+row['body']+
+                ''.join(render(child,rooted) for child in children.get(row['id'],[]))+'</blockquote>')
+    content = ''.join(render(row) for row in roots)
+    content += ''.join(render(row) for row in rows if row['id'] not in visited)
+    return content
+
+
 def reddit_rss_comments(url):
     """Reddit's public thread feed remains usable when anonymous JSON is blocked.
 
@@ -146,16 +201,20 @@ def reddit_rss_comments(url):
         author = entry.findtext('a:author/a:name', '[deleted]', ns).removeprefix('/').removeprefix('u/')
         label = '<strong>u/'+html.escape(author)+'</strong> · <a href="'+html.escape(permalink, quote=True)+'">View comment</a>'
         # The final article renderer sanitizes comment markup, like post text.
-        comments.append('<blockquote><p>'+label+'</p>'+body+'</blockquote>')
+        comments.append(dict(id=ident,url=permalink,label=label,body=body))
         if len(comments) >= 200:
             break
     heading = f'<h2>Comments ({len(comments)} saved)</h2>'
-    explanation = '<p>Snapshot from Reddit’s comment feed. Comments and replies are shown in feed order; reply nesting and scores are not supplied by this feed.</p>'
     if not comments:
-        comments.append('<p>No comments were returned by Reddit.</p>')
-    elif len(comments) >= 200:
-        comments.append('<p>Saved the first 200 comments returned by Reddit. Open the original post for the full discussion.</p>')
-    return heading+explanation+''.join(comments), []
+        return heading+'<p>No comments were returned by Reddit.</p>', []
+    parents = reddit_comment_parents(post_id, comments)
+    content = reddit_rss_tree(comments, parents, post_id)
+    explanation = '<p>Saved Reddit discussion. Replies are grouped beneath their parent comments.</p>'
+    if any(row['id'] not in parents or (parents[row['id']] != 't3_'+post_id and parents[row['id']] not in {r['id'] for r in comments}) for row in comments):
+        explanation += '<p class="notice">Some thread context could not be retrieved. Those threads are marked incomplete.</p>'
+    if len(comments) >= 200:
+        content += '<p>Saved the first 200 comments returned by Reddit. Open the original post for the full discussion.</p>'
+    return heading+explanation+content, []
 
 
 def reddit_comments(url):
@@ -232,6 +291,8 @@ def post_body(raw):
         out = ET.Element('head' if tag in {'h1','h2','h3','h4','h5','h6'} else mapping.get(tag,'span'))
         out.text, out.tail = element.text, element.tail
         if tag == 'a': out.set('target', element.get('href',''))
+        if tag == 'blockquote' and element.get('data-thread-known') in {'yes','partial'}:
+            out.set('thread-known', element.get('data-thread-known'))
         if tag == 'img':
             out.set('src', element.get('src',''))
             out.set('alt', element.get('alt',''))
@@ -333,7 +394,66 @@ KEYS = """(() => {
 })();"""
 
 
+COMMENT_THREAD_CSS = """
+#article-comments .reddit-comment {border-left:3px solid #64717e;margin:22px 0;padding:0 0 0 14px;min-width:0;overflow-wrap:anywhere}
+#article-comments .reddit-comment .reddit-comment {margin-left:36px;border-left-color:#72d5d1}
+#article-comments .reddit-comment[data-depth="5"],
+#article-comments .reddit-comment[data-depth="6"],
+#article-comments .reddit-comment[data-depth="7"],
+#article-comments .reddit-comment[data-depth="8"],
+#article-comments .reddit-comment[data-depth="9"] {margin-left:0}
+#article-comments .comment-thread-label {display:block;color:#adb7c2;font-size:13px;line-height:1.5;margin-bottom:5px;font-weight:normal}
+#article-comments .reddit-comment > p:first-of-type {margin-top:0}
+@media(max-width:600px){#article-comments .reddit-comment .reddit-comment{margin-left:18px;padding-left:10px}}
+"""
+
+
+def comment_thread_support(page):
+    """Expose saved reply structure, including in previously downloaded pages."""
+    if 'id="article-comments"' not in page:
+        return page
+    from lxml import html as lhtml
+    document = lhtml.document_fromstring(page)
+    section = document.get_element_by_id('article-comments', None)
+    if section is None:
+        return page
+    unknown = 'reply nesting and scores are not supplied' in section.text_content()
+    threads = {}
+    for quote in section.iter('blockquote'):
+        # Our saved comment header starts with the author's username. Ordinary
+        # blockquotes inside a comment body remain quotations, not fake replies.
+        header = quote.find('p')
+        strong = header.find('strong') if header is not None else None
+        label = strong.text_content() if strong is not None else ''
+        author = re.match(r'u/([^\s·]+)', label)
+        if author is None:
+            continue
+        parent = next((ancestor for ancestor in quote.iterancestors() if ancestor in threads), None)
+        depth = threads[parent][0]+1 if parent is not None else 0
+        threads[quote] = (depth, author[1])
+        quote.set('class', 'reddit-comment')
+        incomplete = quote.get('data-thread-known') == 'partial'
+        unknown_row = unknown and quote.get('data-thread-known') not in {'yes','partial'}
+        quote.set('data-depth', 'unknown' if unknown_row else str(depth))
+        for old in header.xpath('./span[@class="comment-thread-label"]'):
+            header.remove(old)
+        if not unknown_row:
+            badge = lhtml.Element('span', {'class':'comment-thread-label'})
+            badge.text = (f'Reply level {depth} · replying to u/{threads[parent][1]}' if parent is not None else
+                          'Top-level comment')
+            if incomplete:
+                badge.text = f'Reply to u/{threads[parent][1]}' if parent is not None else 'Thread context incomplete'
+            header.insert(0, badge)
+    for old in document.xpath('//style[@id="newsboat-comment-threads"]'):
+        old.getparent().remove(old)
+    style = lhtml.Element('style', id='newsboat-comment-threads')
+    style.text = COMMENT_THREAD_CSS
+    document.find('head').append(style)
+    return lhtml.tostring(document, encoding='unicode', doctype='<!doctype html>')
+
+
 def keyboard_support(page):
+    page = comment_thread_support(page)
     digest = base64.b64encode(hashlib.sha256(KEYS.encode()).digest()).decode()
     page = re.sub(r'<script id="newsboat-keys">.*?</script>', '', page, flags=re.S)
     page = re.sub(r" script-src 'sha256-[^']+';", '', page)
@@ -418,6 +538,8 @@ def render(raw, url, title='', fetch_image=fetch, reddit=False, comments=''):
                 return '<p class="notice">[Image unavailable offline]</p>'
             return '<img src="'+images[source]+'" alt="'+html.escape(element.get('alt',''),quote=True)+'">'
         attrs = ''
+        if tag == 'quote' and element.get('thread-known') in {'yes','partial'}:
+            attrs = ' data-thread-known="'+element.get('thread-known')+'"'
         mapped = {'main':'section','head':'h2','p':'p','list':'ul','item':'li','quote':'blockquote',
                   'code':'pre','table':'table','row':'tr','cell':'td','lb':'br','hi':'strong','del':'del','ref':'a'}
         out = mapped.get(tag, 'span')
