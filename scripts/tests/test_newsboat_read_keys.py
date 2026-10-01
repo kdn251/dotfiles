@@ -19,11 +19,11 @@ class ReadKeyTests(unittest.TestCase):
                 config=f'show-read-feeds yes\nshow-read-articles {show_read}\nconfirm-exit no\narticle-sort-order guid-asc\n'+bindings+'\nbind g articlelist home\n'
                 with reader(root,config,rss.as_uri()+'\n') as (_,screen,send,wait):
                     send('\n');wait(lambda s:'Item 00' in s)
-                    send('nNnNnN')
+                    send('n'*6)
                     wait(lambda s:'Item 06' in screen.display[screen.cursor.y])
                     if show_read=='yes':
                         send('g');wait(lambda s:'Item 00' in screen.display[screen.cursor.y])
-                    send('nN'*10+'q')
+                    send('n'*20+'q')
                     wait(lambda s:'Your feeds' in s)
                     with sqlite3.connect(root/'cache') as db:
                         self.assertEqual(db.execute('SELECT COUNT(*) FROM rss_item WHERE unread=1').fetchone()[0],0)
@@ -105,7 +105,7 @@ class NewReadContentionTests(unittest.TestCase):
                     finally:db.close()
                 writer=threading.Thread(target=background_writer);writer.start()
                 self.assertTrue(locked.wait(2))
-                send('nN'*30)
+                send('n'*60)
                 wait(lambda s:'Item 060' in screen.display[screen.cursor.y],10)
                 writer.join()
                 with sqlite3.connect(root/'cache') as db:
