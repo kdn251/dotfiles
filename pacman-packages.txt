@@ -132,6 +132,7 @@ nwg-look
 obs-studio
 obsidian
 okular
+opendeck
 openssh
 papirus-icon-theme
 pavucontrol

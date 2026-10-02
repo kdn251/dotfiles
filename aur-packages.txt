@@ -12,7 +12,6 @@ neofetch
 openai-codex-bin
 opencode-bin
 opencode-desktop-bin
-opendeck
 slack-desktop
 vesktop
 voxtype-bin
