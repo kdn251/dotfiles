@@ -20,10 +20,33 @@ BINARY=Path.home()/'.local/lib/newsboat-paged/newsboat'
 
 @unittest.skipUnless(BINARY.exists(), 'requires custom Newsboat')
 class OfflineTests(unittest.TestCase):
+    def test_slow_starred_sync_does_not_force_offline(self):
+        self.run_startup(healthy=True)
+
     def test_stalled_server_opens_offline_home_within_budget(self):
+        self.run_startup(healthy=False)
+
+    def run_startup(self, healthy):
         release=threading.Event()
         class Handler(http.server.BaseHTTPRequestHandler):
-            def do_GET(self): release.wait(12)
+            def do_GET(self):
+                if not healthy:
+                    release.wait(35)
+                    return
+                if 'starred=true' in self.path:
+                    release.wait(7)
+                    body={'entries':[], 'total':0}
+                elif self.path.endswith('/me'):
+                    time.sleep(1)
+                    body={'id':1}
+                elif self.path.endswith('/categories'):
+                    body=[]
+                elif self.path.endswith('/feeds'):
+                    body=[{'id':42,'title':'Connected feed','feed_url':'https://example.com/rss','category':{'id':0}}]
+                else:body={'entries':[], 'total':0}
+                self.send_response(200);self.send_header('Content-Type','application/json');self.end_headers()
+                try:self.wfile.write(json.dumps(body).encode())
+                except BrokenPipeError:pass
             def log_message(self,*args): pass
         server=http.server.ThreadingHTTPServer(('127.0.0.1',0),Handler)
         server.daemon_threads=True
@@ -38,7 +61,7 @@ class OfflineTests(unittest.TestCase):
                 (home/'urls').write_text('"query:📥 Downloads:title =~ \\"Offline\\""\n'+feed.as_uri()+'\n')
                 config=home/'config';config.write_text('show-read-feeds yes\n')
                 subprocess.run([str(BINARY),'-C',str(config),'-u',str(home/'urls'),'-c',str(home/'cache.db'),'-x','reload'],check=True,capture_output=True)
-                config.write_text('urls-source miniflux\nshow-read-feeds yes\n')
+                config.write_text('urls-source miniflux\nshow-read-feeds yes\nminiflux-show-special-feeds no\ninclude '+str(home/'miniflux_creds.conf')+'\ndownload-timeout 25\n')
                 (home/'miniflux_creds.conf').write_text(f'miniflux-url "http://127.0.0.1:{server.server_port}"\nminiflux-login test\nminiflux-password test\n')
                 saved=root/'state/newsboat/youtube-playlists/playthroughs'
                 saved.mkdir(parents=True)
@@ -47,20 +70,27 @@ class OfflineTests(unittest.TestCase):
                     rows=[dict(title='Episode one',url='https://www.youtube.com/watch?v=abcdefghijk',position=1,source='Offline creator')])) )
                 started=time.monotonic();pid,fd=pty.fork()
                 if pid==0:
+                    for name in list(os.environ):
+                        if name.startswith(('NEWSBOAT_', 'KITTY_')):os.environ.pop(name)
                     os.environ.update(HOME=d,TERM='xterm-256color',XDG_STATE_HOME=str(root/'state'),NEWSBOAT_MINIFLUX_CONFIG=str(home/'miniflux_creds.conf'))
                     os.execv('/usr/bin/python',['python',str(SCRIPTS/'newsboat-session.py')])
-                fcntl.ioctl(fd,termios.TIOCSWINSZ,struct.pack('HHHH',24,100,0,0))
+                fcntl.ioctl(fd,termios.TIOCSWINSZ,struct.pack('HHHH',24,180,0,0))
                 try:
                     output=b''
-                    while time.monotonic()-started < 8:
+                    while time.monotonic()-started < (10 if healthy else 28):
                         if select.select([fd],[],[],.05)[0]:
                             try: output+=os.read(fd,65536)
                             except OSError: self.fail(output.decode(errors='replace'))
+                        if healthy and b'Connected feed' in output:break
                         if 'Newsboat — offline'.encode() in output and b'Playthroughs' in output:break
+                    if healthy:
+                        self.assertIn(b'Connected feed',output)
+                        self.assertNotIn('Newsboat — offline'.encode(),output)
+                        return
                     self.assertIn('Newsboat — offline'.encode(),output)
                     self.assertIn(b'Downloads',output)
                     self.assertIn(b'Playthroughs',output)
-                    self.assertLess(time.monotonic()-started,8)
+                    self.assertLess(time.monotonic()-started,28)
                     os.write(fd,b'\r')
                     deadline=time.monotonic()+3
                     output=b''

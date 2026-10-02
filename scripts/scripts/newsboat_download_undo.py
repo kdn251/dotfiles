@@ -52,6 +52,11 @@ def restore(url, token):
         if 'children' in manifest:
             for child_url, child_token in manifest['children']:
                 restore(child_url, child_token)
+            if group := manifest.get('playlist'):
+                from newsboat_playthroughs import directory as playlist_directory
+                with media.library_lock():
+                    media.atomic_write(playlist_directory()/(group['id']+'.json'),json.dumps(group))
+                    media.rebuild_unlocked()
             shutil.rmtree(folder)
             return
     with media.library_lock():

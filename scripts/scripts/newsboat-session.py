@@ -183,18 +183,12 @@ def run(args):
         subprocess.Popen([sys.executable, str(Path(__file__).with_name('newsboat-vods.py')), 'rebuild'], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         subprocess.Popen([sys.executable, str(Path(__file__).with_name('newsboat-books.py')), 'rebuild'], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         subprocess.Popen([sys.executable, str(Path(__file__).with_name('newsboat-playthroughs.py')), 'rebuild'], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-    startup_deadline = time.monotonic() + 5
     if remote:
-        try:
-            result = subprocess.run([sys.executable, str(Path(__file__).with_name('newsboat-starred.py')), 'rebuild'],
-                                    check=False, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=5,
-                                    env=dict(os.environ, NEWSBOAT_QUIET_ERROR='1'))
-            offline = result.returncode != 0
-        except subprocess.TimeoutExpired:
-            offline = True
-        if offline:
-            from newsboat_offline import show
-            return show(config.resolve(), urls.resolve(), cache.resolve())
+        # Collection synchronization is not a connectivity probe. Large Starred
+        # libraries and local lock contention must not force offline mode.
+        subprocess.Popen([sys.executable, str(Path(__file__).with_name('newsboat-starred.py')), 'rebuild'],
+                         stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                         env=dict(os.environ, NEWSBOAT_QUIET_ERROR='1'), start_new_session=True)
     urls_version = urls.read_bytes() if urls.exists() else b''
     original = termios.tcgetattr(0)
     renderer = Renderer()
@@ -250,6 +244,7 @@ def run(args):
         os.mkfifo(fifo, 0o600)
         log_fd = os.open(fifo, os.O_RDWR | os.O_NONBLOCK)
         try:
+            startup_deadline = time.monotonic() + 20
             pid, master = pty.fork()
             if pid == 0:
                 if live_queries:

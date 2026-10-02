@@ -111,6 +111,28 @@ class VisualRowsTests(unittest.TestCase):
             self.assertNotIn('Item02','\n'.join(screen.display))
             send('q/needle1\n');wait(lambda:'needle1' in screen.display[0] and 'Item01' in '\n'.join(screen.display))
 
+    def test_visual_downloads_queue_every_selected_row(self):
+        commands = ('~/scripts/newsboat-download-video.sh %u',
+                    'python3 ~/scripts/newsboat-playlists.py download %u',
+                    'python3 ~/scripts/newsboat-playlists.py download-playlist %u')
+        for command in commands:
+            with self.subTest(command=command), session(extra=(
+                    'macro d set browser "'+command+'" ; open-in-browser-noninteractively ; toggle-article-read "read"\n')) as (root,screen,send,wait):
+                (root/'scripts').mkdir()
+                body = '#!/usr/bin/env python3\nimport sys\nfrom pathlib import Path\nwith (Path.home()/"downloaded").open("a") as f: f.write(sys.argv[-1]+"\\n")\n'
+                for name in ('newsboat-download-video.sh','newsboat-playlists.py'):
+                    helper=root/'scripts'/name;helper.write_text(body);helper.chmod(0o755)
+                send('jVjj,d')
+                wait(lambda:(root/'downloaded').exists() and len((root/'downloaded').read_text().splitlines())==3
+                     and 'Applied action to 3' in '\n'.join(screen.display))
+                self.assertEqual((root/'downloaded').read_text().splitlines(),
+                                 [f'https://example.org/{i}' for i in (2,3,4)])
+                with closing(sqlite3.connect(root/'cache')) as db:
+                    states=dict(db.execute('SELECT guid,unread FROM rss_item'))
+                for ident in ('2','3','4'):self.assertEqual(states[ident],0)
+                for ident in ('1','5'):self.assertEqual(states[ident],1)
+                self.assertIn('Item05',screen.display[screen.cursor.y])
+
     def test_download_marks_selected_read_and_advances_with_undo(self):
         config=Path(__file__).resolve().parents[2]/'newsboat/.newsboat/config'
         macro=next(line for line in config.read_text().splitlines() if line.startswith('macro d '))

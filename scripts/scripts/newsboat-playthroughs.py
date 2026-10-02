@@ -41,6 +41,8 @@ def prepare_view(directory, ident=None):
         lines.append('articlelist-format "%4i  %4w  %p %t"')
         action='python3 '+str(Path(__file__).resolve())+' group %u'
         lines=[line.replace(ui.command('playlist'),action) for line in lines]
+        lines=[line.replace('macro D ', 'macro D undo-checkpoint download ; ',1).replace(' -- ', ' ; reload -- ',1) if line.startswith('macro D ') else line for line in lines]
+        lines.append('bind U articlelist undo-action ; reload -- "Undo"')
         if not groups:
             p=Path(directory)/'playlist.xml'
             p.write_text(p.read_text().replace('No public playlists available — q to return','No playthroughs yet — download videos from a YouTube playlist'))
@@ -64,6 +66,8 @@ def show(ident=None):
         env.pop('NEWSBOAT_THUMBNAILS',None)
         for key in ('NEWSBOAT_LIVE_QUERIES','NEWSBOAT_NESTED_VIEWS','NEWSBOAT_STARRED_VIEW','NEWSBOAT_STARRED_REMOVALS','NEWSBOAT_VODS_VIEW_DIR','NEWSBOAT_PLAYLIST_CONTEXT'):
             env.pop(key,None)
+        env.pop('NEWSBOAT_PLAYTHROUGH_CATALOG',None)
+        if not group:env['NEWSBOAT_PLAYTHROUGH_CATALOG']=directory
         if group:
             # Use the persistent manifest: detached retries can outlive this view.
             env['NEWSBOAT_PLAYLIST_CONTEXT']=str(library.directory()/(group['id']+'.json'))

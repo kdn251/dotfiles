@@ -63,6 +63,41 @@ class ReadQueueTests(unittest.TestCase):
             with sqlite3.connect(cache) as db:
                 self.assertEqual(db.execute('SELECT guid FROM rss_item WHERE unread=1').fetchall(),[('1',)])
 
+    def test_expired_download_clears_old_spinner_and_does_not_block_next_mark(self):
+        import importlib.util,json
+        from unittest.mock import patch
+        from urllib.error import HTTPError
+        import newsboat_actions
+        helper=CONFIG.parents[2]/'scripts/scripts/newsboat-starred.py'
+        spec=importlib.util.spec_from_file_location('read_queue_expired',helper)
+        worker=importlib.util.module_from_spec(spec);spec.loader.exec_module(worker)
+        with tempfile.TemporaryDirectory() as directory:
+            root=Path(directory);queue=root/'star-actions';queue.mkdir();cache=root/'cache'
+            with sqlite3.connect(cache) as db:
+                db.execute('CREATE TABLE rss_item (guid TEXT, url TEXT, unread INTEGER)')
+                db.executemany('INSERT INTO rss_item VALUES (?,?,1)', [('1','https://example.com/expired'),('2','https://example.com/current')])
+            marker=newsboat_actions.begin('https://example.com/expired',root,owner=queue/'001.json')
+            for ident,name in ((1,'expired'),(2,'current')):
+                (queue/f'{ident:03}.json').write_text(json.dumps(dict(url='https://example.com/'+name,
+                    desired=None,restore_unread=False,cache=str(cache),pending_marker=str(marker) if ident==1 else None)))
+            class Server:
+                changes=[]
+                def starred(self):return []
+                def request(self,path,data=None,method=None):
+                    if path=='entries/1':raise HTTPError(path,404,'Gone',{},None)
+                    if path=='entries/2':return dict(id=2,url='https://example.com/current')
+                    self.changes.append(data)
+            server=Server()
+            with patch.object(worker,'STARRED_STATUS',root/'stars'),patch.object(worker,'Client',return_value=server):
+                worker.drain_star_actions()
+            self.assertFalse(marker.exists());self.assertFalse(list(queue.glob('*.json')))
+            self.assertEqual(server.changes,[dict(entry_ids=[2],status='read')])
+            with sqlite3.connect(cache) as db:
+                self.assertEqual(db.execute('SELECT SUM(unread) FROM rss_item').fetchone()[0],0)
+            with patch.object(worker,'STARRED_STATUS',root/'stars'),patch.object(worker.subprocess,'Popen'),patch.object(newsboat_actions,'begin') as begin:
+                worker.enqueue_star('https://example.com/expired',None,False)
+                begin.assert_not_called()
+
     def test_failed_update_remains_queued_for_recovery(self):
         import importlib.util,json
         from unittest.mock import patch

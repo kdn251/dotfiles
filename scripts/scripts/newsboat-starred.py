@@ -78,7 +78,7 @@ def resolve_ids(url, client, read_only=False):
         pass
     if not ids and read_only:
         ids = {row['id'] for row in client.starred() if row['url'] == url}
-    if not ids:
+    if not ids and not read_only:
         from newsboat_youtube_playlists import ensure_entry
         entry_id = ensure_entry(url, client)
         if entry_id:
@@ -110,8 +110,10 @@ def enqueue_star(url, desired, restore_unread=None):
     from newsboat_actions import begin, finish
     marker = None
     try:
-        marker = begin(url, STARRED_STATUS.parent, owner=job, remove='star' if desired is False else '')
-        action['pending_marker'] = str(marker)
+        # Local read state is already visible; only collection changes need a spinner.
+        if desired is not None:
+            marker = begin(url, STARRED_STATUS.parent, owner=job, remove='star' if desired is False else '')
+            action['pending_marker'] = str(marker)
         atomic_write(job, json.dumps(action))
         subprocess.Popen([sys.executable, str(Path(__file__).resolve()), 'work'],
                          stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
@@ -140,15 +142,19 @@ def apply_queued_action(action):
         client = Client()
         read_only = action['desired'] is None
         ids = resolve_ids(action['url'], client, read_only=read_only)
-        if not ids:
+        if not ids and not read_only:
             raise ValueError('Item no longer available in Miniflux')
         if not read_only:
             client.request('entries', {'entry_ids': sorted(ids), 'starred': action['desired']}, method='PUT')
-        client.request('entries', {'entry_ids': sorted(ids),
-            'status': 'unread' if action['restore_unread'] else 'read'}, method='PUT')
-        with closing(sqlite3.connect(CACHE, timeout=3)) as db, db:
-            db.executemany('UPDATE rss_item SET unread=? WHERE guid=?',
-                [(int(action['restore_unread']), str(i)) for i in ids])
+        if ids:
+            client.request('entries', {'entry_ids': sorted(ids),
+                'status': 'unread' if action['restore_unread'] else 'read'}, method='PUT')
+        # Downloaded files outlive server retention. Missing remote entries are
+        # still valid local items, not a retryable synchronization failure.
+        if CACHE.exists():
+            with closing(sqlite3.connect(CACHE, timeout=3)) as db, db:
+                db.execute('UPDATE rss_item SET unread=? WHERE url=?',
+                           (int(action['restore_unread']), action['url']))
         # A read mark does not change membership. Fetching/rebuilding Starred
         # here made rapid n presses wait behind multiple paginated API calls.
         if not read_only:
@@ -164,6 +170,9 @@ def drain_star_actions():
         while jobs := sorted(queue.glob('*.json')):
             for job in jobs:
                 action = json.loads(job.read_text())
+                from newsboat_actions import finish
+                if action.get('desired') is None and action.get('restore_unread') is not None:
+                    finish(action.get('pending_marker'))
                 for attempt in range(3):
                     try:
                         apply_queued_action(action)

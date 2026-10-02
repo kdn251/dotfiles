@@ -102,7 +102,22 @@ def browse_url(url):
     # Miniflux-backed feed rows pass their numeric subscription ID.
     if re.fullmatch(r'[0-9]+', url):
         return url
+    if playlist := browse_playlist_url(url):
+        return playlist
     return channel_url(url) or video_url(url)
+
+
+def browse_playlist_url(url):
+    """Normalize playlist rows from YouTube and the local Playthroughs list."""
+    if url.startswith('newsboat-playthroughs://'):
+        ident = url.split('://', 1)[1]
+        if not re.fullmatch(r'[A-Za-z0-9_-]+', ident):
+            raise ValueError('Invalid local playlist')
+        return 'https://www.youtube.com/playlist?list='+ident
+    parsed = urlparse(url)
+    if parsed.path == '/playlist' and parsed.hostname in {'youtube.com', 'www.youtube.com', 'm.youtube.com'}:
+        return playlist_url(url)
+    return None
 
 
 def channel_for(url):
@@ -114,6 +129,17 @@ def channel_for(url):
         return channel
     if channel := channel_url(url):
         return channel
+    if playlist := browse_playlist_url(url):
+        data = extract(playlist)
+        # Use the playlist owner, not the uploader of its first video: curated
+        # playlists can contain videos from several different channels.
+        for key in ('channel_url', 'uploader_url'):
+            if channel := channel_url(data.get(key) or ''):
+                return channel
+        cid = data.get('channel_id') or data.get('uploader_id') or ''
+        if re.fullmatch(r'UC[A-Za-z0-9_-]{22}', cid):
+            return 'https://www.youtube.com/channel/'+cid
+        raise ValueError('Could not determine this playlist’s YouTube channel')
     url = video_url(url)
     row = saved_item(url)
     if row and row.get('channel_id'):

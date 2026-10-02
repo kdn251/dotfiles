@@ -123,6 +123,28 @@ def publish(index=None):
         updated='\n'.join(lines)+'\n'
         if updated!=text:media.atomic_write(media.URLS,updated)
         elif old!=value:os.utime(media.URLS,None)
+    catalog=os.environ.get('NEWSBOAT_PLAYTHROUGH_CATALOG')
+    if catalog and Path(catalog).is_dir():
+        import xml.etree.ElementTree as ET
+        path=Path(catalog)/'playlist.xml'
+        tree=ET.parse(path);channel=tree.getroot().find('channel')
+        for item in list(channel.findall('item')):channel.remove(item)
+        for index,group in enumerate(current,1):
+            item=ET.SubElement(channel,'item')
+            for key,value in {'title':group['name']+' — '+group['channel'],
+                              'link':'newsboat-playthroughs://'+group['id'],
+                              'guid':f'{index:09d}'}.items():ET.SubElement(item,key).text=value
+        updated=ET.tostring(tree.getroot(),encoding='unicode')
+        changed=path.read_text()!=updated
+        if changed:media.atomic_write(path,updated)
+        # RSS normally retains vanished entries. This temporary catalog is a
+        # complete snapshot, so reload must not resurrect removed playlists.
+        cache=Path(catalog)/'cache.db'
+        if changed and cache.exists():
+            import sqlite3
+            from contextlib import closing
+            with closing(sqlite3.connect(cache,timeout=5)) as db, db:
+                db.execute('DELETE FROM rss_item WHERE feedurl=?',(path.as_uri(),))
     view=os.environ.get('NEWSBOAT_PLAYTHROUGH_VIEW')
     if view and Path(view).is_dir():
         ident=os.environ.get('NEWSBOAT_PLAYTHROUGH_ID')
@@ -142,8 +164,8 @@ def delete_downloads(url):
     token = os.environ.get('NEWSBOAT_DOWNLOAD_UNDO_TOKEN')
     children = [(item, token+':'+str(i)) for i, item in enumerate(urls)] if token else []
     if token:
-        from newsboat_download_undo import directory
-        folder = directory(token)
+        from newsboat_download_undo import directory as undo_directory
+        folder = undo_directory(token)
         folder.mkdir(parents=True, mode=0o700, exist_ok=False)
         media.atomic_write(folder/'manifest.json', json.dumps(dict(url=url, children=children)))
     count = 0
@@ -156,6 +178,15 @@ def delete_downloads(url):
                 count += media.delete(item, refresh=False)
             except (OSError, ValueError) as error:
                 failures.append(str(error))
+        if count == 0 and not failures:
+            with media.library_lock():
+                path = directory()/(ident+'.json')
+                if token:
+                    manifest_path = folder/'manifest.json'
+                    manifest = json.loads(manifest_path.read_text())
+                    manifest['playlist'] = group
+                    media.atomic_write(manifest_path,json.dumps(manifest))
+                path.unlink(missing_ok=True)
     finally:
         if token:
             os.environ['NEWSBOAT_DOWNLOAD_UNDO_TOKEN'] = token

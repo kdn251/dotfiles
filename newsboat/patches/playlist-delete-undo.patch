@@ -1,0 +1,35 @@
+--- a/src/itemlistformaction.cpp
++++ b/src/itemlistformaction.cpp
+@@ -281,6 +281,7 @@
+             setenv("NEWSBOAT_DOWNLOAD_UNDO_TOKEN", v.undo_history.back().token.c_str(), 1);
+         }
+         for (const auto& cmd : commands) {
++            if (deleting_downloads && cmd.op == OP_UNDO_CHECKPOINT && !cmd.args.empty() && cmd.args[0] == "download") { continue; }
+             // Single-item bindings advance the cursor; a bulk action must not.
+             if ((cmd.op > OP_SK_MIN && cmd.op < OP_SK_MAX) || cmd.op == OP_NEXTUNREAD) { continue; }
+             prepare();
+@@ -538,6 +539,11 @@
+ 	}
+ 	break;
+     case OP_UNDO_CHECKPOINT:
++        if (!visible_items.empty() && !args.empty() && args[0] == "download") {
++            v.remember_action(visible_items[itempos].first, feed, std::nullopt, 3);
++            setenv("NEWSBOAT_DOWNLOAD_UNDO_TOKEN", v.undo_history.back().token.c_str(), 1);
++            break;
++        }
+         if (!visible_items.empty()) {
+             const int commentary = args.empty() ? 0 : args[0] == "favorites" ? 2 : args[0] == "commentary" ? 1 : 0;
+             v.remember_action(visible_items[itempos].first, feed,
+--- a/src/view.cpp
++++ b/src/view.cpp
+@@ -523,7 +523,9 @@
+ 	} else {
+ 		const std::shared_ptr<AutoDiscardMessage> message =
+ 			status_line.show_message_until_finished(strprintf::fmt(_("Running browser: %s"), cmdline));
+-		return utils::run_non_interactively(cmdline, "View::open_in_browser");
++		const auto result = utils::run_non_interactively(cmdline, "View::open_in_browser");
++        unsetenv("NEWSBOAT_DOWNLOAD_UNDO_TOKEN");
++        return result;
+ 	}
+ }
+ 

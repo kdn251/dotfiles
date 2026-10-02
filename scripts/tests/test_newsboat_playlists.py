@@ -85,6 +85,29 @@ class PlaylistTests(unittest.TestCase):
             client.return_value.request.return_value={'feed_url':'https://www.youtube.com/feeds/videos.xml?channel_id='+CID}
             self.assertEqual(library.channel_for(request.read_text()),canonical)
             client.return_value.request.assert_called_once_with('feeds/42')
+    def test_playlist_rows_resolve_owner_for_remote_and_local_lists(self):
+        canonical='https://www.youtube.com/channel/'+CID
+        for url in (PLAYLIST,'newsboat-playthroughs://PLtest_123'):
+            with self.subTest(url=url),patch.object(library,'extract',return_value={
+                    'channel_id':CID,'entries':[{'channel_id':'UC'+'x'*22}]}) as extract:
+                self.assertEqual(library.browse_url(url),PLAYLIST)
+                self.assertEqual(library.channel_for(url),canonical)
+                extract.assert_called_once_with(PLAYLIST)
+        with patch.object(library,'extract',return_value={'uploader_url':'https://www.youtube.com/@Owner'}):
+            self.assertEqual(library.channel_for(PLAYLIST),'https://www.youtube.com/@Owner')
+        with patch.object(library,'extract',return_value={'entries':[{'channel_id':CID}]}):
+            with self.assertRaisesRegex(ValueError,'playlist’s YouTube channel'):
+                library.channel_for(PLAYLIST)
+
+    def test_local_playlist_container_keeps_creator_binding(self):
+        spec=importlib.util.spec_from_file_location('playthrough_ui',SCRIPTS/'newsboat-playthroughs.py')
+        local_ui=importlib.util.module_from_spec(spec);spec.loader.exec_module(local_ui)
+        with patch.object(local_ui.library,'groups',return_value=[dict(id='PLtest_123',name='Series',channel='Creator')]):
+            _,config,_=local_ui.prepare_view(self.root)
+            binding=next(line for line in config.read_text().splitlines() if line.startswith('bind P '))
+            self.assertIn('newsboat-playlists.py show %u',binding)
+            self.assertIn('open-in-browser --',binding)
+
     def test_only_selected_video_imported_read_and_duplicate_reused(self):
         library.remember(dict(url=URL,title='Episode',source='Creator',channel_id=CID))
         library.remember(dict(url=URL[:-1]+'6',title='Unselected',source='Creator',channel_id=CID))
@@ -125,6 +148,8 @@ class PlaylistTests(unittest.TestCase):
             _,config=ui.prepare_view(d,dict(kind='show',name='Creator',rows=[dict(url=PLAYLIST,title='Series')]))
             text=config.read_text()
             self.assertIn('Open playlist',text)
+            self.assertIn('bind P articlelist,article,searchresultslist',text)
+            self.assertIn('newsboat-playlists.py show %u',text)
             self.assertNotIn('bind s ',text)
             self.assertIn('macro d ',text)
             self.assertIn('download-playlist %u',text)

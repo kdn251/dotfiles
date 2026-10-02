@@ -102,7 +102,7 @@ class PlaythroughTests(unittest.TestCase):
             else:
                 self.assertIn('newsboat-playthroughs.py group',text)
                 self.assertIn('🎮 Playthroughs',text)
-                self.assertIn('macro D set browser',text)
+                self.assertIn('macro D undo-checkpoint download ; set browser',text)
                 self.assertIn('download-playlist %u',text)
                 self.assertIn('%4w  %p %t',text)
                 self.assertIn('delete-downloaded.sh',text)
@@ -156,6 +156,31 @@ class PlaythroughTests(unittest.TestCase):
         self.assertTrue(unrelated.exists())
         self.assertEqual(len(library.groups()[0]['rows']),2)
         rebuild.assert_called_once()
+
+    def test_empty_playlist_removed_and_undo_restores_catalog(self):
+        import newsboat_download_undo as undo
+        import xml.etree.ElementTree as ET
+        library.record(URL,self.context)
+        view=self.root/'view';view.mkdir()
+        ui.prepare_view(view)
+        url='newsboat-playthroughs://PLseries'
+        with patch.dict(os.environ,NEWSBOAT_DOWNLOAD_UNDO_TOKEN='empty-playlist',
+                        NEWSBOAT_UNDO_FILE=str(self.root/'undo'),NEWSBOAT_PLAYTHROUGH_CATALOG=str(view)), \
+                patch.object(media,'candidates',return_value=[]), \
+                patch.object(media,'rebuild',side_effect=lambda:library.publish({})), \
+                patch.object(media,'rebuild_unlocked',side_effect=lambda:library.publish({})):
+            self.assertEqual(media.delete(url),0)
+            self.assertEqual(library.groups(),[])
+            self.assertEqual(ET.parse(view/'playlist.xml').findall('.//item'),[])
+            undo.restore(url,'empty-playlist')
+            self.assertEqual(len(library.groups()),1)
+            self.assertEqual(ET.parse(view/'playlist.xml').find('.//item/title').text,'A Game — Creator')
+
+    def test_rejected_active_download_keeps_playlist(self):
+        library.record(URL,self.context)
+        with patch.object(media,'delete',side_effect=ValueError('Cancel this video download before deleting it')),patch.object(media,'rebuild'):
+            with self.assertRaises(ValueError):library.delete_downloads('newsboat-playthroughs://PLseries')
+        self.assertEqual(len(library.groups()),1)
 
     def test_creator_playlist_deletion_can_be_undone_as_a_group(self):
         import newsboat_download_undo as undo
@@ -248,11 +273,15 @@ class PlaythroughTests(unittest.TestCase):
             from newsboat_download_status import publish
             with patch.dict(os.environ,NEWSBOAT_CACHE=str(self.root/'cache.db')):publish(media.STATE)
             wait(lambda t:'📥' in t and second_color()!='8a8a8a')
-            os.write(fd,b',D')
-            wait(lambda t:'Part one' in t and 'Part two' in t)
+            os.write(fd,b'j,D')
+            wait(lambda t:'Part one' in t and 'Part two' in t and not local.exists())
             os.write(fd,b'q')
             wait(lambda t:'🎮 Playthroughs' in t and 'A Game' in t)
             wait(lambda t:'50%' in t and 'A Game' in t)
+            os.write(fd,b',D')
+            wait(lambda t:'A Game — Creator' not in t)
+            os.write(fd,b'U')
+            wait(lambda t:'A Game — Creator' in t)
             os.write(fd,b'q')
             wait(lambda t:'Your feeds' in t and 'Playthroughs' in t)
         finally:

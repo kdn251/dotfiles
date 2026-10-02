@@ -126,10 +126,10 @@ def prepare_view(directory, data):
     for key in ('<ENTER>','o','O','l'):
         lines.append(f'bind {key} articlelist,searchresultslist set browser '+json.dumps(action)+' ; '+browser_op+
                      (' ; toggle-article-read "read" "stay"' if is_playlist else '')+' -- "'+('Play video' if is_playlist else 'Open playlist')+'"')
+    lines.append('bind P articlelist,article,searchresultslist set browser '+json.dumps(command('show'))+' ; open-in-browser -- "Browse creator playlists"')
     if is_playlist:
         lines += ['macro v set browser '+json.dumps(command('play'))+' ; open-in-browser-noninteractively ; toggle-article-read "read" "stay" -- "Play video"',
-                  'macro d set browser '+json.dumps(command('download'))+' ; open-in-browser-noninteractively ; toggle-article-read "read" -- "Download video and mark read"',
-                  'bind P articlelist,article,searchresultslist set browser '+json.dumps(command('show'))+' ; open-in-browser -- "Browse creator playlists"']
+                  'macro d set browser '+json.dumps(command('download'))+' ; open-in-browser-noninteractively ; toggle-article-read "read" -- "Download video and mark read"']
     else:
         lines.append('macro d set browser '+json.dumps(command('download-playlist'))+' ; open-in-browser-noninteractively -- "Download this whole playlist to Playthroughs"')
         lines.append('macro D set browser '+json.dumps(str(SCRIPT.with_name('delete-downloaded.sh'))+' %u')+' ; open-in-browser-noninteractively -- "Delete this playlist’s downloaded videos"')

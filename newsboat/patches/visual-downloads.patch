@@ -1,0 +1,14 @@
+--- a/src/itemlistformaction.cpp
++++ b/src/itemlistformaction.cpp
+@@ -227,6 +227,11 @@
+         if (cmd.op == OP_SET && cmd.args.size() == 2 && cmd.args[0] == "browser") {
+             const auto& browser = cmd.args[1];
+             if (browser.find("delete-downloaded.sh ") != std::string::npos) { bulk = true; deleting_downloads = true; }
++            if (browser.find("newsboat-download-video.sh ") != std::string::npos ||
++                browser.find("newsboat-playlists.py download ") != std::string::npos ||
++                browser.find("newsboat-playlists.py download-playlist ") != std::string::npos) {
++                bulk = true;
++            }
+         }
+     }
+     bulk = bulk || (read_action && !opens_browser);
