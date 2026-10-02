@@ -1,0 +1,21 @@
+--- a/src/itemlistformaction.cpp
++++ b/src/itemlistformaction.cpp
+@@ -1386,7 +1386,8 @@
+             });
+     }
+ 
+-    if (feed->title() == "⭐ Starred") {
++    if (feed->title() == "⭐ Starred" || feed->title() == "🎮 Playthroughs" ||
++        feed->title() == "Playlists · 🎮 Playthroughs") {
+         std::stable_sort(new_visible_items.begin(), new_visible_items.end(),
+             [](const ItemPtrPosPair& a, const ItemPtrPosPair& b) {
+                 const auto percent = [](const std::string& url) {
+@@ -1523,7 +1524,7 @@
+     if (status_version != download_status_version) {
+         download_status_version = status_version;
+         // Badges must not refilter read items or move the current page.
+-        if (feed->title() == "🎮 Playthroughs" || feed->rssurl().find("query:🎮 Playthrough:") == 0 || feed->title() == "📚 Books" || feed->title() == "⭐ Starred" || feed->rssurl().find("query:📥 Downloads:") == 0) {
++        if (feed->title() == "🎮 Playthroughs" || feed->title() == "Playlists · 🎮 Playthroughs" || feed->rssurl().find("query:🎮 Playthrough:") == 0 || feed->title() == "📚 Books" || feed->title() == "⭐ Starred" || feed->rssurl().find("query:📥 Downloads:") == 0) {
+             if (!restore_selection_guid) { store_selection(); }
+             invalidate_list();
+         } else {
