@@ -23,6 +23,7 @@ FAKE_YTDLP = r'''#!/usr/bin/python3
 import json,os,sys,time
 from pathlib import Path
 args=sys.argv[1:]
+assert os.getpriority(os.PRIO_PROCESS,0)>=15
 with open(os.environ['CALLS'],'a') as f:f.write(json.dumps(args)+'\n')
 mode=os.environ.get('FAIL','')
 if Path(os.environ['CALLS']+'.retried').exists():mode=''
@@ -36,6 +37,8 @@ if '--dump-single-json' in args:
                        channel='Creator',channel_id='UCtest',uploader_id='creator')))
  sys.exit(0)
 assert '--load-info-json' in args and '--no-simulate' in args
+assert args[args.index('--ffmpeg-location')+1].endswith('newsboat-ffmpeg')
+assert 'Merger+ffmpeg_o:-movflags -faststart' in args
 folder=Path(args[args.index('-o')+1]).parent
 folder.mkdir(parents=True,exist_ok=True)
 partial=folder/'video [abc123DEF45].mp4.part'

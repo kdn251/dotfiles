@@ -8,6 +8,7 @@ import os
 from pathlib import Path
 import re
 import signal
+import shutil
 import socket
 import subprocess
 import sys
@@ -309,8 +310,11 @@ def download(url, title='', worker_token=None):
     ytdlp = str(Path.home() / '.local/bin/yt-dlp')
     if not os.access(ytdlp, os.X_OK):
         ytdlp = 'yt-dlp'
-    def launch(*args, **kwargs):
-        child = subprocess.Popen(*args, **kwargs)
+    def launch(command, **kwargs):
+        # Children (including yt-dlp's ffmpeg) yield CPU and disk priority.
+        if nice:=shutil.which('nice'):command=[nice,'-n','15',*command]
+        if ionice:=shutil.which('ionice'):command=[ionice,'-c','2','-n','7',*command]
+        child = subprocess.Popen(command, **kwargs)
         job.update(child_pid=child.pid, child_start=process_start(child.pid))
         save(job)
         return child
@@ -382,6 +386,8 @@ def download(url, title='', worker_token=None):
             notify(job, 'Downloading')
             command = [ytdlp, *session_options, '--socket-timeout', '15', '--retries', '3', '--fragment-retries', '3', '--continue', '--no-playlist', '--load-info-json', str(metadata),
                        '--no-simulate', '-f', FORMAT, '--merge-output-format', 'mp4',
+                       '--ffmpeg-location', str(SCRIPTS/'newsboat-ffmpeg'),
+                       '--postprocessor-args', 'Merger+ffmpeg_o:-movflags -faststart',
                        '--restrict-filenames', '--no-overwrites', '--newline', '--progress',
                        '--progress-delta', '1',
                        '--progress-template', 'download:NBPROGRESS:%(progress)j',
