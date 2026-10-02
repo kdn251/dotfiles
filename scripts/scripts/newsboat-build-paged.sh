@@ -84,6 +84,7 @@ patch -p1 < "$repo/newsboat/patches/read-mark-database-contention.patch"
 patch -p1 < "$repo/newsboat/patches/visual-downloads.patch"
 patch -p1 < "$repo/newsboat/patches/playlist-delete-undo.patch"
 patch -p1 < "$repo/newsboat/patches/playthrough-progress-order.patch"
+patch -p1 < "$repo/newsboat/patches/collection-visible-row-numbers.patch"
 make -j"${NEWSBOAT_BUILD_JOBS:-4}" WARNFLAGS="-Werror -Wall -Wextra -Wunreachable-code -Wno-error=unused-function" newsboat
 install -m 755 newsboat "$install_dir/newsboat.new"
 mv "$install_dir/newsboat.new" "$install_dir/newsboat"

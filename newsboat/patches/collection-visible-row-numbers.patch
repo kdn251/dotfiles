@@ -1,0 +1,23 @@
+--- a/src/itemlistformaction.cpp
++++ b/src/itemlistformaction.cpp
+@@ -1466,11 +1466,18 @@
+ 		{
+ 			return StflRichText::from_plaintext("ERROR");
+ 		}
+-		auto& item = visible_items[line];
++		auto item = visible_items[line];
++        // Number sorted collections by visible position, not RSS import order.
++        if (feed->title() == "⭐ Starred" || feed->title() == "🎮 Playthroughs" ||
++            feed->title() == "Playlists · 🎮 Playthroughs") {
++            item.second = line;
++        }
+         const bool numbered = (feed->title() == "📚 Books" || feed->rssurl().find("query:🎬 VODs:") == 0 || feed->rssurl().find("query:📬 New:") == 0 || feed->title() == "⭐ Starred" || feed->title() == "📣 Commentary" || feed->title() == " Favorites") ||
+             feed->rssurl().find("query:📥 Downloads:") == 0;
+         const std::string watched = (feed->title() == "⭐ Starred" || feed->rssurl().find("query:📥 Downloads:") == 0 || feed->rssurl().find("query:🎬 VODs:") == 0) ? "%4w " : "";
+-        const auto format = numbered ? strprintf::fmt("%4u ", line + 1) + watched + itemlist_format : itemlist_format;
++        static const std::regex index_field(R"(%[-0-9]*i)");
++        const bool has_index = std::regex_search(itemlist_format, index_field);
++        const auto format = numbered && !has_index ? strprintf::fmt("%4u ", line + 1) + watched + itemlist_format : itemlist_format;
+         auto rendered = item2formatted_line(item, width, format, datetime_format);
+         const auto range = visual_range();
+         if (visual_active && line >= range.first && line <= range.second) {
