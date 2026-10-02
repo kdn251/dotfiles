@@ -60,7 +60,7 @@ def main(url):
     container=QWidget();layout=QVBoxLayout(container);layout.setContentsMargins(0,0,0,0)
     status=QLabel('YouTube comments');status.setWordWrap(True)
     status.setStyleSheet('padding:8px;color:#ddd;background:#181818')
-    view=QWebEngineView();view.setZoomFactor(.75);view.page().setAudioMuted(True)
+    view=QWebEngineView();view.setZoomFactor(.9);view.page().setAudioMuted(True)
     view.page().setBackgroundColor(QColor('#0f0f0f'))
     view.settings().setAttribute(QWebEngineSettings.WebAttribute.PlaybackRequiresUserGesture,True)
     script=QWebEngineScript();script.setName('comments-only')
