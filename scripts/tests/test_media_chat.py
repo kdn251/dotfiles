@@ -25,3 +25,21 @@ class ChatTests(unittest.TestCase):
                 chat.main()
                 hypr.assert_called_with('dispatch','togglespecialworkspace','chatterino_chat')
                 spawn.assert_not_called()
+    def test_switching_closes_other_panel_without_hiding_current_workspace(self):
+        import json
+        clients=[{'class':chat.CLASS,'address':'yt'},
+                 {'class':'com.chatterino.chatterino','address':'twitch'}]
+        for url,closed in ((None,'yt'),(URL,'twitch')):
+            with self.subTest(url=url),tempfile.TemporaryDirectory() as d:
+                state=Path(d)/'state';state.write_text(json.dumps({'url':URL}))
+                def respond(*args):
+                    if args==('-j','clients'):return json.dumps(clients)
+                    if args==('-j','activewindow'):return '{}'
+                    if args==('-j','monitors'):return json.dumps([{'focused':True,'specialWorkspace':{'name':'special:'+chat.WORKSPACE}}])
+                    return 'ok'
+                with patch.object(chat,'STATE',state),patch.object(chat,'video_url',return_value=url),patch.object(chat,'hypr',side_effect=respond) as hypr,patch.object(chat.subprocess,'Popen') as spawn:
+                    chat.main()
+                    hypr.assert_any_call('dispatch','movetoworkspacesilent','special:media_chat_closing,address:'+closed)
+                    hypr.assert_any_call('dispatch','closewindow','address:'+closed)
+                    self.assertFalse(any(c.args[:2]==('dispatch','togglespecialworkspace') for c in hypr.call_args_list))
+                    spawn.assert_not_called()

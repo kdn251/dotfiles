@@ -339,6 +339,7 @@ awk -v user="$STREAMER_USERNAME" '
   pkill mpv
   rm -f "$MPV_SOCKET"
 
+  python3 "$HOME/scripts/media-chat.py" --close-youtube
   chat_start "$STREAMER_USERNAME"
 
   # Pillarbox only shows up on the 16:9 LG; on the 3:2 laptop panel
