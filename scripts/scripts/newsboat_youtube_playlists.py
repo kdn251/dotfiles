@@ -178,7 +178,7 @@ def playlists(url, force=False):
         if cover and urlparse(cover).scheme in {'http', 'https'}:
             ident = parse_qs(urlparse(link).query)['list'][0]
             target = LIBRARY/'playlist-covers'/(ident+'.json')
-            content = json.dumps({'url':cover})
+            content = json.dumps({'url':cover,'channel_id':data.get('channel_id')})
             if not target.exists() or target.read_text() != content:
                 atomic_write(target,content)
                 (LIBRARY/'thumbnails'/('playlist:'+ident+'.png')).unlink(missing_ok=True)

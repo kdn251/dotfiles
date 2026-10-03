@@ -47,11 +47,11 @@ class PlaylistTests(unittest.TestCase):
             self.assertIn('bind U ',config.read_text())
     def test_playlist_cover_metadata_is_saved_without_importing_videos(self):
         cover='https://i.ytimg.com/vi/abc123DEF45/hqdefault.jpg'
-        data=dict(channel='Creator',entries=[dict(url=PLAYLIST,title='A Game',thumbnails=[{'url':cover}])])
+        data=dict(channel='Creator',channel_id=CID,entries=[dict(url=PLAYLIST,title='A Game',thumbnails=[{'url':cover}])])
         with patch.object(library,'extract',return_value=data),patch.object(library,'Client') as client:
             name,rows=library.playlists('https://www.youtube.com/@Creator')
             self.assertEqual(rows[0]['url'],PLAYLIST)
-            self.assertEqual(json.loads((library.LIBRARY/'playlist-covers/PLtest_123.json').read_text()),{'url':cover})
+            self.assertEqual(json.loads((library.LIBRARY/'playlist-covers/PLtest_123.json').read_text()),{'url':cover,'channel_id':CID})
             client.assert_not_called()
         self.assertFalse((library.LIBRARY/'videos').exists())
 

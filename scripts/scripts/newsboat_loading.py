@@ -6,33 +6,79 @@ import subprocess
 
 
 class GraphicsStream:
-    """Keep Kitty APC packets intact when a PTY splits them across reads."""
-    def __init__(self):
+    """Keep terminal sequences, image transfers and synchronized frames atomic.
+
+    Relays add their own graphics between returned blocks. A PTY read boundary
+    can occur inside an escape, a UTF-8 character, or any Kitty base64 chunk;
+    none of those boundaries is safe for inserting another drawing command.
+    """
+    def __init__(self, preserve_frames=False):
         self.pending = b''
+        self.preserve_frames = preserve_frames
 
     def feed(self, data):
         data = self.pending + data
         self.pending = b''
         offset = 0
-        while True:
-            positions = [pos for prefix in (b'\x1b_G',b'\x1bP',b'\x1b]') if (pos := data.find(prefix,offset)) >= 0]
-            start = min(positions) if positions else -1
-            if start < 0:
-                keep = 2 if data.endswith(b'\x1b_') else int(data.endswith(b'\x1b'))
-                if keep:
-                    self.pending = data[-keep:]
-                    return data[:-keep]
-                return data
-            end = data.find(b'\x1b\\', start+3)
-            terminator = 2
-            if data[start:start+2] == b'\x1b]':
-                bell = data.find(b'\x07',start+2)
-                if bell >= 0 and (end < 0 or bell < end):
-                    end, terminator = bell, 1
-            if end < 0:
-                self.pending = data[start:]
-                return data[:start]
-            offset = end+terminator
+        transfer = frame = None
+
+        def incomplete(start):
+            boundary = min(n for n in (start, transfer, frame) if n is not None)
+            self.pending = data[boundary:]
+            return data[:boundary]
+
+        while offset < len(data):
+            start = offset
+            byte = data[offset]
+            if byte == 27:
+                if offset + 1 == len(data):
+                    return incomplete(start)
+                kind = data[offset+1]
+                if kind in (ord('_'), ord('P'), ord(']')):
+                    end = data.find(b'\x1b\\', offset+2)
+                    terminator = 2
+                    if kind == ord(']'):
+                        bell = data.find(b'\x07', offset+2)
+                        if bell >= 0 and (end < 0 or bell < end):
+                            end, terminator = bell, 1
+                    if end < 0:
+                        return incomplete(start)
+                    if data.startswith(b'\x1b_G',start):
+                        header = data[start+3:end].split(b';',1)[0].split(b',')
+                        if b'm=1' in header and transfer is None:
+                            transfer = start
+                        elif b'm=0' in header:
+                            transfer = None
+                    offset = end + terminator
+                elif kind == ord('['):
+                    end = offset + 2
+                    while end < len(data) and not 0x40 <= data[end] <= 0x7e:
+                        end += 1
+                    if end == len(data):
+                        return incomplete(start)
+                    sequence = data[start:end+1]
+                    if self.preserve_frames and sequence == b'\x1b[?2026h' and frame is None:
+                        frame = start
+                    elif sequence == b'\x1b[?2026l':
+                        frame = None
+                    offset = end + 1
+                else:
+                    end = offset + 1
+                    while end < len(data) and 0x20 <= data[end] <= 0x2f:
+                        end += 1
+                    if end == len(data):
+                        return incomplete(start)
+                    offset = end + 1
+            elif 0xc2 <= byte <= 0xf4:
+                length = 2 if byte < 0xe0 else 3 if byte < 0xf0 else 4
+                if offset + length > len(data):
+                    return incomplete(start)
+                offset += length
+            else:
+                offset += 1
+        if transfer is not None or frame is not None:
+            return incomplete(len(data))
+        return data
 
 
 def ship_art(frame, inner):

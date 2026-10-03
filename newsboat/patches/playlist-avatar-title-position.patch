@@ -1,0 +1,38 @@
+--- a/src/itemlistformaction.cpp
++++ b/src/itemlistformaction.cpp
+@@ -1491,7 +1491,9 @@
+         }
+         const bool avatars = std::getenv("NEWSBOAT_THUMBNAILS") &&
+             (feed->title() == "🎮 Playthroughs" || feed->title() == "Playlists · 🎮 Playthroughs");
+-        auto rendered = item2formatted_line(item, width, (avatars ? "   " : "") + format, datetime_format);
++        const auto title_field = format.find("%t");
++        if (avatars && title_field != std::string::npos) { format.insert(title_field, "   "); }
++        auto rendered = item2formatted_line(item, width, format, datetime_format);
+         const auto range = visual_range();
+         if (visual_active && line >= range.first && line <= range.second) {
+             const auto padded = utils::substr_with_width(rendered.plaintext() + std::string(width, ' '), width);
+@@ -1508,6 +1510,11 @@
+ std::string ItemListFormAction::playlist_avatar_request()
+ {
+     if (feed->title() != "🎮 Playthroughs" && feed->title() != "Playlists · 🎮 Playthroughs") { return ""; }
++    const auto format = cfg->get_configvalue("articlelist-format");
++    const auto title_field = format.find("%t");
++    if (title_field == std::string::npos) { return ""; }
++    const auto prefix_format = format.substr(0, title_field);
++    const auto datetime_format = cfg->get_configvalue("datetime-format");
+     const auto offset = list.get_scroll_offset();
+     const auto x = utils::to_u(f.get("items:x"));
+     const auto y = utils::to_u(f.get("items:y"));
+@@ -1515,7 +1522,11 @@
+     for (std::uint32_t row = 0; row < list.get_height() && offset + row < visible_items.size(); ++row) {
+         const auto url = visible_items[offset + row].first->link();
+         if (url.find("newsboat-playthroughs://") != 0) { continue; }
+-        result += std::to_string(x) + ";" + std::to_string(y + row) + ";" + url + "\n";
++        auto item = visible_items[offset + row];
++        item.second = offset + row;
++        const auto prefix = item2formatted_line(item, list.get_width(), prefix_format, datetime_format).plaintext();
++        const auto left = x + utils::strwidth(prefix);
++        result += std::to_string(left) + ";" + std::to_string(y + row) + ";" + url + "\n";
+     }
+     return result;
+ }

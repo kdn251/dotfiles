@@ -1,0 +1,22 @@
+--- a/src/itemlistformaction.cpp
++++ b/src/itemlistformaction.cpp
+@@ -1477,7 +1477,18 @@
+         const std::string watched = (feed->title() == "⭐ Starred" || feed->rssurl().find("query:📥 Downloads:") == 0 || feed->rssurl().find("query:🎬 VODs:") == 0) ? "%4w " : "";
+         static const std::regex index_field(R"(%[-0-9]*i)");
+         const bool has_index = std::regex_search(itemlist_format, index_field);
+-        const auto format = numbered && !has_index ? strprintf::fmt("%4u ", line + 1) + watched + itemlist_format : itemlist_format;
++        static const std::regex progress_field(R"(%[-0-9]*w)");
++        const bool has_progress = std::regex_search(itemlist_format, progress_field);
++        auto format = itemlist_format;
++        if (numbered) {
++            if (!has_index) {
++                format = strprintf::fmt("%4u ", line + 1) + (has_progress ? "" : watched) + format;
++            } else if (!has_progress && !watched.empty()) {
++                std::smatch index;
++                std::regex_search(format, index, index_field);
++                format.insert(index.position() + index.length(), " " + watched);
++            }
++        }
+         const bool avatars = std::getenv("NEWSBOAT_THUMBNAILS") &&
+             (feed->title() == "🎮 Playthroughs" || feed->title() == "Playlists · 🎮 Playthroughs");
+         auto rendered = item2formatted_line(item, width, (avatars ? "   " : "") + format, datetime_format);

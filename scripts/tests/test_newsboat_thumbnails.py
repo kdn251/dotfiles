@@ -24,6 +24,20 @@ spec = importlib.util.spec_from_file_location('playlist_ui', SCRIPTS/'newsboat-p
 ui = importlib.util.module_from_spec(spec); spec.loader.exec_module(ui)
 
 
+def run_child(command, env):
+    # SIGTERM intentionally raises SystemExit in the relay. Never let unittest
+    # catch that in a forked child and start running the remaining tests there.
+    try:
+        status = thumbs.run(command, env)
+    except SystemExit as error:
+        status = error.code if isinstance(error.code, int) else 0
+    except BaseException:
+        import traceback
+        traceback.print_exc()
+        status = 1
+    os._exit(status)
+
+
 class ThumbnailTests(unittest.TestCase):
     def test_marker_survives_every_split_without_changing_screen_bytes(self):
         marker = thumbs.MARKER+b'82;1;38;21;https://www.youtube.com/watch?v=abc123DEF45\x07'
@@ -153,7 +167,7 @@ class ThumbnailTests(unittest.TestCase):
                     if select.select([fd],[],[],.05)[0]:
                         for kind,value in decoder.feed(os.read(fd,65536)):
                             if kind=='screen':stream.feed(value)
-                            else:markers.append(thumbs.selection(value))
+                            elif kind=='selection':markers.append(thumbs.selection(value))
             def check_flow():
                 self.assertTrue(markers[-1])
                 x,y,w,h,_=markers[-1]
@@ -202,7 +216,7 @@ os.read(0,1)
             pid,fd=pty.fork()
             if pid==0:
                 fcntl.ioctl(0,termios.TIOCSWINSZ,struct.pack('HHHH',24,120,1200,480))
-                os._exit(thumbs.run([sys.executable,'-c',child],env))
+                run_child([sys.executable,'-c',child],env)
         data=bytearray()
         def until(needle):
             end=time.monotonic()+3
@@ -263,7 +277,7 @@ os.read(0,1)
                 pid,fd=pty.fork()
                 if pid==0:
                     fcntl.ioctl(0,termios.TIOCSWINSZ,struct.pack('HHHH',24,120,1200,480))
-                    os._exit(thumbs.run(cmd,env))
+                    run_child(cmd,env)
             data=bytearray();end=time.monotonic()+5
             try:
                 packet=thumbs.transmit(0x40000000+pid,thumbs.frame_thumbnail(cover.read_bytes()))
@@ -293,7 +307,7 @@ os.read(0,1)
                 pid,fd=pty.fork()
                 if pid==0:
                     fcntl.ioctl(0,termios.TIOCSWINSZ,struct.pack('HHHH',24,120,1200,480))
-                    os._exit(thumbs.run(cmd,env))
+                    run_child(cmd,env)
             data=bytearray()
             def until(needle):
                 end=time.monotonic()+5

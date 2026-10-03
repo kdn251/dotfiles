@@ -102,6 +102,10 @@ class StarredProgressTests(unittest.TestCase):
                 self.assertIn('42%',next(line for line in screen.display if 'Video' in line))
                 read.write_text('https://example.org/article\t81%\n')
                 wait(lambda text:'81%' in text and screen.cursor.y==1)
+                Path(str(status)+'.watched').write_text('https://www.youtube.com/watch?v=abc123DEF45\t93%\n')
+                wait(lambda text:'93%' in text and '81%' in text)
+                self.assertIn('93%',next(line for line in screen.display if 'Video' in line))
+                self.assertIn('Article',screen.display[screen.cursor.y])
             finally:
                 os.kill(pid,signal.SIGTERM);os.waitpid(pid,0);os.close(fd)
 

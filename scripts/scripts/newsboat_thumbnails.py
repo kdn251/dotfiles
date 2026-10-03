@@ -27,7 +27,7 @@ from urllib.parse import urlparse, parse_qs
 
 from newsboat_youtube_playlists import LIBRARY
 from newsboat_media import identity
-from newsboat_loading import ship_art
+from newsboat_loading import ship_art, GraphicsStream
 
 MARKER = b'\x1b]777;newsboat-thumbnail;'
 
@@ -78,7 +78,8 @@ class Decoder:
             if end < 0:
                 self.pending = data[start:]
                 return
-            yield 'selection', data[start+len(MARKER):end].decode(errors='replace')
+            value = data[start+len(MARKER):end].decode(errors='replace')
+            yield ('avatars', value[8:]) if value.startswith('avatars;') else ('selection', value)
             data = data[end+1:]
 
 
@@ -285,7 +286,10 @@ def run(command, env):
         os.execvpe(command[0], command, child_env)
     fcntl.ioctl(master, termios.TIOCSWINSZ, size)
     image_id = 0x40000000+os.getpid()
+    from newsboat_playlist_avatars import Avatars
+    avatars = Avatars(image_id + 0x100000)
     decoder = Decoder()
+    terminal_stream = GraphicsStream(preserve_frames=True)
     worker = Fetcher()
     current = None
     png = None
@@ -328,7 +332,7 @@ def run(command, env):
             if resized:
                 size = fcntl.ioctl(1, termios.TIOCGWINSZ, bytes(8))
                 fcntl.ioctl(master, termios.TIOCSWINSZ, size)
-                write(1, delete(image_id))
+                write(1, delete(image_id) + avatars.clear())
                 current = png = None
                 last_placeholder = None
                 resized = False
@@ -346,14 +350,16 @@ def run(command, env):
                     break
                 if not data:
                     break
-                for kind, value in decoder.feed(data):
+                for kind, value in decoder.feed(terminal_stream.feed(data)):
                     if kind == 'screen':
                         if b'\x1b[2J' in value or b'\x1b[?1049' in value:
-                            write(1, delete(image_id))
+                            write(1, delete(image_id) + avatars.clear())
                             current = png = None
                             last_placeholder = None
                         write(1, value)
                         repaint = True
+                    elif kind == 'avatars':
+                        avatars.update(value)
                     else:
                         selected = selection(value)
                         if selected != current:
@@ -392,6 +398,7 @@ def run(command, env):
                     repaint = True
             if repaint and current and display_png:
                 write(1, placement(image_id, current, size, display_png, loading=not bool(png)))
+            write(1, avatars.render(size, repaint))
             done, exit_status = os.waitpid(pid, os.WNOHANG)
             if done:
                 status = exit_status
@@ -401,7 +408,7 @@ def run(command, env):
         signal.signal(signal.SIGTERM, previous_term)
         signal.signal(signal.SIGWINCH, previous_winch)
         try:
-            write(1, delete(image_id))
+            write(1, delete(image_id) + avatars.clear())
             preview_mode(False)
             termios.tcsetattr(0, termios.TCSANOW, original)
         except (OSError, termios.error):

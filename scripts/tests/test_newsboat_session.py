@@ -44,6 +44,18 @@ class ProgressTests(unittest.TestCase):
                 self.assertEqual(b''.join(chunks),packet)
                 self.assertIn(packet,chunks)
 
+    def test_chunked_images_and_frames_cannot_be_interleaved(self):
+        transfer = (b'\x1b_Ga=t,f=100,i=42,m=1;YWJj\x1b\\'
+                    b'\x1b_Gm=0;ZGVm\x1b\\')
+        frame = b'\x1b[?2026h'+transfer+b'\x1b7\x1b[3;8H\x1b_Ga=p,i=42\x1b\\\x1b8\x1b[?2026l'
+        for packet in (transfer, frame, b'\x1b[38;2;12;40;60m', '⭐'.encode()):
+            for split in range(len(packet)+1):
+                stream = session.GraphicsStream(preserve_frames=True)
+                chunks = [stream.feed(b'before'+packet[:split]), stream.feed(packet[split:]+b'after')]
+                self.assertEqual(b''.join(chunks), b'before'+packet+b'after')
+                self.assertTrue(any(packet in chunk for chunk in chunks))
+                self.assertFalse(stream.pending)
+
     def test_slide_uses_small_monotonic_steps(self):
         entering = [session.slide_offset(i/60, 34) for i in range(31)]
         leaving = [session.slide_offset(i/60, 34, exiting=True) for i in range(31)]
@@ -236,6 +248,11 @@ class TerminalIntegrationTests(unittest.TestCase):
                         captured += os.read(fd, 65536)
                 self.assertIn(b'example.com', captured)
                 children = Path(f'/proc/{pid}/task/{pid}/children').read_text().split()
+                # Download recovery deliberately survives closing Newsboat.
+                # Only the reader/rendering children must release the terminal.
+                children = [child for child in children
+                            if b'newsboat-download.py\x00--recover' not in
+                            Path(f'/proc/{child}/cmdline').read_bytes()]
                 os.close(fd)
                 fd = None
                 deadline = time.monotonic() + 5

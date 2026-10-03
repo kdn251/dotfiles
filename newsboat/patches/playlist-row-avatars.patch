@@ -1,0 +1,69 @@
+--- a/include/listmovementcontrol.h
++++ b/include/listmovementcontrol.h
+@@ -173,6 +173,8 @@
+ 	{
+ 		return current_position;
+ 	}
++
++    std::uint32_t get_scroll_offset() const { return current_scroll_offset; }
+ 
+ 	void set_position(std::uint32_t pos)
+ 	{
+--- a/include/itemlistformaction.h
++++ b/include/itemlistformaction.h
+@@ -33,6 +33,7 @@
+     std::optional<bool> run_visual_commands(const std::vector<MacroCmd>& commands, BindingType type);
+ 	void prepare() override;
+     std::string thumbnail_request();
++    std::string playlist_avatar_request();
+ 	void init() override;
+ 
+ 	void set_feed(std::shared_ptr<RssFeed> fd);
+--- a/src/itemlistformaction.cpp
++++ b/src/itemlistformaction.cpp
+@@ -1478,7 +1478,9 @@
+         static const std::regex index_field(R"(%[-0-9]*i)");
+         const bool has_index = std::regex_search(itemlist_format, index_field);
+         const auto format = numbered && !has_index ? strprintf::fmt("%4u ", line + 1) + watched + itemlist_format : itemlist_format;
+-        auto rendered = item2formatted_line(item, width, format, datetime_format);
++        const bool avatars = std::getenv("NEWSBOAT_THUMBNAILS") &&
++            (feed->title() == "🎮 Playthroughs" || feed->title() == "Playlists · 🎮 Playthroughs");
++        auto rendered = item2formatted_line(item, width, (avatars ? "   " : "") + format, datetime_format);
+         const auto range = visual_range();
+         if (visual_active && line >= range.first && line <= range.second) {
+             const auto padded = utils::substr_with_width(rendered.plaintext() + std::string(width, ' '), width);
+@@ -1490,6 +1492,21 @@
+ 
+ 	invalidated_itempos.clear();
+ 	invalidation_mode = InvalidationMode::NONE;
++}
++
++std::string ItemListFormAction::playlist_avatar_request()
++{
++    if (feed->title() != "🎮 Playthroughs" && feed->title() != "Playlists · 🎮 Playthroughs") { return ""; }
++    const auto offset = list.get_scroll_offset();
++    const auto x = utils::to_u(f.get("items:x"));
++    const auto y = utils::to_u(f.get("items:y"));
++    std::string result;
++    for (std::uint32_t row = 0; row < list.get_height() && offset + row < visible_items.size(); ++row) {
++        const auto url = visible_items[offset + row].first->link();
++        if (url.find("newsboat-playthroughs://") != 0) { continue; }
++        result += std::to_string(x) + ";" + std::to_string(y + row) + ";" + url + "\n";
++    }
++    return result;
+ }
+ 
+ std::string ItemListFormAction::thumbnail_request()
+--- a/src/view.cpp
++++ b/src/view.cpp
+@@ -223,7 +223,9 @@
+             fa->draw_form();
+             auto items = std::dynamic_pointer_cast<ItemListFormAction>(fa);
+             std::cout << "\033]777;newsboat-thumbnail;" <<
+-                (items ? items->thumbnail_request() : "") << "\007" << std::flush;
++                (items ? items->thumbnail_request() : "") << "\007";
++            std::cout << "\033]777;newsboat-thumbnail;avatars;" <<
++                (items ? items->playlist_avatar_request() : "") << "\007" << std::flush;
+         }
+ 
+         // we then receive the event and ignore timeouts.

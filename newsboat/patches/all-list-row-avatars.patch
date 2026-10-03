@@ -1,0 +1,186 @@
+--- a/include/itemlistformaction.h
++++ b/include/itemlistformaction.h
+@@ -34,6 +34,7 @@
+ 	void prepare() override;
+     std::string thumbnail_request();
+     std::string playlist_avatar_request();
++    std::string item_row_format(std::uint32_t line);
+ 	void init() override;
+ 
+ 	void set_feed(std::shared_ptr<RssFeed> fd);
+--- a/include/feedlistformaction.h
++++ b/include/feedlistformaction.h
+@@ -24,6 +24,7 @@
+ 		ConfigContainer* cfg,
+ 		RegexManager& r);
+ 	~FeedListFormAction() override = default;
++    std::string row_avatar_request();
+ 	void prepare() override;
+     void go_home();
+ 	void init() override;
+--- a/src/itemlistformaction.cpp
++++ b/src/itemlistformaction.cpp
+@@ -1454,24 +1454,9 @@
+ 	visible_items = new_visible_items;
+ }
+ 
+-void ItemListFormAction::draw_items()
+-{
+-	auto datetime_format = cfg->get_configvalue("datetime-format");
+-	auto itemlist_format =
+-		cfg->get_configvalue("articlelist-format");
+-
+-	auto render_line = [this, itemlist_format, datetime_format](std::uint32_t line,
+-	std::uint32_t width) -> StflRichText {
+-		if (line >= visible_items.size())
+-		{
+-			return StflRichText::from_plaintext("ERROR");
+-		}
+-		auto item = visible_items[line];
+-        // Number sorted collections by visible position, not RSS import order.
+-        if (feed->title() == "⭐ Starred" || feed->title() == "🎮 Playthroughs" ||
+-            feed->title() == "Playlists · 🎮 Playthroughs") {
+-            item.second = line;
+-        }
++std::string ItemListFormAction::item_row_format(std::uint32_t line)
++{
++    const auto itemlist_format = cfg->get_configvalue("articlelist-format");
+         const bool numbered = (feed->title() == "📚 Books" || feed->rssurl().find("query:🎬 VODs:") == 0 || feed->rssurl().find("query:📬 New:") == 0 || feed->title() == "⭐ Starred" || feed->title() == "📣 Commentary" || feed->title() == " Favorites") ||
+             feed->rssurl().find("query:📥 Downloads:") == 0;
+         const std::string watched = (feed->title() == "⭐ Starred" || feed->rssurl().find("query:📥 Downloads:") == 0 || feed->rssurl().find("query:🎬 VODs:") == 0) ? "%4w " : "";
+@@ -1489,8 +1474,26 @@
+                 format.insert(index.position() + index.length(), " " + watched);
+             }
+         }
+-        const bool avatars = std::getenv("NEWSBOAT_THUMBNAILS") &&
+-            (feed->title() == "🎮 Playthroughs" || feed->title() == "Playlists · 🎮 Playthroughs");
++    return format;
++}
++
++void ItemListFormAction::draw_items()
++{
++	auto datetime_format = cfg->get_configvalue("datetime-format");
++	auto render_line = [this, datetime_format](std::uint32_t line,
++	std::uint32_t width) -> StflRichText {
++		if (line >= visible_items.size())
++		{
++			return StflRichText::from_plaintext("ERROR");
++		}
++		auto item = visible_items[line];
++        // Number sorted collections by visible position, not RSS import order.
++        if (feed->title() == "⭐ Starred" || feed->title() == "🎮 Playthroughs" ||
++            feed->title() == "Playlists · 🎮 Playthroughs") {
++            item.second = line;
++        }
++        auto format = item_row_format(line);
++        const bool avatars = std::getenv("NEWSBOAT_THUMBNAILS");
+         const auto title_field = format.find("%t");
+         if (avatars && title_field != std::string::npos) { format.insert(title_field, "   "); }
+         auto rendered = item2formatted_line(item, width, format, datetime_format);
+@@ -1509,11 +1512,6 @@
+ 
+ std::string ItemListFormAction::playlist_avatar_request()
+ {
+-    if (feed->title() != "🎮 Playthroughs" && feed->title() != "Playlists · 🎮 Playthroughs") { return ""; }
+-    const auto format = cfg->get_configvalue("articlelist-format");
+-    const auto title_field = format.find("%t");
+-    if (title_field == std::string::npos) { return ""; }
+-    const auto prefix_format = format.substr(0, title_field);
+     const auto datetime_format = cfg->get_configvalue("datetime-format");
+     const auto offset = list.get_scroll_offset();
+     const auto x = utils::to_u(f.get("items:x"));
+@@ -1521,12 +1519,28 @@
+     std::string result;
+     for (std::uint32_t row = 0; row < list.get_height() && offset + row < visible_items.size(); ++row) {
+         const auto url = visible_items[offset + row].first->link();
+-        if (url.find("newsboat-playthroughs://") != 0) { continue; }
++        if (url.find("newsboat-playthroughs://") != 0 && url.find("https://") != 0 && url.find("http://") != 0) { continue; }
++        const auto format = item_row_format(offset + row);
++        const auto title_field = format.find("%t");
++        if (title_field == std::string::npos) { continue; }
+         auto item = visible_items[offset + row];
+-        item.second = offset + row;
+-        const auto prefix = item2formatted_line(item, list.get_width(), prefix_format, datetime_format).plaintext();
+-        const auto left = x + utils::strwidth(prefix);
+-        result += std::to_string(left) + ";" + std::to_string(y + row) + ";" + url + "\n";
++        if (feed->title() == "⭐ Starred" || feed->title() == "🎮 Playthroughs" ||
++            feed->title() == "Playlists · 🎮 Playthroughs") { item.second = offset + row; }
++        const auto viewport_width = list.get_width();
++        const auto row_width = row >= 1 && row <= thumbnail_height ?
++            viewport_width - std::min(38u, viewport_width) : viewport_width;
++        const auto prefix = item2formatted_line(item, row_width, format.substr(0, title_field), datetime_format).plaintext();
++        const auto prefix_width = utils::strwidth(prefix);
++        if (prefix_width + 3 > row_width) { continue; }
++        const auto left = x + prefix_width;
++        auto author = item.first->author();
++        for (auto& character : author) {
++            if (character == '\n' || character == '\r' || character == '\t') { character = ' '; }
++        }
++        const auto source = item.first->get_feedptr();
++        const auto source_url = source ? source->rssurl() : "";
++        if (url.find_first_of("\n\r\t") != std::string::npos || source_url.find_first_of("\n\r\t") != std::string::npos) { continue; }
++        result += std::to_string(left) + ";" + std::to_string(y + row) + ";" + url + "\t" + author + "\t" + source_url + "\n";
+     }
+     return result;
+ }
+--- a/src/feedlistformaction.cpp
++++ b/src/feedlistformaction.cpp
+@@ -717,6 +717,32 @@
+ 	}
+ }
+ 
++std::string FeedListFormAction::row_avatar_request()
++{
++    const auto format = cfg->get_configvalue("feedlist-format");
++    const auto title_field = format.find("%t");
++    if (title_field == std::string::npos) { return ""; }
++    const auto offset = list.get_scroll_offset();
++    const auto x = utils::to_u(f.get("feeds:x"));
++    const auto y = utils::to_u(f.get("feeds:y"));
++    std::string result;
++    for (std::uint32_t row = 0; row < list.get_height() && offset + row < visible_feeds.size(); ++row) {
++        const auto entry = visible_feeds[offset + row];
++        if (entry.first->is_query_feed()) { continue; }
++        const auto source = entry.first->rssurl();
++        const auto url = source.find_first_not_of("0123456789") == std::string::npos ?
++            "newsboat-feed://" + source : source;
++        if (url.find_first_of("\n\r\t") != std::string::npos) { continue; }
++        auto title = entry.first->title();
++        for (auto& character : title) {
++            if (character == '\n' || character == '\r' || character == '\t') { character = ' '; }
++        }
++        const auto prefix = format_line(format.substr(0, title_field), entry.first, entry.second, list.get_width()).plaintext();
++        result += std::to_string(x + utils::strwidth(prefix)) + ";" + std::to_string(y + row) + ";" + url + "\t" + title + "\t" + source + "\n";
++    }
++    return result;
++}
++
+ void FeedListFormAction::set_feedlist(
+ 	std::vector<std::shared_ptr<RssFeed>>& feeds)
+ {
+@@ -737,7 +763,11 @@
+ 			return StflRichText::from_plaintext("ERROR");
+ 		}
+ 		auto& feed = visible_feeds[line];
+-		return format_line(feedlist_format, feed.first, feed.second, width);
++        auto format = feedlist_format;
++        const auto title_field = format.find("%t");
++        if (std::getenv("NEWSBOAT_THUMBNAILS") && !feed.first->is_query_feed() &&
++            title_field != std::string::npos) { format.insert(title_field, "   "); }
++		return format_line(format, feed.first, feed.second, width);
+ 	};
+ 	list.invalidate_list_content(visible_feeds.size(), render_line);
+ 
+--- a/src/view.cpp
++++ b/src/view.cpp
+@@ -224,8 +224,9 @@
+             auto items = std::dynamic_pointer_cast<ItemListFormAction>(fa);
+             std::cout << "\033]777;newsboat-thumbnail;" <<
+                 (items ? items->thumbnail_request() : "") << "\007";
++            auto feeds = std::dynamic_pointer_cast<FeedListFormAction>(fa);
+             std::cout << "\033]777;newsboat-thumbnail;avatars;" <<
+-                (items ? items->playlist_avatar_request() : "") << "\007" << std::flush;
++                (items ? items->playlist_avatar_request() : feeds ? feeds->row_avatar_request() : "") << "\007" << std::flush;
+         }
+ 
+         // we then receive the event and ignore timeouts.
