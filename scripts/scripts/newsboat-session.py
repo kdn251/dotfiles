@@ -310,9 +310,13 @@ def run(args):
                         thumbnail_active = bool(thumbnail_selection(event[1].decode(errors='replace'))) if event[1] is not None else False
                     if thumbnail_active and toast_rows:
                         toast_rows = 0
-                        if graphics_toast:write_all(1,renderer.clear_overlay())
-                        # Remove any already-painted refresh toast behind the image.
-                        write_all(playlist_master if playlist_master is not None else (nested_master if nested_master is not None else master), b"\x0c")
+                        if graphics_toast:
+                            # Graphics have no text cells to erase. A Ctrl-L here
+                            # clears thumbnails/avatars, briefly resets selection,
+                            # and makes the toast reappear in a redraw loop.
+                            write_all(1,renderer.clear_overlay())
+                        else:
+                            write_all(playlist_master if playlist_master is not None else (nested_master if nested_master is not None else master), b"\x0c")
                 # ncurses can redraw the area behind the toast. Restore the current frame in the same terminal
                 # update rather than leaving it blank until the next tick.
                 if toast_rows:
@@ -603,9 +607,11 @@ def run(args):
                             toast_started = now
                         toast_rows = wanted_toast
                         if not toast_rows:
-                            if graphics_toast:write_all(1,renderer.clear_overlay())
-                            # Restore the list underneath the dismissed toast.
-                            write_all(playlist_master if playlist_master is not None else (nested_master if nested_master is not None else master), b"\x0c")
+                            if graphics_toast:
+                                write_all(1,renderer.clear_overlay())
+                            else:
+                                # Only text toasts need their old cells repainted.
+                                write_all(playlist_master if playlist_master is not None else (nested_master if nested_master is not None else master), b"\x0c")
                         next_frame = 0
                     if (startup or progress.active) and now >= next_frame:
                         frame = int((now-animation_started)/0.08)

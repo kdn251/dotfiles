@@ -93,6 +93,16 @@ class ThumbnailTests(unittest.TestCase):
             images=root/'state/newsboat/youtube-playlists/thumbnails';images.mkdir(parents=True)
             Image.new('RGB',(320,180),'red').save(images/'abc123DEF45.png')
             Image.new('RGB',(320,180),'blue').save(images/'twitch:12345.png')
+            # Real cached creator images, so both avatar placements must survive
+            # switching from the refresh toast back to a video thumbnail.
+            import json
+            videos=images.parent/'videos';videos.mkdir()
+            cid='UC'+'a'*22
+            (videos/'abc123DEF45.json').write_text(json.dumps(dict(channel_id=cid)))
+            for folder,creator in [('yt-channel-avatars',cid),('twitch-profiles','creator')]:
+                path=root/'.cache'/folder/(creator+'.png');path.parent.mkdir(parents=True)
+                Image.new('RGB',(128,128),'green').save(path)
+            (root/'state/newsboat/vod-items.json').write_text(json.dumps([dict(url='https://www.twitch.tv/videos/12345',source='creator')]))
             rss=root/'feed.xml'
             rss.write_text('<rss version="2.0"><channel><title>Mixed items</title><link>https://example.com</link><description>test</description>'+
                 ''.join(f'<item><title>{name}</title><guid>{i}</guid><link>{url}</link></item>' for i,(name,url) in enumerate([
@@ -134,8 +144,22 @@ class ThumbnailTests(unittest.TestCase):
                 data.clear();os.write(fd,b'j');until(b'a=d,d=I,');until(b'a=p,i=1073741822,')
                 self.assertNotIn(b'\x1b[23;0t',data)  # Article clears only the image.
                 self.assertNotIn(b'set-background-opacity',data)
-                data.clear();os.write(fd,b'j');until(b'a=p,')
-                data.clear();os.write(fd,b't');until(b'SAVED');until(b'a=p,')
+                # Let the toast reach full width: its PNG now spans multiple
+                # Kitty chunks/PTY reads rather than a tiny slide-in sliver.
+                deadline=time.monotonic()+.75
+                while time.monotonic()<deadline:
+                    if select.select([fd],[],[],.05)[0]:data.extend(os.read(fd,65536))
+                thumbnail=f'a=p,i={0x40000000+pid},'.encode()
+                avatar=f'a=p,i={0x40100000+pid},'.encode()
+                data.clear();os.write(fd,b'k');until(thumbnail);until(avatar)
+                deadline=time.monotonic()+.6
+                while time.monotonic()<deadline:
+                    if select.select([fd],[],[],.05)[0]:data.extend(os.read(fd,65536))
+                self.assertLessEqual(data.count(b'\x1b[2J'),1,'toast/thumbnail handoff repeatedly clears the screen')
+                # Repeat while the refresh completion toast is still active.
+                data.clear();os.write(fd,b'j');until(b'a=p,i=1073741822,')
+                data.clear();os.write(fd,b'j');until(thumbnail);until(avatar)
+                data.clear();os.write(fd,b't');until(b'SAVED');until(thumbnail)
                 data.clear();os.write(fd,b'h');until(b'Your feeds')
                 self.assertNotIn(b'\x1b[23;0t',data)
                 self.assertNotIn(b'set-background-opacity',data)
