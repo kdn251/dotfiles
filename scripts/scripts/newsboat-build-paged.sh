@@ -89,6 +89,7 @@ patch -p1 < "$repo/newsboat/patches/playlist-row-avatars.patch"
 patch -p1 < "$repo/newsboat/patches/starred-progress-column.patch"
 patch -p1 < "$repo/newsboat/patches/playlist-avatar-title-position.patch"
 patch -p1 < "$repo/newsboat/patches/all-list-row-avatars.patch"
+patch -p1 < "$repo/newsboat/patches/stable-active-download-order.patch"
 make -j"${NEWSBOAT_BUILD_JOBS:-4}" WARNFLAGS="-Werror -Wall -Wextra -Wunreachable-code -Wno-error=unused-function" newsboat
 install -m 755 newsboat "$install_dir/newsboat.new"
 mv "$install_dir/newsboat.new" "$install_dir/newsboat"

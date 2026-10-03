@@ -1,0 +1,33 @@
+--- a/src/itemlistformaction.cpp
++++ b/src/itemlistformaction.cpp
+@@ -1401,8 +1401,15 @@
+     }
+ 
+     if (feed->rssurl().find("query:📥 Downloads:") == 0) {
++        // Progress writes must not shuffle the queue. Keep pending/failed rows
++        // in their displayed order; new rows follow the existing queue.
++        std::map<std::string, std::size_t> pending_positions;
++        for (std::size_t pos = 0; pos < visible_items.size(); ++pos) {
++            pending_positions.emplace(visible_items[pos].first->link(), pos);
++        }
++        const auto missing_position = visible_items.size();
+         std::stable_sort(new_visible_items.begin(), new_visible_items.end(),
+-            [](const ItemPtrPosPair& a, const ItemPtrPosPair& b) {
++            [&pending_positions, missing_position](const ItemPtrPosPair& a, const ItemPtrPosPair& b) {
+                 const auto pending = [](const std::string& url) {
+                     const auto it = download_status.find(url);
+                     return it != download_status.end() &&
+@@ -1410,6 +1417,13 @@
+                 };
+                 const auto aq = pending(a.first->link()), bq = pending(b.first->link());
+                 if (aq != bq) { return aq; }
++                if (aq && bq) {
++                    const auto position = [&](const std::string& url) {
++                        const auto it = pending_positions.find(url);
++                        return it == pending_positions.end() ? missing_position : it->second;
++                    };
++                    return position(a.first->link()) < position(b.first->link());
++                }
+                 const auto percent = [](const std::string& url) {
+                     const auto it = watched_progress.find(url);
+                     return it == watched_progress.end() ? 0 : std::atoi(it->second.c_str());

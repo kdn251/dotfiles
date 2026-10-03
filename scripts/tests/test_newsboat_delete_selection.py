@@ -104,7 +104,7 @@ class DeleteSelectionTests(unittest.TestCase):
                 (root/'status.tsv').write_text('https://example.com/3\t✕\n')
                 wait(lambda:order()==['03','07','02'] and '✕' in '\n'.join(screen.display))
                 (root/'status.tsv').write_text('https://example.com/3\t…\n')
-                wait(lambda:order()==['03','07','02'] and '…' in '\n'.join(screen.display))
+                wait(lambda:order()==['03','07','02'] and any(char in '\n'.join(screen.display) for char in '⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏'))
                 (root/'status.tsv').write_text('https://example.com/3\t📥\n')
                 wait(lambda:order()==['07','02','03'] and selected('Video03'))
                 (root/'status.tsv.watched').write_text('')
@@ -150,6 +150,22 @@ class DeleteSelectionTests(unittest.TestCase):
                 note_files = list((root/'data/newsboat/notes').glob('*.txt'))
                 self.assertEqual(len(note_files),1)
                 self.assertEqual(note_files[0].read_text(),'Notes from the editor\n')
+
+                # Active rows stay in queue order even while download progress,
+                # watch progress, and partial-file timestamps change together.
+                status=root/'status.tsv'
+                status.write_text('https://example.com/3\t↓ 80%\nhttps://example.com/2\t↓ 5%\n')
+                wait(lambda:order()==['03','02','07'])
+                (root/'status.tsv.order').write_text('https://example.com/2\t9000\nhttps://example.com/3\t300\nhttps://example.com/7\t700\n')
+                status.write_text('https://example.com/3\t↓ 81%\nhttps://example.com/2\t↓ 95%\n')
+                (root/'status.tsv.watched').write_text('https://example.com/2\t92%\nhttps://example.com/3\t11%\n')
+                wait(lambda:'92%' in '\n'.join(screen.display) and order()==['03','02','07'])
+                self.assertTrue(selected('Video07'))
+                status.write_text('https://example.com/3\t✕\nhttps://example.com/2\t…\n')
+                wait(lambda:'✕' in '\n'.join(screen.display) and order()==['03','02','07'])
+                status.write_text('https://example.com/3\t📥\nhttps://example.com/2\t📥\n')
+                wait(lambda:order()==['02','03','07'])
+                self.assertTrue(selected('Video07'))
 
             finally:
                 os.kill(pid,signal.SIGTERM);os.waitpid(pid,0);os.close(fd)
