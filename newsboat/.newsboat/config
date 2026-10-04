@@ -45,7 +45,7 @@ macro S set browser "~/scripts/cancel-download.sh %u" ; open-in-browser ; set br
 macro w set browser "~/scripts/twitch-launcher.sh" ; open-in-browser ; set browser "~/scripts/newsboat-brave-app.sh %u" -- "Open Twitch live-channel picker"
 
 # Refresh downloaded videos feed (,R)
-macro R set browser "~/scripts/update-downloaded-query.sh" ; open-in-browser ; set browser "~/scripts/newsboat-brave-app.sh %u" ; reload-urls -- "Rebuild and reload Downloads view"
+macro R set browser "python3 ~/scripts/newsboat-reset-progress.py %u" ; open-in-browser-noninteractively ; set browser "~/scripts/newsboat-brave-app.sh %u" -- "Reset watched/read progress and resume position"
 
 # Keep Newsboat interactive while playback loads; mark read when launched.
 # Stream YouTube video

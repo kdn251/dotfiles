@@ -36,8 +36,8 @@ mp.register_event('file-loaded', function()
         local total = mp.get_property_number('duration', 0)
         local result = mp.command_native({name='subprocess', playback_only=false,
             capture_stdout=true, args={'python3', helper, 'resume', url, tostring(total)}})
-        local resume = result and result.status == 0 and tonumber(result.stdout) or 0
-        if resume and resume > 0 then mp.commandv('seek', tostring(resume), 'absolute+exact') end
+        local resume = result and result.status == 0 and tonumber(result.stdout) or -1
+        if resume and resume >= 0 then mp.commandv('seek', tostring(resume), 'absolute+exact') end
     end
     reported = false
     path = mp.get_property('path', '')
