@@ -305,7 +305,7 @@ def run(args):
                     # visible view, including the half-second thumbnail wait.
                     for event in re.finditer(rb"\x1b\[2J|\x1b\[\?1049[hl]|\x1b]777;newsboat-thumbnail;([^\x07]*)\x07", data):
                         # Row-avatar metadata does not change the selected thumbnail.
-                        if event[1] is not None and event[1].startswith(b'avatars;'):
+                        if event[1] is not None and event[1].startswith((b'avatars;', b'titles;')):
                             continue
                         thumbnail_active = bool(thumbnail_selection(event[1].decode(errors='replace'))) if event[1] is not None else False
                     if thumbnail_active and toast_rows:

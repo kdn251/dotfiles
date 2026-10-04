@@ -1,0 +1,97 @@
+--- a/include/itemlistformaction.h
++++ b/include/itemlistformaction.h
+@@ -33,6 +33,7 @@
+     std::optional<bool> run_visual_commands(const std::vector<MacroCmd>& commands, BindingType type);
+ 	void prepare() override;
+     std::string thumbnail_request();
++    std::string title_hover_request();
+     std::string playlist_avatar_request();
+     std::string item_row_format(std::uint32_t line);
+ 	void init() override;
+--- a/include/feedlistformaction.h
++++ b/include/feedlistformaction.h
+@@ -25,6 +25,7 @@
+ 		RegexManager& r);
+ 	~FeedListFormAction() override = default;
+     std::string row_avatar_request();
++    std::string title_hover_request();
+ 	void prepare() override;
+     void go_home();
+ 	void init() override;
+--- a/src/itemlistformaction.cpp
++++ b/src/itemlistformaction.cpp
+@@ -1559,6 +1559,32 @@
+     return result;
+ }
+ 
++std::string ItemListFormAction::title_hover_request()
++{
++    const auto offset = list.get_scroll_offset();
++    const auto x = utils::to_u(f.get("items:x"));
++    const auto y = utils::to_u(f.get("items:y"));
++    std::string result;
++    for (std::uint32_t row = 0; row < list.get_height() && offset + row < visible_items.size(); ++row) {
++        auto item = visible_items[offset + row];
++        if (feed->title() == "⭐ Starred" || feed->title() == "🎮 Playthroughs" ||
++            feed->title() == "Playlists · 🎮 Playthroughs") { item.second = offset + row; }
++        const auto format = item_row_format(offset + row);
++        const auto field = format.find("%t");
++        if (field == std::string::npos) { continue; }
++        const auto width = list.get_width();
++        const auto available = row >= 1 && row <= thumbnail_height ? width - std::min(38u, width) : width;
++        const auto prefix = item2formatted_line(item, available, format.substr(0, field), cfg->get_configvalue("datetime-format")).plaintext();
++        const auto left = utils::strwidth(prefix) + 3; // Creator avatar and spacer.
++        auto title = item.first->title();
++        for (auto& c : title) { if (static_cast<unsigned char>(c) < 32 || c == 127) { c = ' '; } }
++        if (left >= available || utils::strwidth(title) <= available - left) { continue; }
++        result += std::to_string(x + left) + ";" + std::to_string(y + row) + ";" +
++            std::to_string(x + available) + ";" + title + "\n";
++    }
++    return result;
++}
++
+ std::string ItemListFormAction::thumbnail_request()
+ {
+     if (!thumbnail_height || list.get_position() >= visible_items.size()) { return ""; }
+--- a/src/feedlistformaction.cpp
++++ b/src/feedlistformaction.cpp
+@@ -715,6 +715,28 @@
+ 		}
+ 		i++;
+ 	}
++}
++
++std::string FeedListFormAction::title_hover_request()
++{
++    const auto format = cfg->get_configvalue("feedlist-format");
++    const auto field = format.find("%t");
++    if (field == std::string::npos) { return ""; }
++    const auto offset = list.get_scroll_offset();
++    const auto x = utils::to_u(f.get("feeds:x"));
++    const auto y = utils::to_u(f.get("feeds:y"));
++    std::string result;
++    for (std::uint32_t row = 0; row < list.get_height() && offset + row < visible_feeds.size(); ++row) {
++        const auto entry = visible_feeds[offset + row];
++        const auto prefix = format_line(format.substr(0, field), entry.first, entry.second, list.get_width()).plaintext();
++        const auto left = utils::strwidth(prefix) + (entry.first->is_query_feed() ? 0 : 3);
++        auto title = entry.first->title();
++        for (auto& c : title) { if (static_cast<unsigned char>(c) < 32 || c == 127) { c = ' '; } }
++        if (left >= list.get_width() || utils::strwidth(title) <= list.get_width() - left) { continue; }
++        result += std::to_string(x + left) + ";" + std::to_string(y + row) + ";" +
++            std::to_string(x + list.get_width()) + ";" + title + "\n";
++    }
++    return result;
+ }
+ 
+ std::string FeedListFormAction::row_avatar_request()
+--- a/src/view.cpp
++++ b/src/view.cpp
+@@ -225,6 +225,8 @@
+             std::cout << "\033]777;newsboat-thumbnail;" <<
+                 (items ? items->thumbnail_request() : "") << "\007";
+             auto feeds = std::dynamic_pointer_cast<FeedListFormAction>(fa);
++            std::cout << "\033]777;newsboat-thumbnail;titles;" <<
++                (items ? items->title_hover_request() : feeds ? feeds->title_hover_request() : "") << "\007";
+             std::cout << "\033]777;newsboat-thumbnail;avatars;" <<
+                 (items ? items->playlist_avatar_request() : feeds ? feeds->row_avatar_request() : "") << "\007" << std::flush;
+         }

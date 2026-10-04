@@ -79,7 +79,12 @@ class Decoder:
                 self.pending = data[start:]
                 return
             value = data[start+len(MARKER):end].decode(errors='replace')
-            yield ('avatars', value[8:]) if value.startswith('avatars;') else ('selection', value)
+            if value.startswith('avatars;'):
+                yield 'avatars', value[8:]
+            elif value.startswith('titles;'):
+                yield 'titles', value[7:]
+            else:
+                yield 'selection', value
             data = data[end+1:]
 
 
@@ -288,6 +293,8 @@ def run(command, env):
     image_id = 0x40000000+os.getpid()
     from newsboat_playlist_avatars import Avatars
     avatars = Avatars(image_id + 0x100000)
+    from newsboat_title_hover import Hover
+    hover = Hover(image_id + 0x200000)
     decoder = Decoder()
     terminal_stream = GraphicsStream(preserve_frames=True)
     worker = Fetcher()
@@ -330,6 +337,7 @@ def run(command, env):
         preview_mode(True)
         while True:
             if resized:
+                hover.update('')
                 size = fcntl.ioctl(1, termios.TIOCGWINSZ, bytes(8))
                 fcntl.ioctl(master, termios.TIOCSWINSZ, size)
                 write(1, delete(image_id) + avatars.clear())
@@ -338,11 +346,17 @@ def run(command, env):
                 resized = False
             ready, _, _ = select.select([0, master], [], [], .05)
             repaint = False
+            if 0 not in ready:
+                keys = hover.flush_input()
+                if keys:
+                    write(master, keys)
             if 0 in ready:
                 data = os.read(0, 65536)
                 if not data:
                     break
-                write(master, data)
+                keys = hover.feed(data)
+                if keys:
+                    write(master, keys)
             if master in ready:
                 try:
                     data = os.read(master, 65536)
@@ -354,10 +368,13 @@ def run(command, env):
                     if kind == 'screen':
                         if b'\x1b[2J' in value or b'\x1b[?1049' in value:
                             write(1, delete(image_id) + avatars.clear())
+                            hover.dismiss()
                             current = png = None
                             last_placeholder = None
                         write(1, value)
                         repaint = True
+                    elif kind == 'titles':
+                        hover.update(value)
                     elif kind == 'avatars':
                         avatars.update(value)
                     else:
@@ -399,6 +416,7 @@ def run(command, env):
             if repaint and current and display_png:
                 write(1, placement(image_id, current, size, display_png, loading=not bool(png)))
             write(1, avatars.render(size, repaint))
+            write(1, hover.render(size, repaint))
             done, exit_status = os.waitpid(pid, os.WNOHANG)
             if done:
                 status = exit_status
@@ -408,7 +426,7 @@ def run(command, env):
         signal.signal(signal.SIGTERM, previous_term)
         signal.signal(signal.SIGWINCH, previous_winch)
         try:
-            write(1, delete(image_id) + avatars.clear())
+            write(1, hover.close() + delete(image_id) + avatars.clear())
             preview_mode(False)
             termios.tcsetattr(0, termios.TCSANOW, original)
         except (OSError, termios.error):
