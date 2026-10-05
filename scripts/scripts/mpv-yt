@@ -35,8 +35,10 @@ YOUTUBE_ICON="/usr/share/icons/Papirus/48x48/apps/youtube.svg"
 
 # A completion-checked lookup shared with deletion and the Downloaded library.
 MEDIA_HELPER="$(dirname "$(readlink -f "$0")")/newsboat_media.py"
-VIDEO_ID=$(python3 "$MEDIA_HELPER" identity "$URL" 2>/dev/null) || VIDEO_ID=""
-DOWNLOADED=$(python3 "$MEDIA_HELPER" find "$URL" 2>/dev/null) || DOWNLOADED=""
+mapfile -d '' -t PLAYBACK_INFO < <(python3 "$MEDIA_HELPER" playback-info "$URL" "$TITLE" 2>/dev/null)
+VIDEO_ID="${PLAYBACK_INFO[0]:-}"
+DOWNLOADED="${PLAYBACK_INFO[1]:-}"
+[ -n "$TITLE" ] || TITLE="${PLAYBACK_INFO[2]:-}"
 
 export NEWSBOAT_MEDIA_URL="$URL"
 export NEWSBOAT_MAINTENANCE="$(dirname "$(readlink -f "$0")")/newsboat-maintenance.py"
@@ -66,7 +68,6 @@ pkill -u "$(id -u)" -x mpv 2>/dev/null
 pkill -u "$(id -u)" -f "streamlink.*--player" 2>/dev/null
 
 if [ -n "$DOWNLOADED" ]; then
-  [ -n "$TITLE" ] || TITLE=$(python3 "$MEDIA_HELPER" title "$URL" 2>/dev/null)
   META="$HOME/.cache/mpv-yt-videos/${VIDEO_ID}.meta"
   if [ -s "$META" ]; then
     # shellcheck disable=SC1090
@@ -78,7 +79,7 @@ if [ -n "$DOWNLOADED" ]; then
   fi
   TITLE="${TITLE:-${YT_TITLE:-}}"
   [ -n "$TITLE" ] && READY_OPTS+=("--force-media-title=$TITLE")
-  mpv "${READY_OPTS[@]}" --save-position-on-quit --really-quiet "$DOWNLOADED" >/dev/null 2>&1 &
+  mpv "${READY_OPTS[@]}" --cache=no --force-window=no --save-position-on-quit --really-quiet "$DOWNLOADED" >/dev/null 2>&1 &
   exit 0
 fi
 

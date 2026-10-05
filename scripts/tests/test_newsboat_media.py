@@ -142,6 +142,27 @@ class MediaTests(unittest.TestCase):
         self.assertFalse(selected.exists());self.assertTrue(unrelated.exists())
         self.assertEqual(archive.read_text(),'other:11234567890\n')
 
+    def test_playback_reuses_validation_for_unchanged_indexed_file(self):
+        complete=self.video('Finished [abc123DEF45].mp4')
+        stat=complete.stat()
+        (media.STATE/'.media-index.json').write_text(json.dumps({str(complete):dict(valid=True,signature=[stat.st_size,stat.st_mtime_ns])}))
+        with patch.object(media,'candidates',side_effect=AssertionError('full scan')),patch.object(media,'playable',side_effect=AssertionError('ffprobe')):
+            self.assertEqual(media.playback_file(URL),complete)
+
+    def test_playback_rechecks_changed_partial_and_active_files(self):
+        complete=self.video('Finished [abc123DEF45].mp4')
+        stat=complete.stat()
+        index=media.STATE/'.media-index.json'
+        index.write_text(json.dumps({str(complete):dict(valid=True,signature=[stat.st_size,stat.st_mtime_ns])}))
+        (media.STATE/'job.json').write_text(json.dumps(dict(url=URL,status='processing')))
+        self.assertIsNone(media.playback_file(URL))
+        (media.STATE/'job.json').unlink()
+        partial=Path(str(complete)+'.part');partial.touch()
+        self.assertIsNone(media.playback_file(URL))
+        partial.unlink()
+        complete.write_text('replaced with an invalid video')
+        self.assertIsNone(media.playback_file(URL))
+
     def test_lookup_rejects_partial_fragments_invalid_and_active_files(self):
         self.video('Partial [abc123DEF45].mp4.part')
         self.video('Fragment [abc123DEF45].f137.mp4')

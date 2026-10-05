@@ -167,6 +167,41 @@ def find(url):
     return next((p for p in matches if playable(p)), None)
 
 
+def playback_file(url):
+    """Fast playback lookup for unchanged, already validated downloads."""
+    key = identity(url)
+    if not key:
+        return None
+    try:
+        index = json.loads((STATE/'.media-index.json').read_text())
+    except (OSError, ValueError):
+        return find(url)
+    matches = []
+    for name, entry in index.items():
+        path = Path(name)
+        if not entry.get('valid') or filename_identity(path) != key or not inside(path):
+            continue
+        try:
+            stat = path.stat()
+        except OSError:
+            continue
+        if entry.get('signature') != [stat.st_size, stat.st_mtime_ns] or not stat.st_size:
+            continue
+        if any(Path(str(path)+suffix).exists() for suffix in ('.part', '.ytdl', '.incomplete')):
+            continue
+        matches.append(path)
+    if matches:
+        # A redownload/merge can reuse an old final path. Never open it while
+        # the job is active, even if its old index signature still matches.
+        blocked = any(identity(job.get('url','')) == key and
+                      (job.get('status') in {'preparing','downloading','processing','retrying','waiting'} or
+                       (job.get('status') in {'failed','cancelled'} and not job.get('files')))
+                      for _, job in records())
+        if not blocked:
+            return min(matches, key=lambda path: (path.is_relative_to(CACHE), -path.stat().st_mtime))
+    return find(url)
+
+
 @contextlib.contextmanager
 def library_lock():
     STATE.mkdir(parents=True, exist_ok=True)
@@ -361,6 +396,14 @@ def cached_title(url):
 
 def main():
     command = sys.argv[1]
+    if command == 'playback-info':
+        url = sys.argv[2]
+        key = identity(url)
+        local = playback_file(url)
+        title = cached_title(url) if local and not any(sys.argv[3:]) else ''
+        # NUL framing preserves quotes and line breaks without shell evaluation.
+        sys.stdout.buffer.write(('\0'.join((key[1] if key else '', str(local) if local else '', title))+'\0').encode())
+        return 0
     if command == 'title':
         print(cached_title(sys.argv[2]))
         return 0
