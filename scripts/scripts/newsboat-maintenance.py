@@ -31,6 +31,15 @@ def load_starred():
 
 
 def main():
+    if sys.argv[1:2] == ['progress-file']:
+        from newsboat_watch_progress import record
+        snapshot = Path(sys.argv[2])
+        try:
+            data = json.loads(snapshot.read_text())
+            return 0 if record(data['url'], float(data['position']), float(data['duration']),
+                               sampled_at=snapshot.stat().st_mtime_ns/1e9) else 1
+        finally:
+            snapshot.unlink(missing_ok=True)
     if sys.argv[1:2] == ['resume']:
         from newsboat_watch_progress import resume_position
         print(resume_position(sys.argv[2],float(sys.argv[3]) if len(sys.argv)>3 else 0, missing=-1))

@@ -10,9 +10,12 @@ import newsboat_media as media
 STATE = Path(os.environ.get('XDG_STATE_HOME', Path.home()/'.local/state'))/'newsboat'
 
 
-def record(url, position, duration):
+def record(url, position, duration, sampled_at=None):
     key = media.identity(url)
     if not key or not all(math.isfinite(v) for v in (position, duration)) or duration <= 0 or position < 0:
+        return False
+    sampled_at = time.time() if sampled_at is None else sampled_at
+    if not math.isfinite(sampled_at):
         return False
     STATE.mkdir(parents=True, exist_ok=True)
     with media.library_lock(), closing(sqlite3.connect(STATE/'watch-progress.db')) as db, db:
@@ -21,8 +24,11 @@ def record(url, position, duration):
         for column in ('position', 'duration'):
             if column not in columns:
                 db.execute(f'ALTER TABLE progress ADD COLUMN {column} REAL')
+        previous = db.execute('SELECT updated FROM progress WHERE identity=?', (':'.join(key),)).fetchone()
+        if previous and previous[0] > sampled_at:
+            return True  # A newer sample (or explicit reset) already won.
         db.execute('INSERT OR REPLACE INTO progress(identity,url,fraction,updated,position,duration) VALUES (?,?,?,?,?,?)',
-                   (':'.join(key), url, min(position/duration, 1), time.time(),position,duration))
+                   (':'.join(key), url, min(position/duration, 1), sampled_at,position,duration))
         rows = db.execute('SELECT identity,url,fraction FROM progress').fetchall()
         values = {key: '100%' if fraction >= .95 else f'{int(fraction*100)}%' for key, _, fraction in rows}
         urls = {url: key for key, url, _ in rows}

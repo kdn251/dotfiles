@@ -6,13 +6,29 @@ local restored = false
 local reported = false
 local path = ''
 local position, duration
+local last_position, last_duration
+local utils = require('mp.utils')
 local function save_progress()
     -- Read the latest seek position even if its observer callback is queued.
     position = mp.get_property_number('time-pos') or position
     duration = mp.get_property_number('duration') or duration
     if not position or not duration or duration <= 0 then return end
-    mp.command_native({name='subprocess', playback_only=false,
-        args={'python3', helper, 'progress', url, tostring(position), tostring(duration)}})
+    if position == last_position and duration == last_duration then return end
+    -- Snapshot before exiting; the detached worker may wait for the library
+    -- lock without keeping the video window open. Each snapshot has its own
+    -- timestamp so late workers cannot overwrite a newer position or reset.
+    local snapshot = os.tmpname()
+    local file = io.open(snapshot, 'w')
+    if not file then return end
+    file:write(utils.format_json({url=url, position=position, duration=duration}))
+    file:close()
+    local saved = mp.command_native({name='subprocess', playback_only=false, detach=true,
+        args={'python3', helper, 'progress-file', snapshot}})
+    if saved and saved.status == 0 then
+        last_position, last_duration = position, duration
+    else
+        os.remove(snapshot)
+    end
 end
 mp.observe_property('time-pos', 'number', function(_, value)
     if value then position = value end
@@ -45,7 +61,7 @@ end)
 mp.observe_property('percent-pos', 'number', function(_, percent)
     if reported or not percent or percent < 90 or path:sub(1,1) ~= '/' then return end
     reported = true
-    -- A short local SQLite write must finish before mpv can exit at EOF.
-    mp.command_native({name='subprocess', playback_only=false,
+    -- Completion bookkeeping must not block playback or window closing.
+    mp.command_native({name='subprocess', playback_only=false, detach=true,
         args={'python3', helper, 'watched', path, url, tostring(percent / 100)}})
 end)
