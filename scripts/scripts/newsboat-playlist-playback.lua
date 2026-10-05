@@ -11,12 +11,51 @@ if not plan then return end
 local autoplay = plan.enabled
 local moving, timer, remaining = false, nil, 5
 local original_keep_open = mp.get_property('keep-open', 'no')
+-- Keep this separate from thumbfast's seek-preview overlay (42).
+local thumbnail_id = 61
+local thumbnail, thumbnail_job, thumbnail_requested
+local thumbnail_visible = false
+local function hide_thumbnail()
+    if thumbnail_visible then mp.commandv('overlay-remove', thumbnail_id) end
+    thumbnail_visible = false
+end
+local function show_thumbnail()
+    if not timer or not thumbnail then return end
+    local width, height = mp.get_osd_size()
+    if not width or not height or width < 1 or height < 1 then return end
+    -- Leave the upper third clear for the countdown, title and controls.
+    local scale = math.min(width * .75 / thumbnail.width, height * .50 / thumbnail.height)
+    local w, h = math.max(1, math.floor(thumbnail.width * scale)), math.max(1, math.floor(thumbnail.height * scale))
+    local x, y = math.floor((width-w)/2), math.floor(height * .38)
+    mp.command_native({'overlay-add', thumbnail_id, x, y, thumbnail.path, 0,
+        'bgra', thumbnail.width, thumbnail.height, thumbnail.width*4, w, h})
+    thumbnail_visible = true
+end
+local function prepare_thumbnail()
+    if thumbnail_requested or not autoplay or not plan.next then return end
+    thumbnail_requested = true
+    thumbnail_job = mp.command_native_async({name='subprocess', playback_only=false, capture_stdout=true,
+        args={'python3', directory .. 'newsboat-up-next-thumbnail.py', plan.next.url}},
+        function(success, response)
+            thumbnail_job = nil
+            if success and response and response.status == 0 then
+                local image = utils.parse_json(response.stdout)
+                if image and type(image.path) == 'string' and image.width == 480 and image.height == 270 then
+                    thumbnail = image
+                    show_thumbnail()
+                end
+            end
+        end)
+end
+mp.observe_property('osd-dimensions', 'native', show_thumbnail)
 local function cancel()
     if timer then timer:kill(); timer = nil end
+    hide_thumbnail()
 end
 local function configure()
     mp.set_property('keep-open', autoplay and plan.next and 'yes' or original_keep_open)
     mp.set_property_native('user-data/newsboat/autoplay', autoplay)
+    prepare_thumbnail()
 end
 local function advance(row)
     if moving then return end
@@ -44,6 +83,7 @@ local function countdown()
         remaining = remaining - 1
         if remaining <= 0 then advance(plan.next) else prompt() end
     end)
+    show_thumbnail()
 end
 mp.add_forced_key_binding('A', 'newsboat-toggle-autoplay', function()
     autoplay = not autoplay
@@ -66,7 +106,10 @@ end)
 mp.register_event('end-file', function(event)
     if event.reason ~= 'eof' then cancel() end
 end)
-mp.register_event('shutdown', cancel)
+mp.register_event('shutdown', function()
+    cancel()
+    if thumbnail_job then mp.abort_async_command(thumbnail_job) end
+end)
 mp.register_event('file-loaded', function()
     configure()
     mp.osd_message('Autoplay: ' .. (autoplay and 'ON' or 'OFF') .. ' · Shift+A to toggle', 3)
