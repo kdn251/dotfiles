@@ -87,7 +87,7 @@ class VisualRowsTests(unittest.TestCase):
             send('VjjS');wait(lambda:'Applied action to 3' in '\n'.join(screen.display) and 'Item08' in screen.display[screen.cursor.y])
             self.assertEqual((root/'actions').read_text().splitlines()[-3:],[f'https://example.org/{i}' for i in (5,6,7)])
             for title in ('Item05','Item06','Item07'):self.assertNotIn(title,'\n'.join(screen.display))
-            send('U');wait(lambda:'Undid bulk action (3 rows)' in '\n'.join(screen.display) and all(title in '\n'.join(screen.display) for title in ('Item05','Item06','Item07')))
+            send('U');wait(lambda:'Unstar undone: 3 items' in '\n'.join(screen.display) and all(title in '\n'.join(screen.display) for title in ('Item05','Item06','Item07')))
             for title in ('Item05','Item06','Item07'):self.assertIn(title,'\n'.join(screen.display))
 
     def test_macro_delete_uses_snapshot_as_query_shrinks(self):
@@ -95,7 +95,7 @@ class VisualRowsTests(unittest.TestCase):
             send('jVjj,D');wait(lambda:(root/'actions').exists() and len((root/'actions').read_text().splitlines())==3 and 'Item05' in screen.display[screen.cursor.y])
             self.assertEqual((root/'actions').read_text().splitlines(),[f'https://example.org/{i}' for i in (2,3,4)])
             for title in ('Item02','Item03','Item04'):self.assertNotIn(title,'\n'.join(screen.display))
-            send('U');wait(lambda:'Undid bulk action (3 rows)' in '\n'.join(screen.display) and all(title in '\n'.join(screen.display) for title in ('Item02','Item03','Item04')))
+            send('U');wait(lambda:'Restored 3 downloads' in '\n'.join(screen.display) and all(title in '\n'.join(screen.display) for title in ('Item02','Item03','Item04')))
             self.assertEqual((root/'removed').read_text(),'')
 
     def test_search_results_select_and_bulk_apply(self):

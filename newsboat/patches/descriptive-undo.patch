@@ -1,0 +1,103 @@
+--- a/include/view.h
++++ b/include/view.h
+@@ -46,7 +46,7 @@
+     void end_undo_group() { undo_group.clear(); }
+     void sync_undoable_read(std::shared_ptr<RssItem> item, bool read);
+     struct UndoState {
+-        std::string token, guid, url;
++        std::string token, guid, url, title;
+         bool unread = false, deleted = false, has_star = false, star = false, target_star = false;
+         // Collection kind: 0 none, 1 Commentary, 2 Favorites (journal-compatible).
+         int has_commentary = 0;
+--- a/src/view.cpp
++++ b/src/view.cpp
+@@ -1154,11 +1154,15 @@
+ {
+     std::vector<View::UndoState> states;
+     std::ifstream input(path);
+-    View::UndoState state;
+-    while (input >> std::quoted(state.token) >> std::quoted(state.guid)
+-        >> std::quoted(state.url) >> state.unread >> state.deleted
+-        >> state.has_star >> state.star >> state.target_star
+-        >> state.has_commentary >> state.commentary) {
++    std::string line;
++    while (std::getline(input, line)) {
++        std::istringstream row(line);
++        View::UndoState state;
++        if (!(row >> std::quoted(state.token) >> std::quoted(state.guid)
++            >> std::quoted(state.url) >> state.unread >> state.deleted
++            >> state.has_star >> state.star >> state.target_star
++            >> state.has_commentary >> state.commentary)) { continue; }
++        row >> std::quoted(state.title); // Optional for older journal entries.
+         states.push_back(state);
+     }
+     return states;
+@@ -1173,7 +1177,7 @@
+         output << std::quoted(state.token) << ' ' << std::quoted(state.guid) << ' '
+             << std::quoted(state.url) << ' ' << state.unread << ' ' << state.deleted << ' '
+             << state.has_star << ' ' << state.star << ' ' << state.target_star << ' '
+-            << state.has_commentary << ' ' << state.commentary << '\n';
++            << state.has_commentary << ' ' << state.commentary << ' ' << std::quoted(state.title) << '\n';
+     }
+     output.close(); std::rename(temporary.c_str(), path);
+ }
+@@ -1187,6 +1191,8 @@
+         std::chrono::steady_clock::now().time_since_epoch().count());
+     if (!undo_group.empty()) { state.token = undo_group + "|" + state.token; }
+     state.guid = item->guid(); state.url = item->link();
++    state.title = item->title();
++    for (auto& c : state.title) { if (static_cast<unsigned char>(c) < 32 || c == 127) { c = ' '; } }
+     state.unread = item->unread(); state.deleted = item->deleted();
+     state.item = item; state.feed = feed;
+     for (size_t i = 0; i < feed->items().size(); ++i) {
+@@ -1258,6 +1264,7 @@
+     const char* journal = std::getenv("NEWSBOAT_UNDO_FILE");
+     auto states = journal ? read_undo_history(journal) : undo_history;
+     if (states.empty()) { status_line.show_message("Nothing to undo"); return; }
++    const auto summary = states.back();
+     const auto group = undo_group_id(states.back().token);
+     const bool bulk = states.back().token.find('|') != std::string::npos;
+     size_t count = 0;
+@@ -1266,7 +1273,15 @@
+         ++count;
+         states = journal ? read_undo_history(journal) : undo_history;
+     } while (bulk && !states.empty() && undo_group_id(states.back().token) == group);
+-    if (bulk) { status_line.show_message(strprintf::fmt("Undid bulk action (%u rows)", static_cast<unsigned int>(count))); }
++    if (bulk && count > 1) {
++        const auto number = std::to_string(count);
++        const std::string action = summary.has_commentary == 3 ? "Restored " + number + " downloads" :
++            summary.has_commentary == 2 ? "Favorites change undone: " + number + " items" :
++            summary.has_commentary == 1 ? "Commentary change undone: " + number + " items" :
++            summary.has_star ? std::string(summary.target_star ? "Star undone: " : "Unstar undone: ") + number + " items" :
++            "Read status restored: " + number + " items";
++        status_line.show_message(action);
++    }
+ }
+ 
+ bool View::undo_single_action()
+@@ -1346,7 +1361,24 @@
+     if (state.has_star) { star_intents[state.url] = state.star; }
+     undo_history.erase(std::remove_if(undo_history.begin(), undo_history.end(),
+         [&](const auto& item) { return item.token == state.token; }), undo_history.end());
+-    status_line.show_message(state.has_commentary == 2 ? "Undid last Favorites change" : state.has_commentary ? "Undid last Commentary change" : "Undid last read/star change");
++    auto title = state.title;
++    if (title.empty() && state.item) { title = state.item->title(); }
++    if (title.empty()) {
++        for (const auto& feed : ctrl.get_feedcontainer()->get_all_feeds()) {
++            for (const auto& item : feed->items()) {
++                if (item->guid() == state.guid || item->link() == state.url) { title = item->title(); break; }
++            }
++            if (!title.empty()) { break; }
++        }
++    }
++    if (title.empty()) { title = state.url; }
++    for (auto& c : title) { if (static_cast<unsigned char>(c) < 32 || c == 127) { c = ' '; } }
++    const std::string action = state.has_commentary == 3 ? "Restored download" :
++        state.has_commentary == 2 ? (state.commentary ? "Restored to Favorites" : "Removed from Favorites") :
++        state.has_commentary == 1 ? (state.commentary ? "Restored to Commentary" : "Removed from Commentary") :
++        state.has_star ? (state.target_star ? "Star undone" : "Unstar undone") :
++        state.unread ? "Marked unread" : "Marked read";
++    status_line.show_message(action + ": " + title);
+     return true;
+ }
+ 
