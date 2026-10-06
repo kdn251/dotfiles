@@ -24,10 +24,16 @@ class ResumeTests(unittest.TestCase):
             self.assertEqual(resume.playlist_row(ROWS),ROWS[0])
             self.assertIsNone(resume.playlist_row([]))
 
-    def test_queue_keeps_current_for_resume_then_advances_after_completion(self):
+    def test_queue_starts_first_row_then_advances_after_completion(self):
         with tempfile.TemporaryDirectory() as folder,patch.dict(os.environ,XDG_STATE_HOME=folder,NEWSBOAT_URLS_FILE=folder+'/absent'),patch.object(media,'STATE',Path(folder)/'downloads'),patch.object(queue,'metadata',side_effect=lambda url:dict(url=url,title=url,source='Creator')),patch.object(resume,'launch',return_value=0) as launch,patch.object(resume,'progress',return_value={}) as progress:
             queue.change('add',ROWS[0]['url']);queue.change('add',ROWS[1]['url'])
             queue.resume();self.assertEqual(launch.call_args.args[0]['url'],ROWS[0]['url'])
+            # A more recently played later row must not override queue order.
+            queue.change('started',ROWS[1]['url'],queue.entries()[1]['queue_token'])
+            queue.resume();self.assertEqual(launch.call_args.args[0]['url'],ROWS[0]['url'])
+            queue.change('move-before',ROWS[1]['url'],ROWS[0]['url'])
+            queue.resume();self.assertEqual(launch.call_args.args[0]['url'],ROWS[1]['url'])
+            queue.change('move-before',ROWS[0]['url'],ROWS[1]['url'])
             token=queue.entries()[0]['queue_token'];queue.change('started',ROWS[0]['url'],token)
             self.assertEqual(len(queue.entries()),2)
             queue.resume();self.assertEqual(launch.call_args.args[0]['url'],ROWS[0]['url'])

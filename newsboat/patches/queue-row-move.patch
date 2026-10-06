@@ -1,0 +1,62 @@
+--- a/include/itemlistformaction.h
++++ b/include/itemlistformaction.h
+@@ -33,6 +33,7 @@
+     std::optional<bool> run_visual_commands(const std::vector<MacroCmd>& commands, BindingType type);
+ 	void prepare() override;
+     std::string old_pin_version;
++    std::string queue_yank_guid;
+     std::string thumbnail_request();
+     std::string title_hover_request();
+     std::string playlist_avatar_request();
+--- a/src/itemlistformaction.cpp
++++ b/src/itemlistformaction.cpp
+@@ -244,6 +244,11 @@
+     const std::vector<MacroCmd>& commands, BindingType type)
+ {
+     if (!visual_active || commands.empty()) { return std::nullopt; }
++    for (const auto& cmd : commands) {
++        if (cmd.op == OP_UNDO_CHECKPOINT && !cmd.args.empty() && cmd.args[0].find("queue-") == 0) {
++            cancel_visual(); return std::nullopt;
++        }
++    }
+     bool deleting_downloads = false;
+     bool bulk = false, read_action = false, opens_browser = false;
+     for (const auto& cmd : commands) {
+@@ -566,6 +571,37 @@
+ 	}
+ 	break;
+     case OP_UNDO_CHECKPOINT:
++        if (!args.empty() && args[0].find("queue-") == 0) {
++            if (!std::getenv("NEWSBOAT_QUEUE_VIEW") || visible_items.empty()) { break; }
++            if (args[0] == "queue-yank") {
++                queue_yank_guid = visible_items[itempos].first->guid();
++                v.get_statusline().show_message("Queue row picked up — p: move below, P: move above");
++                break;
++            }
++            if (args[0] != "queue-before" && args[0] != "queue-after") { break; }
++            const auto source = std::find_if(feed->items().begin(), feed->items().end(),
++                [&](const auto& item) { return item->guid() == queue_yank_guid; });
++            download_revision();
++            if (queue_yank_guid.empty() || source == feed->items().end() || !queue_urls.count((*source)->link())) {
++                v.get_statusline().show_error("Pick up a Queue row with yy first"); break;
++            }
++            const auto destination = visible_items[itempos].first;
++            if ((*source)->guid() == destination->guid()) {
++                v.get_statusline().show_message("Queue row is already here"); break;
++            }
++            v.remember_action(*source, feed, std::nullopt, 5);
++            const auto browser = cfg->get_configvalue("browser");
++            const auto action = args[0] == "queue-before" ? "move-before" : "move-after";
++            cfg->set_configvalue("browser", "python3 ~/scripts/newsboat_queue.py " + std::string(action) +
++                " %u " + utils::quote(destination->link()));
++            const auto result = v.open_in_browser((*source)->link(), "", "", "", false);
++            cfg->set_configvalue("browser", browser);
++            if (!result || *result != 0) { v.get_statusline().show_error("Could not move Queue row"); break; }
++            restore_selection_guid = (*source)->guid();
++            invalidate_list();
++            v.get_statusline().show_message("Queue row moved — U to undo");
++            break;
++        }
+         if (!visible_items.empty() && !args.empty() && args[0] == "download") {
+             v.remember_action(visible_items[itempos].first, feed, std::nullopt, 3);
+             setenv("NEWSBOAT_DOWNLOAD_UNDO_TOKEN", v.undo_history.back().token.c_str(), 1);

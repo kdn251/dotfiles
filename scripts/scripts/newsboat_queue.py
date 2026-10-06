@@ -1,4 +1,4 @@
-"""Persistent FIFO viewing queue, independent of download and feed lifetimes."""
+"""Persistent ordered viewing queue, independent of download and feed lifetimes."""
 from contextlib import closing
 from email.utils import formatdate
 import fcntl
@@ -153,6 +153,23 @@ def change(action,url='',token=''):
                     if identity(current['url'])==ident and (action=='remove' or current['queue_token']==token):
                         (root/'queue-current.json').unlink(missing_ok=True)
                 except (OSError,ValueError):pass
+        elif action in ('move-before','move-after'):
+            source=next((row for row in rows if identity(row['url'])==ident),None)
+            target=next((row for row in rows if identity(row['url'])==identity(token)),None)
+            if source is None or target is None:raise ValueError('Selected video is no longer in Queue')
+            if source==target:return
+            if os.environ.get('NEWSBOAT_QUEUE_UNDO_TOKEN'):
+                checkpoint(rows,url,os.environ['NEWSBOAT_QUEUE_UNDO_TOKEN'])
+            history=read_state('queue-navigation.json',[])
+            seen={row['queue_token'] for row in history}
+            history += [row for row in rows if row['queue_token'] not in seen]
+            def move(items):
+                items=[row for row in items if row['queue_token']!=source['queue_token']]
+                at=next(i for i,row in enumerate(items) if row['queue_token']==target['queue_token'])
+                items.insert(at+(action=='move-after'),source)
+                return items
+            rows=move(rows)
+            media.atomic_write(root/'queue-navigation.json',json.dumps(move(history),ensure_ascii=False))
         elif action=='restore':
             rows=restore(rows,url,token)
         elif action=='refresh':
@@ -174,7 +191,7 @@ def prepare_view(directory):
     history=importlib.util.module_from_spec(spec);spec.loader.exec_module(history)
     command,config=history.prepare_view(directory)
     rss=ET.Element('rss',version='2.0');channel=ET.SubElement(rss,'channel')
-    for name,value in [('title',TITLE),('link','newsboat-queue://home'),('description','Play order; ,W removes an entry.')]:
+    for name,value in [('title',TITLE),('link','newsboat-queue://home'),('description','yy picks up a row; p moves below, P above; U undoes; ,W removes an entry.')]:
         ET.SubElement(channel,name).text=value
     from newsboat_sources import source_label
     for i,row in enumerate(entries()):
@@ -185,7 +202,10 @@ def prepare_view(directory):
     ET.ElementTree(rss).write(Path(directory)/'history.xml',encoding='utf-8',xml_declaration=True)
     lines=[line for line in config.read_text().splitlines() if not line.startswith(('macro C ','article-sort-order ','articlelist-format '))]
     lines += ['article-sort-order date-asc','articlelist-format "%4i  %4w  %-9p %-20a │ %t"',
-              'articlelist-title-format " '+TITLE+'"']
+              'articlelist-title-format " '+TITLE+'"',
+              'bind yy articlelist,searchresultslist undo-checkpoint queue-yank -- "Pick up Queue row; p moves below, P above"',
+              'bind p articlelist,searchresultslist undo-checkpoint queue-after -- "Move picked-up Queue row below this row"',
+              'bind P articlelist,searchresultslist undo-checkpoint queue-before -- "Move picked-up Queue row above this row"']
     config.write_text('\n'.join(lines)+'\n')
     return command,config
 
@@ -231,11 +251,8 @@ def navigation(current):
 def resume():
     from newsboat_resume import launch
     os.environ['NEWSBOAT_QUEUE_PLAYBACK']='1'
-    try:current=json.loads((state()/'queue-current.json').read_text())
-    except (OSError,ValueError):current=None
+    # Homepage playback follows the current queue order; mpv restores position.
     rows=entries()
-    if current and any(row['queue_token']==current['queue_token'] for row in rows):
-        return launch(current)
     return launch(rows[0] if rows else None)
 
 
