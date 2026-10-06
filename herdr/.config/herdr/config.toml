@@ -7,6 +7,7 @@ new_cwd = "follow"
 prefix = "ctrl+s"
 reload_config = "prefix+r"
 detach = "prefix+d"
+toggle_sidebar = ["prefix+=", "prefix+b"]
 
 # tmux windows correspond to Herdr tabs.
 new_tab = "prefix+c"
