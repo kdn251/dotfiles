@@ -1,0 +1,68 @@
+--- a/include/formaction.h
++++ b/include/formaction.h
+@@ -176,6 +176,9 @@
+ 	void handle_dumpconfig(const std::vector<std::string>& args);
+ 	void handle_exec(const std::vector<std::string>& args);
+ 
++	std::string base_title;
++	bool base_title_set = false;
++	void update_queue_header();
+ 	LineView head_line;
+ 	LineView msg_line;
+ 	LineView qna_prompt_line;
+--- a/src/formaction.cpp
++++ b/src/formaction.cpp
+@@ -127,11 +127,13 @@
+ 
+ void FormAction::draw_form()
+ {
++    update_queue_header();
+ 	f.run(-1);
+ }
+ 
+ std::string FormAction::draw_form_wait_for_event(unsigned int timeout)
+ {
++    update_queue_header();
+ 	return f.run(timeout);
+ }
+ 
+@@ -755,7 +757,38 @@
+ 
+ void FormAction::set_title(const std::string& title)
+ {
+-	head_line.set_text(title);
++    base_title = title;
++    base_title_set = true;
++    update_queue_header();
++}
++
++void FormAction::update_queue_header()
++{
++    if (!base_title_set) { base_title = head_line.get_text(); base_title_set = true; }
++    const auto path = std::getenv("NEWSBOAT_QUEUE_HEADER");
++    std::string title, creator, progress;
++    if (path) {
++        std::ifstream input(path);
++        std::getline(input, title, '\t');
++        std::getline(input, creator, '\t');
++        std::getline(input, progress);
++    }
++    const auto width = utils::to_u(f.get("title:w"));
++    const auto heart = utils::to_u(f.get("favorite-heart:w"));
++    const auto available = width > heart ? width - heart : 0;
++    if (title.empty() || available < 60) { head_line.set_text(base_title); return; }
++    const auto budget = available - std::min(24u, available / 3) - 2;
++    const auto suffix = " " + progress;
++    const auto suffix_width = utils::strwidth(suffix);
++    std::string right;
++    if (budget > suffix_width + 12) {
++        auto room = budget - suffix_width - 3;
++        auto author = utils::substr_with_width(creator, std::min<size_t>(20, room / 3));
++        auto name = utils::substr_with_width(title, room - utils::strwidth(author));
++        right = name + " · " + author + suffix;
++    } else { right = utils::substr_with_width(progress, budget); }
++    auto left = utils::substr_with_width(base_title, available - utils::strwidth(right) - 2);
++    head_line.set_text(left + std::string(available - utils::strwidth(left) - utils::strwidth(right) - 1, ' ') + right + " ");
+ }
+ 
+ void FormAction::start_bookmark_qna(const std::string& default_title,

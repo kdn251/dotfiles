@@ -164,7 +164,7 @@ class QueueTests(unittest.TestCase):
                 (st/'feed-titles.json').write_text('{}')
                 self.assertEqual(queue.metadata(URLS[0])['source'],'Fallback author')
 
-    def test_queue_navigation_follows_order_and_retains_completed_previous(self):
+    def test_queue_navigation_follows_visible_order_and_skips_completed(self):
         with isolated() as (root,_):
             for url in URLS:queue.change('add',url)
             middle=autoplay.plan(URLS[1])
@@ -173,13 +173,28 @@ class QueueTests(unittest.TestCase):
             self.assertEqual(middle['queue_next']['url'],URLS[2])
             self.assertEqual(middle['previous']['url'],URLS[0])
             queue.change('finished',URLS[0],queue.entries()[0]['queue_token'])
-            self.assertEqual(autoplay.plan(URLS[1])['previous']['url'],URLS[0])
+            self.assertIsNone(autoplay.plan(URLS[1])['previous'])
             queue.change('remove',URLS[2])
             self.assertEqual(autoplay.plan(URLS[1])['queue_next']['url'],URLS[3])
             self.assertIsNone(autoplay.plan(URLS[3])['queue_next'],'manual next never wraps to earlier queued videos')
             with patch.dict(os.environ,NEWSBOAT_QUEUE_PLAYBACK='1'):
                 self.assertIsNone(autoplay.plan(URLS[0])['previous'])
                 self.assertEqual(autoplay.plan(URLS[0])['queue_next']['url'],URLS[1])
+
+    def test_manual_next_skips_completed_history_not_visible_in_queue(self):
+        with isolated():
+            for url in URLS:queue.change('add',url)
+            autoplay.plan(URLS[0])  # Record playback navigation history.
+            completed = queue.entries()[1]
+            queue.change('finished',URLS[1],completed['queue_token'])
+            self.assertEqual(autoplay.plan(URLS[0])['queue_next']['url'],URLS[2])
+            self.assertEqual(autoplay.plan(URLS[2])['previous']['url'],URLS[0])
+            queue.change('move-before',URLS[3],URLS[2])
+            self.assertEqual(autoplay.plan(URLS[0])['queue_next']['url'],URLS[3])
+            self.assertEqual(autoplay.plan(URLS[3])['previous']['url'],URLS[0])
+            self.assertEqual(autoplay.plan(URLS[2])['previous']['url'],URLS[3])
+            self.assertIsNone(autoplay.plan(URLS[0])['previous'])
+            self.assertIsNone(autoplay.plan(URLS[2])['queue_next'])
 
     def test_mpv_arrow_keys_use_queue_neighbors_even_with_autoplay_off(self):
         import subprocess

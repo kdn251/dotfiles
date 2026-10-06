@@ -259,9 +259,16 @@ def navigation(current):
             return first,None,first
         live={row['queue_token'] for row in rows}
         following=next((row for row in history[index+1:] if row['queue_token'] in live),None)
-        previous=history[index-1] if index else None
-        following_manual=history[index+1] if index+1<len(history) else None
-        return following,previous,following_manual
+        previous=next((row for row in reversed(history[:index]) if row['queue_token'] in live),None)
+        # Both manual directions follow the visible Queue. History only helps
+        # locate live neighbors if the currently playing row was removed.
+        live_index=next((i for i,row in enumerate(rows) if identity(row['url'])==identity(current)),None)
+        if live_index is not None:
+            previous=rows[live_index-1] if live_index else None
+            following_manual=rows[live_index+1] if live_index+1<len(rows) else None
+        else:
+            following_manual=following or (rows[0] if rows else None)
+        return following_manual,previous,following_manual
 
 
 def resume():

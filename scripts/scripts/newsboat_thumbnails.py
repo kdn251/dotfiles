@@ -309,6 +309,10 @@ def run(command, env):
     opacity = background_opacity(env)
     previous_opacity = env.get('NEWSBOAT_PREVIEW_OPACITY')
     child_env['NEWSBOAT_PREVIEW_OPACITY'] = str(opacity)
+    from newsboat_queue_panel import Header
+    queue_header = Header()
+    queue_header.update()
+    child_env['NEWSBOAT_QUEUE_HEADER'] = str(queue_header.path)
     pid, master = pty.fork()
     if pid == 0:
         fcntl.ioctl(0, termios.TIOCSWINSZ, size)
@@ -437,6 +441,7 @@ def run(command, env):
                     write(1, transmit(image_id, display_png))
                     last_placeholder = placeholder
                     repaint = True
+            queue_header.update()
             if repaint and current and display_png:
                 write(1, placement(image_id, current, size, display_png, loading=not bool(png)))
             write(1, avatars.render(size, repaint))
