@@ -11,6 +11,7 @@ toggle_sidebar = ["prefix+=", "prefix+b"]
 
 # tmux windows correspond to Herdr tabs.
 new_tab = "prefix+c"
+new_workspace = ["prefix+shift+c", "prefix+shift+n"]
 rename_tab = "prefix+comma"
 previous_tab = "prefix+p"
 next_tab = "prefix+n"
