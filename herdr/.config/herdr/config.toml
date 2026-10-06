@@ -23,10 +23,11 @@ resize_pane_left = "prefix+h"
 resize_pane_down = "prefix+j"
 resize_pane_up = "prefix+k"
 resize_pane_right = "prefix+l"
-focus_pane_left = "prefix+left"
-focus_pane_down = "prefix+down"
-focus_pane_up = "prefix+up"
-focus_pane_right = "prefix+right"
+# Prefix-free navigation, including when Herdr runs inside tmux.
+focus_pane_left = ["prefix+left", "ctrl+h"]
+focus_pane_down = ["prefix+down", "ctrl+j"]
+focus_pane_up = ["prefix+up", "ctrl+k"]
+focus_pane_right = ["prefix+right", "ctrl+l"]
 resize_mode = "prefix+shift+r"
 
 [ui]
