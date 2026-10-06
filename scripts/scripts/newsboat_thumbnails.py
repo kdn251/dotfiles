@@ -207,7 +207,7 @@ class Fetcher:
 
 
 @lru_cache(maxsize=97)
-def loading_png(frame, failed=False, caption=None, traveling=False):
+def loading_png(frame, failed=False, caption=None, traveling=True):
     """Render the refresh ship inside the existing image placement, not curses."""
     from PIL import Image, ImageDraw, ImageFont
     caption = caption or ('Thumbnail unavailable' if failed else 'Loading thumbnail…')
@@ -430,7 +430,7 @@ def run(command, env):
             display_png = png
             if current and not png and time.monotonic() >= loader_due:
                 failed = current[4] in images
-                frame = 0 if failed else int(time.monotonic() * 10) % 96
+                frame = 0 if failed else int((time.monotonic() - loader_due) / .08)
                 placeholder = (frame, failed)
                 display_png = loading_png(*placeholder)
                 if placeholder != last_placeholder:

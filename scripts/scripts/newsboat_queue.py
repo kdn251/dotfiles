@@ -2,6 +2,7 @@
 from contextlib import closing
 from email.utils import formatdate
 import fcntl
+import hashlib
 import importlib.util
 import json
 import os
@@ -73,11 +74,58 @@ def publish(rows):
         if text!=original:media.atomic_write(urls,text)
 
 
+def read_state(name, default=None):
+    try:return json.loads((state()/name).read_text())
+    except (OSError,ValueError):return default
+
+
+def undo_path(token):
+    return state()/'queue-undo'/(hashlib.sha256(token.encode()).hexdigest()+'.json')
+
+
+def checkpoint(rows, url, token):
+    """Called under the queue lock, immediately before the requested change."""
+    index=next((i for i,row in enumerate(rows) if identity(row['url'])==identity(url)),None)
+    navigation=read_state('queue-navigation.json',[])
+    nav_index=next((i for i,row in enumerate(navigation) if identity(row['url'])==identity(url)),None)
+    snapshot=dict(url=url,index=index,row=rows[index] if index is not None else None,
+                  nav_index=nav_index,nav_row=navigation[nav_index] if nav_index is not None else None,
+                  current=read_state('queue-current.json'))
+    path=undo_path(token);path.parent.mkdir(parents=True,exist_ok=True)
+    media.atomic_write(path,json.dumps(snapshot,ensure_ascii=False))
+
+
+def restore(rows,url,token):
+    snapshot=json.loads(undo_path(token).read_text())
+    if identity(snapshot['url'])!=identity(url):raise ValueError('Queue undo URL mismatch')
+    ident=identity(url)
+    rows=[row for row in rows if identity(row['url'])!=ident]
+    if snapshot['row'] is not None:
+        rows.insert(min(snapshot['index'],len(rows)),snapshot['row'])
+    navigation=[row for row in read_state('queue-navigation.json',[]) if identity(row['url'])!=ident]
+    if snapshot['nav_row'] is not None:
+        navigation.insert(min(snapshot['nav_index'],len(navigation)),snapshot['nav_row'])
+    elif snapshot['row'] is not None:
+        # Preserve restored FIFO placement even if navigation started later.
+        navigation.insert(min(snapshot['index'],len(navigation)),snapshot['row'])
+    media.atomic_write(state()/'queue-navigation.json',json.dumps(navigation,ensure_ascii=False))
+    saved=snapshot['current'];current=read_state('queue-current.json')
+    if saved and identity(saved['url'])==ident and snapshot['row'] is not None:
+        # Do not replace a different video that started playing since the action.
+        if not current or identity(current['url'])==ident:
+            media.atomic_write(state()/'queue-current.json',json.dumps(saved,ensure_ascii=False))
+    elif current and identity(current['url'])==ident and snapshot['row'] is None:
+        (state()/'queue-current.json').unlink(missing_ok=True)
+    return rows
+
+
 def change(action,url='',token=''):
     root=state();root.mkdir(parents=True,exist_ok=True)
     with (root/'viewing-queue.lock').open('a') as lock:
         fcntl.flock(lock,fcntl.LOCK_EX)
         rows=entries();ident=identity(url)
+        if action in ('add','remove') and os.environ.get('NEWSBOAT_QUEUE_UNDO_TOKEN'):
+            checkpoint(rows,url,os.environ['NEWSBOAT_QUEUE_UNDO_TOKEN'])
         if action=='add' and not rows:
             (root/'queue-navigation.json').unlink(missing_ok=True)
         if action=='add':
@@ -103,6 +151,8 @@ def change(action,url='',token=''):
                     if identity(current['url'])==ident and (action=='remove' or current['queue_token']==token):
                         (root/'queue-current.json').unlink(missing_ok=True)
                 except (OSError,ValueError):pass
+        elif action=='restore':
+            rows=restore(rows,url,token)
         elif action=='refresh':
             for row in rows:
                 if not row.get('source'):

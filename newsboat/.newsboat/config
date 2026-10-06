@@ -185,5 +185,6 @@ macro p undo-checkpoint pin ; set browser "python3 ~/scripts/newsboat-pins.py sa
 macro P undo-checkpoint pin ; set browser "python3 ~/scripts/newsboat-pins.py remove %u" ; open-in-browser-noninteractively ; set browser "~/scripts/newsboat-brave-app.sh %u" -- "Unpin item"
 
 # FIFO viewing queue takes priority over normal autoplay suggestions.
-macro w set browser "python3 ~/scripts/newsboat_queue.py add %u" ; open-in-browser-noninteractively ; set browser "~/scripts/newsboat-brave-app.sh %u" -- "Add video to viewing Queue"
-macro W set browser "python3 ~/scripts/newsboat_queue.py remove %u" ; open-in-browser-noninteractively ; set browser "~/scripts/newsboat-brave-app.sh %u" -- "Remove video from Queue"
+bind w everywhere set browser "newsboat-queue://show" -- "Open viewing Queue (q to return)"
+macro w undo-checkpoint queue ; set browser "python3 ~/scripts/newsboat_queue.py add %u" ; open-in-browser-noninteractively ; set browser "~/scripts/newsboat-brave-app.sh %u" -- "Add video to viewing Queue"
+macro W undo-checkpoint queue ; set browser "python3 ~/scripts/newsboat_queue.py remove %u" ; open-in-browser-noninteractively ; set browser "~/scripts/newsboat-brave-app.sh %u" -- "Remove video from Queue"

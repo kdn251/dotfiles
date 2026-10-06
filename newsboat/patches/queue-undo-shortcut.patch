@@ -1,0 +1,86 @@
+--- a/src/view.cpp
++++ b/src/view.cpp
+@@ -1242,6 +1242,9 @@
+             }
+         }
+     }
++    if (commentary_action == 5) {
++        setenv("NEWSBOAT_QUEUE_UNDO_TOKEN", state.token.c_str(), 1);
++    }
+     undo_history.push_back(state);
+     trim_undo_history(undo_history);
+     if (const char* path = std::getenv("NEWSBOAT_UNDO_FILE")) {
+@@ -1289,7 +1292,7 @@
+     } while (bulk && !states.empty() && undo_group_id(states.back().token) == group);
+     if (bulk && count > 1) {
+         const auto number = std::to_string(count);
+-        const std::string action = summary.has_commentary == 4 ? "Pin change undone: " + number + " items" : summary.has_commentary == 3 ? "Restored " + number + " downloads" :
++        const std::string action = summary.has_commentary == 5 ? "Queue change undone: " + number + " items" : summary.has_commentary == 4 ? "Pin change undone: " + number + " items" : summary.has_commentary == 3 ? "Restored " + number + " downloads" :
+             summary.has_commentary == 2 ? "Favorites change undone: " + number + " items" :
+             summary.has_commentary == 1 ? "Commentary change undone: " + number + " items" :
+             summary.has_star ? std::string(summary.target_star ? "Star undone: " : "Unstar undone: ") + number + " items" :
+@@ -1309,7 +1312,13 @@
+     const auto local = std::find_if(undo_history.begin(), undo_history.end(),
+         [&](const auto& item) { return item.token == state.token; });
+     if (local != undo_history.end()) { state = *local; }
+-    if (state.has_commentary == 4) {
++    if (state.has_commentary == 5) {
++        const auto browser = cfg->get_configvalue("browser");
++        cfg->set_configvalue("browser", "python3 ~/scripts/newsboat_queue.py restore %u " + utils::quote(state.token));
++        const auto result = open_in_browser(state.url, "", "", "", false);
++        cfg->set_configvalue("browser", browser);
++        if (!result || *result != 0) { status_line.show_error("Could not undo queue change"); return false; }
++    } else if (state.has_commentary == 4) {
+         const char* helper = std::getenv("NEWSBOAT_PINS_HELPER");
+         if (!helper) { status_line.show_error("Restart Newsboat to undo pin changes"); return false; }
+         const auto browser = cfg->get_configvalue("browser");
+@@ -1395,7 +1404,7 @@
+     }
+     if (title.empty()) { title = state.url; }
+     for (auto& c : title) { if (static_cast<unsigned char>(c) < 32 || c == 127) { c = ' '; } }
+-    const std::string action = state.has_commentary == 4 ? (state.pin_order ? "Pin restored" : "Pin removed") : state.has_commentary == 3 ? "Restored download" :
++    const std::string action = state.has_commentary == 5 ? "Queue change undone" : state.has_commentary == 4 ? (state.pin_order ? "Pin restored" : "Pin removed") : state.has_commentary == 3 ? "Restored download" :
+         state.has_commentary == 2 ? (state.commentary ? "Restored to Favorites" : "Removed from Favorites") :
+         state.has_commentary == 1 ? (state.commentary ? "Restored to Commentary" : "Removed from Commentary") :
+         state.has_star ? (state.target_star ? "Star undone" : "Unstar undone") :
+--- a/src/itemlistformaction.cpp
++++ b/src/itemlistformaction.cpp
+@@ -572,7 +572,7 @@
+             break;
+         }
+         if (!visible_items.empty()) {
+-            const int commentary = args.empty() ? 0 : args[0] == "pin" ? 4 : args[0] == "favorites" ? 2 : args[0] == "commentary" ? 1 : 0;
++            const int commentary = args.empty() ? 0 : args[0] == "queue" ? 5 : args[0] == "pin" ? 4 : args[0] == "favorites" ? 2 : args[0] == "commentary" ? 1 : 0;
+             v.remember_action(visible_items[itempos].first, feed,
+                 commentary ? std::nullopt : std::optional<bool>(!args.empty() && args[0] == "star"), commentary);
+         }
+--- a/src/itemviewformaction.cpp
++++ b/src/itemviewformaction.cpp
+@@ -432,7 +432,7 @@
+     case OP_UNDO_CHECKPOINT:
+         v.remember_action(item, feed,
+             !args.empty() && (args[0] == "commentary" || args[0] == "favorites" || args[0] == "pin") ? std::nullopt : std::optional<bool>(!args.empty() && args[0] == "star"),
+-            args.empty() ? 0 : args[0] == "pin" ? 4 : args[0] == "favorites" ? 2 : args[0] == "commentary" ? 1 : 0);
++            args.empty() ? 0 : args[0] == "queue" ? 5 : args[0] == "pin" ? 4 : args[0] == "favorites" ? 2 : args[0] == "commentary" ? 1 : 0);
+         break;
+ 	case OP_TOGGLEITEMREAD: {
+         if (!(args.size() > 1 && args[1] == "group")) {
+--- a/src/formaction.cpp
++++ b/src/formaction.cpp
+@@ -200,6 +200,16 @@
+ 			if (args.size() == 2) {
+ 				const std::string key = args.at(0);
+ 				const std::string value = args.at(1);
++                if (key == "browser" && value == "newsboat-queue://show") {
++                    if (!std::getenv("NEWSBOAT_QUEUE_VIEW")) {
++                        const auto previous = cfg->get_configvalue("browser");
++                        cfg->set_configvalue("browser", "python3 ~/scripts/newsboat_queue.py show");
++                        v.open_in_browser("", "", "", "", true);
++                        cfg->set_configvalue("browser", previous);
++                        set_redraw(true);
++                    }
++                    return true;
++                }
+                 if (key == "browser" && value == "newsboat-history://show") {
+                     {
+                         const auto previous = cfg->get_configvalue("browser");

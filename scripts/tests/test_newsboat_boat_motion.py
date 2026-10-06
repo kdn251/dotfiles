@@ -6,6 +6,10 @@ from newsboat_loading import ship_art
 from newsboat_thumbnails import loading_png
 
 class BoatMotionTests(unittest.TestCase):
+    def test_thumbnail_uses_the_same_traveling_ship(self):
+        for frame in (0,8,96,106,150,239):
+            self.assertEqual(loading_png(frame),loading_png(frame,traveling=True))
+
     def test_text_ship_stays_level(self):
         for frame in range(250):
             rows=ship_art(frame,34,traveling=True)
