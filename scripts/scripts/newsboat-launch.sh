@@ -35,7 +35,8 @@ WAVES='~^~~-~~^-~~~^~-~~^~~-~^~~~-~^~~-~~^~-~~~^~-~~^~~-~^~~~-~^~~-~~^~-~~^~~-~^
 WAVELEN=${#WAVES}
 SEA="${WAVES}${WAVES}"
 
-BOAT_W=32
+BOAT_W=27
+BOAT_START=2
 BOAT_H=11
 
 # Four smoke rows sit above a rigid, two-funnel steamship.
@@ -70,11 +71,11 @@ smoke_rows() {
   done
 }
 
-# Bob the boat independently of the fixed waterline and caption.
+# Move the rigid ship rightward while keeping the waterline and caption fixed.
 draw() {
   local frame=$1 label=${2:-setting sail}
-  local cols rows sea_w sea_left top i x wake wake_len heave phase
-  local left visible surface caption_left color
+  local cols rows sea_w sea_left top i x wake wake_len
+  local left visible surface caption_left color clip_start clip_width draw_left line
   smoke_rows "$frame"
 
   cols=${3:-$(tput cols 2>/dev/null || echo 80)}
@@ -84,27 +85,28 @@ draw() {
   [ "$sea_w" -lt 32 ] && sea_w=32
   sea_left=$(((cols - sea_w) / 2))
 
-  # Anchor the hull at the midpoint throughout the animation.
-  x=$(((sea_w - BOAT_W) / 2))
-  # Start just above the water, then lift the whole boat only one row.
-  phase=$((frame % 32))
-  heave=0
-  if [ "$phase" -ge 6 ] && [ "$phase" -lt 22 ]; then heave=1; fi
+  # Clip to the sea's edges and wrap as soon as the last visible column exits.
+  # Exclude the ASCII padding so there is no invisible tail or entry delay.
+  x=$(( ((sea_w - BOAT_W) / 2 + BOAT_W - 1 + frame / 4) % (sea_w + BOAT_W - 1) - BOAT_W + 1 ))
+  draw_left=$x
+  [ "$draw_left" -lt 0 ] && draw_left=0
+  clip_start=0
+  [ "$x" -lt 0 ] && clip_start=$((-x))
+  clip_width=$((sea_w - draw_left))
+  [ "$clip_width" -gt "$((BOAT_W - clip_start))" ] && clip_width=$((BOAT_W - clip_start))
 
   top=$(((rows - 18) / 2))
   [ "$top" -lt 1 ] && top=1
 
   printf '\e[2J\e[H'
-  for ((i = 0; i < top + 2 - heave; i++)); do printf '\n'; done
+  for ((i = 0; i < top + 2; i++)); do printf '\n'; done
   for ((i = 0; i < BOAT_H; i++)); do
     color=$WHITE
     [ "$i" -lt 4 ] && color=$DIM
     { [ "$i" -eq 4 ] || [ "$i" -eq 5 ] || [ "$i" -ge 9 ]; } && color=$RED
-    printf '%*s%s%s%s\n' "$((sea_left + x))" '' "$color" "${BOAT_ROWS[i]}" "$RESET"
+    line=${BOAT_ROWS[i]:BOAT_START:BOAT_W}
+    printf '%*s%s%s%s\n' "$((sea_left + draw_left))" '' "$color" "${line:clip_start:clip_width}" "$RESET"
   done
-
-  # Restore the fixed water row after shifting only the boat upward.
-  for ((i = 0; i < heave; i++)); do printf '\n'; done
 
   # Wake: a short trail of froth behind the hull, growing as speed builds.
   # Let the wake build gradually rather than snapping to full length.
@@ -112,10 +114,11 @@ draw() {
   [ "$wake_len" -gt 6 ] && wake_len=6
   wake=''
   # Keep the foam immediately behind the stern and within the water.
-  left=$((x + 1 - wake_len))
-  [ "$left" -lt 0 ] && left=0
-  visible=$((x + 1))
+  visible=$x
+  [ "$visible" -lt 0 ] && visible=0
   [ "$visible" -gt "$sea_w" ] && visible=$sea_w
+  left=$((visible - wake_len))
+  [ "$left" -lt 0 ] && left=0
   for ((i = left; i < visible; i++)); do wake="${wake}·"; done
 
   # Put the wake on the water itself, leaving no extra gap under the hull.

@@ -33,3 +33,26 @@ class BoatMotionTests(unittest.TestCase):
         self.assertEqual(len(bottoms),1)
         self.assertTrue(wrapped)
         self.assertFalse(any(b==a+1 for a,b in zip(blank,blank[1:])),blank)
+
+    def test_startup_ship_moves_level_and_wraps_without_a_gap(self):
+        import re
+        import subprocess
+        from pathlib import Path
+        script=Path(__file__).resolve().parents[1]/'scripts/newsboat-launch.sh'
+        command=''.join(f'{frame}\tsetting sail\t80\t24\n' for frame in range(0,404,4))
+        result=subprocess.run(['bash',str(script),'--render'],input=command,text=True,capture_output=True,check=True)
+        frames=[re.sub(r'\x1b\[[0-9;?]*[A-Za-z]','',frame).splitlines() for frame in result.stdout.split('\0')[:-1]]
+        deck=next(i for i,row in enumerate(frames[0]) if '___|___________________|___' in row)
+        water=next(i for i,row in enumerate(frames[0]) if '~' in row)
+        positions=[]
+        for rows in frames:
+            self.assertTrue(rows[deck].strip(),'the ship returns on the very next step')
+            positions.append(len(rows[deck])-len(rows[deck].lstrip()))
+            self.assertLessEqual(len(rows[deck].rstrip()),72)
+            self.assertGreaterEqual(positions[-1],8)
+            self.assertIn('~',rows[water])
+            for index,row in enumerate(rows):
+                if '\\______________________/' in row:self.assertEqual(index,deck+2)
+        wrap=next(i for i in range(1,len(positions)) if positions[i]<positions[i-1])
+        self.assertEqual(positions[wrap-1:wrap+1],[71,8])
+        self.assertEqual(positions[:5],[26,27,28,29,30])

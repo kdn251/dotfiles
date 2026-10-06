@@ -142,7 +142,7 @@ class ProgressTests(unittest.TestCase):
         frames = [session.CSI.sub(b'', f).splitlines() for f in result.stdout.split(b'\0')[:-1]]
         hulls = [next(i for i, row in enumerate(f) if b'\\______________________/' in row) for f in frames]
         water = [tuple(i for i, row in enumerate(f) if b'~' in row) for f in frames]
-        self.assertEqual(hulls, [hulls[0], hulls[0] - 1, hulls[0]])
+        self.assertEqual(hulls, [hulls[0]] * 3)
         self.assertEqual(water, [water[0]] * 3)
         self.assertEqual(water[0][0] - hulls[0], 1)
 
