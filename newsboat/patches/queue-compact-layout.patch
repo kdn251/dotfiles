@@ -1,0 +1,57 @@
+--- a/src/feedlistformaction.cpp
++++ b/src/feedlistformaction.cpp
+@@ -1400,9 +1400,9 @@
+         feed->rssurl().find("query:📣 Commentary:") == 0 ||
+         feed->rssurl().find("query:⭐ Starred:") == 0 ||
+         feed->rssurl().find("query:📥 Downloads:") == 0;
+-    fmt.register_fmt('v', std::to_string(unread_count));
+     const bool queue_view = feed->rssurl().find("query:📺 Queue:") == 0;
+-    fmt.register_fmt('k', queue_view ? (unread_count == 1 ? "video" : "videos") : total_view ? "items" : "unread");
++    fmt.register_fmt('v', queue_view ? "" : std::to_string(unread_count));
++    std::string count_label = queue_view ? "time unavailable" : total_view ? "items" : "unread";
+ 	fmt.register_fmt('U', std::to_string(total_view ? feed->unread_item_count() : unread_count));
+ 	fmt.register_fmt('c', std::to_string(feed->total_item_count()));
+ 	fmt.register_fmt('n', !total_view && unread_count > 0 ? "N" : " ");
+@@ -1412,16 +1412,29 @@
+         if (const char* path = std::getenv("NEWSBOAT_QUEUE_STATUS")) {
+             std::ifstream input(std::string(path) + ".time");
+             std::string summary;
+-            if (std::getline(input, summary) && !summary.empty()) { title += " · " + summary; }
++            if (std::getline(input, summary) && !summary.empty()) { count_label = summary; }
+         }
+     }
++    fmt.register_fmt('k', count_label);
+     fmt.register_fmt('t', title);
+ 	fmt.register_fmt('T', feed->get_firsttag());
+ 	fmt.register_fmt('l', utils::censor_url(feed->link()));
+ 	fmt.register_fmt('L', utils::censor_url(feed->rssurl()));
+ 	fmt.register_fmt('d', utils::utf8_to_locale(feed->description()));
+ 
+-	const auto formattedLine = fmt.do_format(feedlist_format, width);
++	auto row_format = feedlist_format;
++    if (queue_view) {
++        // Replace the usual count/label columns with the remaining time.
++        // Keep collection names aligned when the time fits the existing space.
++        const auto columns = row_format.find("%4v %-6k");
++        if (columns != std::string::npos) {
++            row_format.replace(columns, 8, count_label.size() <= 11 ? "%-11k" : "%k");
++        } else {
++            const auto field = row_format.find("%-6k");
++            if (field != std::string::npos) { row_format.replace(field, 4, "%k"); }
++        }
++    }
++    const auto formattedLine = fmt.do_format(row_format, width);
+ 	auto stflFormattedLine = unread_count > 0
+ 		? StflRichText::from_plaintext_with_style(formattedLine, "<unread>")
+ 		: StflRichText::from_plaintext(formattedLine);
+--- a/src/itemlistformaction.cpp
++++ b/src/itemlistformaction.cpp
+@@ -1648,7 +1648,7 @@
+         if (const char* path = std::getenv("NEWSBOAT_QUEUE_STATUS")) {
+             std::ifstream input(std::string(path) + ".time");
+             std::string line;
+-            if (std::getline(input, line) && !line.empty()) { return "  ·  " + line; }
++            if (std::getline(input, line) && !line.empty()) { return " (" + line + ")"; }
+         }
+     }
+ 

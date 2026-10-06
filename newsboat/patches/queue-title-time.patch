@@ -1,0 +1,39 @@
+--- a/src/itemlistformaction.cpp
++++ b/src/itemlistformaction.cpp
+@@ -1642,8 +1642,16 @@
+         visible_items[list.get_position()].first->link();
+ }
+ 
+-static std::string library_storage_size(const std::string& title, const std::string& url)
+-{
++static std::string library_view_details(const std::string& title, const std::string& url)
++{
++    if (title == "📺 Queue" || url == "newsboat-queue://home") {
++        if (const char* path = std::getenv("NEWSBOAT_QUEUE_STATUS")) {
++            std::ifstream input(std::string(path) + ".time");
++            std::string line;
++            if (std::getline(input, line) && !line.empty()) { return "  ·  " + line; }
++        }
++    }
++
+     const std::string kind = title == "📥 Downloads" || url.find("query:📥 Downloads:") == 0 ? "downloads" :
+         title == "Playlists · 🎮 Playthroughs" || title == "🎮 Playthroughs" ? "playthroughs" : "";
+     if (!kind.empty()) {
+@@ -1667,7 +1675,7 @@
+     const auto actions = pending_action_revision();
+     const bool actions_changed = actions != old_actions;
+     old_actions = actions;
+-    const auto storage = library_storage_size(feed->title(), feed->rssurl());
++    const auto storage = library_view_details(feed->title(), feed->rssurl());
+     if (storage != old_storage) { old_storage = storage; do_redraw = true; }
+     const auto status_version = download_revision();
+     const bool pins_changed = old_pin_version != pins_version;
+@@ -1951,7 +1959,7 @@
+ 	const unsigned int width = utils::to_u(f.get("title:w"));
+ 	set_title(fmt.do_format(
+ 			cfg->get_configvalue("articlelist-title-format"),
+-			width) + library_storage_size(s, url));
++			width) + library_view_details(s, url));
+ }
+ 
+ bool ItemListFormAction::jump_to_previous_unread_item(bool start_with_last)

@@ -12,7 +12,7 @@ mp.register_event('playback-restart', function()
     if not started then started = true; write('playing') end
 end)
 mp.register_event('file-loaded', function()
-    local current = mp.get_property('user-data/newsboat/url', original)
+    local current = mp.get_property_native('user-data/newsboat/url', original)
     if current ~= original and not closed then
         closed = true; write(started and 'closed' or 'failed')
     end

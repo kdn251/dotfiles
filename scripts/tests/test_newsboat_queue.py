@@ -78,9 +78,9 @@ class QueueTests(unittest.TestCase):
             env=dict(NEWSBOAT_QUEUE_STATUS=str(queue.state()/'viewing-queue.tsv'),NEWSBOAT_STARRED_STATUS=str(queue.state()/'starred-urls.txt'),NEWSBOAT_LIVE_QUERIES=str(urls))
             with reader(root,text,original,env) as (_,screen,send,wait):
                 wait(lambda s:'New' in s)
-                queue.change('add',URLS[0]);wait(lambda s:'Queue' in s and '1 video' in s)
+                queue.change('add',URLS[0]);wait(lambda s:'Queue' in s and 'time unavailable' in s)
                 self.assertIn('Queue',screen.display[1]);self.assertIn('New',screen.display[2])
-                queue.change('add',URLS[1]);wait(lambda s:'Queue' in s and '2 videos' in s)
+                queue.change('add',URLS[1]);wait(lambda s:'Queue' in s and len(queue.entries())==2)
                 queue.change('remove',URLS[0]);queue.change('remove',URLS[1]);wait(lambda _:not any('Queue' in row for row in screen.display[1:-3]))
 
     def run_real_mpv(self, natural_end=False):
@@ -200,6 +200,7 @@ mp={
   return {status=0}
  end,
  get_property=function(_,default) return default end,
+ get_property_native=function() return false end,
  set_property=function() end,set_property_native=function() end,
  commandv=function() end,osd_message=function() end,
  add_forced_key_binding=function(key,_,callback) keys[key]=callback end,

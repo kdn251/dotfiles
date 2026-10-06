@@ -4,7 +4,7 @@ local helper = os.getenv('HOME') .. '/scripts/newsboat-copy-url.py'
 local copying = false
 mp.add_forced_key_binding('Ctrl+c', 'newsboat-copy-url', function()
     if copying then return end
-    local url = mp.get_property('user-data/newsboat/url', '')
+    local url = mp.get_property_native('user-data/newsboat/url', '')
     if url == '' then url = original or mp.get_property('path', '') end
     if not url:match('^https?://') then
         mp.osd_message('No video URL available to copy', 2)

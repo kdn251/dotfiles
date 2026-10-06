@@ -55,9 +55,9 @@ def label(seconds,unknown,count):
     else:
         minutes=math.ceil(seconds/60-1e-9)
         hours,minutes=divmod(minutes,60)
-        text=(f'{hours}h ' if hours else '')+(f'{minutes} min' if minutes else '')
+        text=(f'{hours}h ' if hours else '')+(f'{minutes} min'+('s' if minutes!=1 else '') if minutes else '')
         text=text.strip()
-    return ('about ' if seconds>=60 else '')+text+' remaining'+(f' · {unknown} unknown' if unknown else '')
+    return '~'+text+(f' · {unknown} unknown' if unknown else '')
 
 
 def publish(rows):

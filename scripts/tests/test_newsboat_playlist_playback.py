@@ -23,6 +23,8 @@ class PlaylistPlaybackTests(unittest.TestCase):
                 out.setsampwidth(2)
                 out.setframerate(8000)
                 out.writeframes(b'\0' * 8000)
+            with wave.open(str(root/'next.wav'), 'wb') as out:
+                out.setnchannels(1);out.setsampwidth(2);out.setframerate(8000);out.writeframes(b'\0'*160000)
             script = root/'newsboat-playlist-playback.lua'
             shutil.copyfile(SCRIPTS/script.name, script)
             (root/'newsboat-playback-started.py').write_text('pass\n')
@@ -31,13 +33,16 @@ class PlaylistPlaybackTests(unittest.TestCase):
                 'import json,sys\nfrom pathlib import Path\n'
                 'p=Path(__file__).parent\n'
                 '(p/"calls").write_text(json.dumps(sys.argv[1:3]))\n'
-                'print(json.dumps({"url":sys.argv[1],"path":str(p/"video.wav"),"title":sys.argv[2],"local":True,"plan":json.loads((p/"plan.json").read_text())}))\n')
+                'print(json.dumps({"url":sys.argv[1],"path":str(p/"next.wav"),"title":sys.argv[2],"local":True,"plan":json.loads((p/"plan.json").read_text())}))\n')
             rows = [dict(url=f'https://www.youtube.com/watch?v=episode000{i}', title=f'Episode {i}') for i in range(3)]
             manifest = root/'playlist.json'
             manifest.write_text(json.dumps(dict(rows=rows)))
             plan = dict(enabled=True, playlist=context,
                         next=rows[index+1] if context and index<2 else None,
                         previous=rows[index-1] if context and index>0 else None)
+            if action == 'queue_eof':
+                plan['queue']=True
+                plan['queue_next']=plan['next']
             if action == 'random':
                 plan['next'] = rows[2]
             (root/'plan.json').write_text(json.dumps(plan))
@@ -55,8 +60,10 @@ class PlaylistPlaybackTests(unittest.TestCase):
             driver=root/'driver.lua'
             command_file=root/'command'
             loaded=root/'loaded'
+            playing=root/'playing'
             driver.write_text(
                 'local utils=require("mp.utils")\n'
+                'mp.observe_property("time-pos","number",function(_,position) if mp.get_property("path")=='+json.dumps(str(root/'next.wav'))+' and position and position>.15 and not mp.get_property_native("pause") then local f=io.open('+json.dumps(str(playing))+',"w");f:write("playing");f:close() end end)\n'
                 'mp.register_event("file-loaded",function() local f=io.open('+json.dumps(str(loaded))+',"a");f:write("loaded\\n");f:close() end)\n'
                 'mp.add_periodic_timer(.02,function() local f=io.open('+json.dumps(str(command_file))+',"r");if f then local cmd=utils.parse_json(f:read("*a"));f:close();os.remove('+json.dumps(str(command_file))+');if cmd[1]=="set_property" then mp.set_property_native(cmd[2],cmd[3]) else mp.command_native(cmd) end end end)\n')
             process = subprocess.Popen(['mpv', '--no-config', '--vo=null', '--ao=null', '--pause', '--keep-open=yes', '--idle=yes',
@@ -71,7 +78,7 @@ class PlaylistPlaybackTests(unittest.TestCase):
                 deadline=time.monotonic()+5
                 while not loaded.exists() and time.monotonic()<deadline:time.sleep(.02)
                 self.assertTrue(loaded.exists())
-                if action in ('eof', 'random', 'cancel', 'off'):
+                if action in ('eof', 'queue_eof', 'random', 'cancel', 'off'):
                     if action == 'off':command(['keypress','A'])
                     command(['set_property','pause',False])
                     time.sleep(1)
@@ -90,6 +97,10 @@ class PlaylistPlaybackTests(unittest.TestCase):
                     while len(loaded.read_text().splitlines())<2 and time.monotonic()<deadline:time.sleep(.02)
                     self.assertGreaterEqual(len(loaded.read_text().splitlines()),2,'replacement loaded inside the same player')
                     self.assertIsNone(process.poll(),'player survives the transition')
+                    if action in ('eof','queue_eof','random'):
+                        deadline=time.monotonic()+3
+                        while not playing.exists() and time.monotonic()<deadline:time.sleep(.02)
+                        self.assertTrue(playing.exists(),'autoplay replacement must advance playback without a manual unpause')
             finally:
                 process.terminate()
                 process.wait(timeout=5)
@@ -100,6 +111,9 @@ class PlaylistPlaybackTests(unittest.TestCase):
 
     def test_natural_end_advances(self):
         self.run_player('eof', expected=2)
+
+    def test_queue_natural_end_starts_next_video_unpaused(self):
+        self.run_player('queue_eof', expected=2)
 
     def test_boundaries_do_not_wrap(self):
         self.run_player('<', index=0)

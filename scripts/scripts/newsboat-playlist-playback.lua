@@ -13,6 +13,7 @@ local plan_job, queue_watcher, switch_job
 local reported_playing, reported_finished = false, false
 local switched_in_place = false
 local loading_title
+local play_on_load = false
 local moving, timer, remaining = false, nil, 5
 mp.set_property_native('user-data/newsboat/url', current)
 local original_idle = mp.get_property('idle', 'no')
@@ -63,9 +64,10 @@ local function configure()
     mp.set_property_native('user-data/newsboat/autoplay', autoplay)
     prepare_thumbnail()
 end
-local function advance(row)
+local function advance(row, automatic)
     if moving then return end
     if not row then mp.osd_message(plan.queue and 'No more videos in this queue direction' or 'No more videos in this playlist', 3); return end
+    local should_play = automatic or mp.get_property_native('eof-reached') == true
     cancel()
     moving = true
     loading_title = row.title or row.url
@@ -95,6 +97,7 @@ local function advance(row)
         mp.set_property('force-media-title', target.title or '')
         mp.set_property('cache', target['local'] and 'no' or 'yes')
         mp.set_property('ytdl-format', 'bestvideo[height<=?1080]+bestaudio/best[height<=?1080]/best')
+        play_on_load = should_play
         mp.commandv('loadfile', target.path, 'replace')
     end)
 end
@@ -109,7 +112,7 @@ local function countdown()
     prompt()
     timer = mp.add_periodic_timer(1, function()
         remaining = remaining - 1
-        if remaining <= 0 then advance(plan.next) else prompt() end
+        if remaining <= 0 then advance(plan.next, true) else prompt() end
     end)
     show_thumbnail()
 end
@@ -192,6 +195,7 @@ end)
 mp.register_event('end-file', function(event)
     if event.reason == 'eof' then finish_queue_item() else cancel() end
     if event.reason == 'error' then
+        play_on_load = false
         moving = false; loading_title = nil
         mp.osd_message('Could not load video — use < or > to choose another', 6)
     end
@@ -204,6 +208,11 @@ mp.register_event('shutdown', function()
     if queue_watcher then queue_watcher:kill() end
 end)
 mp.register_event('file-loaded', function()
+    if play_on_load then
+        -- keep-open pauses at EOF; the replacement must not inherit that pause.
+        mp.set_property_native('pause', false)
+        play_on_load = false
+    end
     configure()
     if not loading_title then mp.osd_message('Autoplay: ' .. (autoplay and 'ON' or 'OFF') .. ' · Shift+A to toggle', 3) end
 end)

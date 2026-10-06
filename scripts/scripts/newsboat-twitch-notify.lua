@@ -3,7 +3,7 @@ local utils = require('mp.utils')
 local sent
 local original = os.getenv("NEWSBOAT_MEDIA_URL") or ""
 mp.register_event('playback-restart', function()
-    local url = mp.get_property('user-data/newsboat/url', original)
+    local url = mp.get_property_native('user-data/newsboat/url', original)
     if not url:match('twitch%.tv/videos/%d+') or sent == url then return end
     sent = url
     local helper = os.getenv('NEWSBOAT_TWITCH_NOTIFY')

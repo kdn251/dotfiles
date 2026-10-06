@@ -2,16 +2,23 @@
 local helper = os.getenv('NEWSBOAT_MAINTENANCE')
 local url = os.getenv('NEWSBOAT_MEDIA_URL')
 if not helper or not url then return end
+local loaded = false
 local restored = false
 local reported = false
 local path = ''
 local position, duration
 local last_position, last_duration
 local utils = require('mp.utils')
-local function save_progress()
+local function save_progress(completed)
+    if not loaded and completed ~= true then return end
     -- Read the latest seek position even if its observer callback is queued.
-    position = mp.get_property_number('time-pos') or position
     duration = mp.get_property_number('duration') or duration
+    completed = completed == true or mp.get_property_native('eof-reached') == true
+    if completed then
+        position = duration
+    else
+        position = mp.get_property_number('time-pos') or position
+    end
     if not position or not duration or duration <= 0 then return end
     if position == last_position and duration == last_duration then return end
     -- Snapshot before exiting; the detached worker may wait for the library
@@ -38,14 +45,20 @@ mp.observe_property('duration', 'number', function(_, value)
 end)
 mp.add_periodic_timer(5, save_progress)
 -- Save before mpv clears time-pos/duration during close or loadfile replacement.
-mp.add_hook('on_unload', 50, save_progress)
+mp.add_hook('on_unload', 50, function()
+    save_progress(mp.get_property_native('eof-reached') == true)
+    loaded = false
+end)
 mp.register_event('end-file', function(event)
-    if event.reason == 'eof' and duration then position = duration end
-    save_progress()
+    if event.reason == 'eof' then save_progress(true) end
 end)
 mp.register_event('shutdown', save_progress)
+-- keep-open holds the last frame without sending end-file during the countdown.
+mp.observe_property('eof-reached', 'bool', function(_, eof)
+    if eof and loaded then save_progress(true) end
+end)
 mp.register_event('file-loaded', function()
-    local next_url = mp.get_property('user-data/newsboat/url', '')
+    local next_url = mp.get_property_native('user-data/newsboat/url', '')
     if next_url ~= '' and next_url ~= url then
         url = next_url; restored = false
         position, duration, last_position, last_duration = nil, nil, nil, nil
@@ -60,6 +73,9 @@ mp.register_event('file-loaded', function()
         local resume = result and result.status == 0 and tonumber(result.stdout) or -1
         if resume and resume >= 0 then mp.commandv('seek', tostring(resume), 'absolute+exact') end
     end
+    loaded = true
+    position = mp.get_property_number('time-pos')
+    duration = mp.get_property_number('duration')
     reported = false
     path = mp.get_property('path', '')
 end)
