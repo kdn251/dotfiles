@@ -78,17 +78,31 @@ def change(action,url='',token=''):
     with (root/'viewing-queue.lock').open('a') as lock:
         fcntl.flock(lock,fcntl.LOCK_EX)
         rows=entries();ident=identity(url)
+        if action=='add' and not rows:
+            (root/'queue-navigation.json').unlink(missing_ok=True)
         if action=='add':
             if not media.identity(url) or any(c in url for c in '\r\n\t'):
                 raise ValueError('Queue supports YouTube videos and Twitch VODs')
             if not any(identity(row['url'])==ident for row in rows):
                 rows.append(dict(metadata(url),queue_token=uuid.uuid4().hex))
-        elif action in ('remove','started'):
+        elif action in ('remove','started','finished'):
             if action=='started':
                 current=next((row for row in rows if identity(row['url'])==ident and row['queue_token']==token),None)
                 if current:media.atomic_write(root/'queue-current.json',json.dumps(current,ensure_ascii=False))
-            rows=[row for row in rows if not (identity(row['url'])==ident and
-                  (action=='remove' or row['queue_token']==token))]
+            if action=='remove':
+                try:
+                    path=root/'queue-navigation.json'
+                    history=json.loads(path.read_text())
+                    media.atomic_write(path,json.dumps([row for row in history if identity(row['url'])!=ident],ensure_ascii=False))
+                except (OSError,ValueError):pass
+            if action!='started':
+                rows=[row for row in rows if not (identity(row['url'])==ident and
+                      (action=='remove' or row['queue_token']==token))]
+                try:
+                    current=json.loads((root/'queue-current.json').read_text())
+                    if identity(current['url'])==ident and (action=='remove' or current['queue_token']==token):
+                        (root/'queue-current.json').unlink(missing_ok=True)
+                except (OSError,ValueError):pass
         elif action=='refresh':
             for row in rows:
                 if not row.get('source'):
@@ -139,13 +153,37 @@ def show():
         return run(command,env)
 
 
+def navigation(current):
+    root=state();root.mkdir(parents=True,exist_ok=True)
+    with (root/'viewing-queue.lock').open('a') as lock:
+        fcntl.flock(lock,fcntl.LOCK_EX)
+        rows=entries()
+        path=root/'queue-navigation.json'
+        try:history=json.loads(path.read_text())
+        except (OSError,ValueError):history=[]
+        seen={row['queue_token'] for row in history}
+        history += [row for row in rows if row['queue_token'] not in seen]
+        text=json.dumps(history,ensure_ascii=False)
+        if not path.exists() or path.read_text()!=text:media.atomic_write(path,text)
+        index=next((i for i,row in enumerate(history) if identity(row['url'])==identity(current)),None)
+        if index is None:
+            first=rows[0] if rows else None
+            return first,None,first
+        live={row['queue_token'] for row in rows}
+        following=next((row for row in history[index+1:] if row['queue_token'] in live),None)
+        previous=history[index-1] if index else None
+        following_manual=history[index+1] if index+1<len(history) else None
+        return following,previous,following_manual
+
+
 def resume():
-    from newsboat_resume import launch, progress, key
+    from newsboat_resume import launch
+    os.environ['NEWSBOAT_QUEUE_PLAYBACK']='1'
     try:current=json.loads((state()/'queue-current.json').read_text())
     except (OSError,ValueError):current=None
-    if current and progress().get(key(current),(0,0))[0]<.95:
-        return launch(current)
     rows=entries()
+    if current and any(row['queue_token']==current['queue_token'] for row in rows):
+        return launch(current)
     return launch(rows[0] if rows else None)
 
 

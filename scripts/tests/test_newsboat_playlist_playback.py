@@ -3,7 +3,6 @@ import json
 import os
 from pathlib import Path
 import shutil
-import socket
 import subprocess
 import tempfile
 import time
@@ -18,7 +17,7 @@ class PlaylistPlaybackTests(unittest.TestCase):
     def run_player(self, action, index=1, expected=None, context=True):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
-            source, ipc, calls = root/'video.wav', root/'ipc', root/'calls'
+            source, calls = root/'video.wav', root/'calls'
             with wave.open(str(source), 'wb') as out:
                 out.setnchannels(1)
                 out.setsampwidth(2)
@@ -26,9 +25,13 @@ class PlaylistPlaybackTests(unittest.TestCase):
                 out.writeframes(b'\0' * 8000)
             script = root/'newsboat-playlist-playback.lua'
             shutil.copyfile(SCRIPTS/script.name, script)
-            (root/'newsboat-play-video.py').write_text(
+            (root/'newsboat-playback-started.py').write_text('pass\n')
+            (root/'newsboat-up-next-thumbnail.py').write_text('raise SystemExit(1)\n')
+            (root/'newsboat-playback-target.py').write_text(
                 'import json,sys\nfrom pathlib import Path\n'
-                'Path(__file__).with_name("calls").write_text(json.dumps(sys.argv[1:]))\n')
+                'p=Path(__file__).parent\n'
+                '(p/"calls").write_text(json.dumps(sys.argv[1:3]))\n'
+                'print(json.dumps({"url":sys.argv[1],"path":str(p/"video.wav"),"title":sys.argv[2],"local":True,"plan":json.loads((p/"plan.json").read_text())}))\n')
             rows = [dict(url=f'https://www.youtube.com/watch?v=episode000{i}', title=f'Episode {i}') for i in range(3)]
             manifest = root/'playlist.json'
             manifest.write_text(json.dumps(dict(rows=rows)))
@@ -49,52 +52,44 @@ class PlaylistPlaybackTests(unittest.TestCase):
             env.pop('NEWSBOAT_PLAYLIST_CONTEXT', None)
             if context:
                 env['NEWSBOAT_PLAYLIST_CONTEXT'] = str(manifest)
+            driver=root/'driver.lua'
+            command_file=root/'command'
+            loaded=root/'loaded'
+            driver.write_text(
+                'local utils=require("mp.utils")\n'
+                'mp.register_event("file-loaded",function() local f=io.open('+json.dumps(str(loaded))+',"a");f:write("loaded\\n");f:close() end)\n'
+                'mp.add_periodic_timer(.02,function() local f=io.open('+json.dumps(str(command_file))+',"r");if f then local cmd=utils.parse_json(f:read("*a"));f:close();os.remove('+json.dumps(str(command_file))+');if cmd[1]=="set_property" then mp.set_property_native(cmd[2],cmd[3]) else mp.command_native(cmd) end end end)\n')
             process = subprocess.Popen(['mpv', '--no-config', '--vo=null', '--ao=null', '--pause', '--keep-open=yes', '--idle=yes',
-                '--log-file='+str(root/'mpv.log'), '--input-ipc-server='+str(ipc), '--script='+str(script), str(source)], env=env,
+                '--log-file='+str(root/'mpv.log'), '--script='+str(driver), '--script='+str(script), str(source)], env=env,
                 stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
             try:
-                deadline = time.monotonic()+5
-                while not ipc.exists() and time.monotonic()<deadline:
-                    time.sleep(.02)
-                with socket.socket(socket.AF_UNIX) as connection:
-                    connection.settimeout(3)
-                    connection.connect(str(ipc))
-                    with connection.makefile('rwb', buffering=0) as stream:
-                        def command(args):
-                            stream.write((json.dumps(dict(command=args, request_id=1))+'\n').encode())
-                            while True:
-                                response=json.loads(stream.readline())
-                                if response.get('request_id')==1:
-                                    return response
-                        deadline = time.monotonic()+3
-                        while command(['get_property', 'duration']).get('data', 0)==0 and time.monotonic()<deadline:
-                            time.sleep(.02)
-                        if action in ('eof', 'random', 'cancel', 'off'):
-                            if action == 'off':
-                                command(['keypress', 'A'])
-                                time.sleep(.2)
-                                self.assertFalse(command(['get_property', 'user-data/newsboat/autoplay'])['data'])
-                            command(['set_property', 'pause', False])
-                            time.sleep(1)
-                            self.assertFalse(calls.exists(), 'Must display countdown before launching')
-                            if action == 'cancel':
-                                command(['keypress', 'A'])
-                                time.sleep(.2)
-                                self.assertFalse(json.loads((root/'plan.json').read_text())['enabled'])
-                        elif action == 'replace':
-                            command(['loadfile', str(source), 'replace'])
-                        elif action == 'stop':
-                            command(['stop'])
-                        else:
-                            command(['keypress', action])
-                        deadline = time.monotonic()+(6 if expected is not None or action in ('off','cancel') else .7)
-                        while not calls.exists() and time.monotonic()<deadline:
-                            time.sleep(.02)
-                        if expected is None:
-                            self.assertFalse(calls.exists())
-                        else:
-                            self.assertTrue(calls.exists(), (root/'mpv.log').read_text()[-5000:])
-                            self.assertEqual(json.loads(calls.read_text()), [rows[expected]['url'], rows[expected]['title']])
+                def command(args):
+                    tmp=root/'pending';tmp.write_text(json.dumps(args));tmp.replace(command_file)
+                    deadline=time.monotonic()+3
+                    while command_file.exists() and time.monotonic()<deadline:time.sleep(.02)
+                    self.assertFalse(command_file.exists())
+                deadline=time.monotonic()+5
+                while not loaded.exists() and time.monotonic()<deadline:time.sleep(.02)
+                self.assertTrue(loaded.exists())
+                if action in ('eof', 'random', 'cancel', 'off'):
+                    if action == 'off':command(['keypress','A'])
+                    command(['set_property','pause',False])
+                    time.sleep(1)
+                    self.assertFalse(calls.exists(), 'Must display countdown before loading')
+                    if action == 'cancel':command(['keypress','A'])
+                elif action == 'replace':command(['loadfile',str(source),'replace'])
+                elif action == 'stop':command(['stop'])
+                else:command(['keypress',action])
+                deadline=time.monotonic()+(6 if expected is not None or action in ('off','cancel') else .7)
+                while not calls.exists() and time.monotonic()<deadline:time.sleep(.02)
+                if expected is None:self.assertFalse(calls.exists())
+                else:
+                    self.assertTrue(calls.exists(),(root/'mpv.log').read_text()[-5000:])
+                    self.assertEqual(json.loads(calls.read_text()),[rows[expected]['url'],rows[expected]['title']])
+                    deadline=time.monotonic()+3
+                    while len(loaded.read_text().splitlines())<2 and time.monotonic()<deadline:time.sleep(.02)
+                    self.assertGreaterEqual(len(loaded.read_text().splitlines()),2,'replacement loaded inside the same player')
+                    self.assertIsNone(process.poll(),'player survives the transition')
             finally:
                 process.terminate()
                 process.wait(timeout=5)

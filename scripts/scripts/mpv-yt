@@ -55,17 +55,16 @@ if [ -n "${NEWSBOAT_PLAY_READY:-}" ]; then
 fi
 
 # The same creator portrait / app badge layout as YouTube, after playback starts.
-if [[ "$URL" =~ ^https?://(www\.)?twitch\.tv/videos/[0-9]+ ]]; then
-  export NEWSBOAT_TWITCH_URL="$URL"
-  export NEWSBOAT_TWITCH_NOTIFY="$(dirname "$(readlink -f "$0")")/newsboat-twitch-notify.py"
-  READY_OPTS+=("--script=$(dirname "$(readlink -f "$0")")/newsboat-twitch-notify.lua")
-fi
+export NEWSBOAT_TWITCH_NOTIFY="$(dirname "$(readlink -f "$0")")/newsboat-twitch-notify.py"
+READY_OPTS+=("--script=$(dirname "$(readlink -f "$0")")/newsboat-twitch-notify.lua")
 
 # Replace the current player, including local files without ytdl-format.
 # SIGTERM lets MPV shut down normally and save playback progress. Match the
 # executable exactly so download workers and their helpers are left running.
+if [ "${NEWSBOAT_REUSE_PLAYER:-}" != 1 ]; then
 pkill -u "$(id -u)" -x mpv 2>/dev/null
 pkill -u "$(id -u)" -f "streamlink.*--player" 2>/dev/null
+fi
 
 if [ -n "$DOWNLOADED" ]; then
   META="$HOME/.cache/mpv-yt-videos/${VIDEO_ID}.meta"
@@ -79,7 +78,8 @@ if [ -n "$DOWNLOADED" ]; then
   fi
   TITLE="${TITLE:-${YT_TITLE:-}}"
   [ -n "$TITLE" ] && READY_OPTS+=("--force-media-title=$TITLE")
-  mpv "${READY_OPTS[@]}" --cache=no --force-window=no --save-position-on-quit --really-quiet "$DOWNLOADED" >/dev/null 2>&1 &
+  [ "${NEWSBOAT_REUSE_PLAYER:-}" = 1 ] && exit 0
+  mpv "${READY_OPTS[@]}" "$YTDL_OPT" --cache=no --force-window=no --save-position-on-quit --really-quiet "$DOWNLOADED" >/dev/null 2>&1 &
   exit 0
 fi
 
@@ -90,6 +90,7 @@ if [[ "$URL" =~ twitch\.tv ]]; then
 
   # Check if it's a VOD (contains /videos/ in URL)
   if [[ "$URL" =~ /videos/ ]]; then
+    [ "${NEWSBOAT_REUSE_PLAYER:-}" = 1 ] && exit 0
     exec mpv "${READY_OPTS[@]}" \
       "$YTDL_OPT" \
       --save-position-on-quit \
@@ -106,6 +107,7 @@ if [[ "$URL" =~ twitch\.tv ]]; then
       "$URL" >/dev/null 2>&1 &
     exit 0
   else
+    [ "${NEWSBOAT_REUSE_PLAYER:-}" = 1 ] && exit 0
     notify-send "MPV" "Loading Twitch stream..." -t 3000 -u low &
     # Live stream - use low latency settings
     PLAYER_ARGS="--cache=yes --force-window=immediate --vo=gpu --gpu-api=opengl"
@@ -145,9 +147,16 @@ else
   NOTIFY_ID=$(($(printf '%s' "$URL" | cksum | cut -d' ' -f1) % 2147483647))
   (
     sock="/tmp/mpv-yt-ipc"
+    still_current() {
+      local playing
+      playing=$(printf '%s\n' '{"command":["get_property","user-data/newsboat/url"]}' |
+        timeout 2 socat - "$sock" 2>/dev/null | jq -r '.data // empty')
+      [ -z "$playing" ] || [ "$playing" = "$URL" ]
+    }
     chan=""
     curl_url=""
     for _ in $(seq 1 80); do
+      still_current || exit 0
       md=$(printf '%s\n' '{"command":["get_property","metadata"]}' |
         timeout 2 socat - "$sock" 2>/dev/null)
       chan=$(jq -r '.data.uploader // empty' <<<"$md" 2>/dev/null)
@@ -164,6 +173,7 @@ else
     cid="${curl_url##*/}"
     icon=""
     [ -n "$cid" ] && icon=$("$HOME/scripts/yt-channel-pic.sh" "$cid" 2>/dev/null)
+    still_current || exit 0
     args=(-a "YouTube" --app-icon "$YOUTUBE_ICON" -r "$NOTIFY_ID" -t 5000 -u low)
     [ -n "$icon" ] && args+=(-h "string:image-path:$icon")
     [ -n "${TITLE:-}" ] && notify-send "${args[@]}" "$TITLE" "${chan:-YouTube}"
@@ -241,6 +251,7 @@ else
   # Optimization:
   # 1. We remove the 0.5s readahead (let it buffer 10-30s for smooth seeking).
   # 2. We use --ytdl-raw-options to favor fast-starting streams.
+  [ "${NEWSBOAT_REUSE_PLAYER:-}" = 1 ] && exit 0
   exec mpv "${READY_OPTS[@]}" \
     "$YTDL_OPT" \
     --save-position-on-quit \

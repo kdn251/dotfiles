@@ -40,7 +40,14 @@ def play(args):
 def launch(args):
     if not args:
         return 1
+    from newsboat_queue import entries, identity, navigation
+    env=dict(os.environ)
+    queued=any(identity(row['url'])==identity(args[0]) for row in entries())
+    if queued or env.get('NEWSBOAT_QUEUE_PLAYBACK')=='1' or env.get('NEWSBOAT_QUEUE_VIEW')=='1':
+        navigation(args[0])
+        env['NEWSBOAT_QUEUE_PLAYBACK']='1'
     subprocess.Popen([sys.executable, str(Path(__file__).resolve()), '--wait', *args],
+                     env=env,
                      start_new_session=True, stdin=subprocess.DEVNULL,
                      stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
                      close_fds=True)
@@ -49,4 +56,10 @@ def launch(args):
 
 
 if __name__ == '__main__':
+    if sys.argv[1:2] == ['--normal-navigation']:
+        os.environ.pop('NEWSBOAT_QUEUE_PLAYBACK',None)
+        del sys.argv[1]
+    if sys.argv[1:2] == ['--queue-navigation']:
+        os.environ['NEWSBOAT_QUEUE_PLAYBACK']='1'
+        del sys.argv[1]
     sys.exit(play(sys.argv[2:]) if sys.argv[1:2] == ['--wait'] else launch(sys.argv[1:]))

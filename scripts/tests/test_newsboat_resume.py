@@ -29,9 +29,10 @@ class ResumeTests(unittest.TestCase):
             queue.change('add',ROWS[0]['url']);queue.change('add',ROWS[1]['url'])
             queue.resume();self.assertEqual(launch.call_args.args[0]['url'],ROWS[0]['url'])
             token=queue.entries()[0]['queue_token'];queue.change('started',ROWS[0]['url'],token)
-            self.assertEqual(len(queue.entries()),1)
+            self.assertEqual(len(queue.entries()),2)
             queue.resume();self.assertEqual(launch.call_args.args[0]['url'],ROWS[0]['url'])
             progress.return_value={resume.key(ROWS[0]):(1,100)}
+            queue.change('finished',ROWS[0]['url'],token)
             queue.resume();self.assertEqual(launch.call_args.args[0]['url'],ROWS[1]['url'])
 
     def test_native_home_o_dispatches_queue_resume_without_opening_list(self):

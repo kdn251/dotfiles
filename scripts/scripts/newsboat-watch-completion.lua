@@ -45,6 +45,11 @@ mp.register_event('end-file', function(event)
 end)
 mp.register_event('shutdown', save_progress)
 mp.register_event('file-loaded', function()
+    local next_url = mp.get_property('user-data/newsboat/url', '')
+    if next_url ~= '' and next_url ~= url then
+        url = next_url; restored = false
+        position, duration, last_position, last_duration = nil, nil, nil, nil
+    end
     -- Only the first load resumes from storage. A streaming-to-local handoff
     -- supplies its own current position and must not jump backwards.
     if not restored then

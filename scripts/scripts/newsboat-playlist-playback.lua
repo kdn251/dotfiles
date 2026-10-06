@@ -1,5 +1,4 @@
--- Autoplay uses the same launcher as manual playback: local copies, resume,
--- history and per-video source context continue to work for each new player.
+-- Switch videos inside this player, preserving the window and per-video context.
 local utils = require('mp.utils')
 local directory = utils.split_path(debug.getinfo(1, 'S').source:sub(2))
 local current = os.getenv('NEWSBOAT_MEDIA_URL')
@@ -10,8 +9,13 @@ local plan = result and result.status == 0 and utils.parse_json(result.stdout)
 if not plan then return end
 local startup_queue_token = plan.current_queue_token
 local autoplay = plan.enabled
-local plan_job, queue_watcher
+local plan_job, queue_watcher, switch_job
+local reported_playing, reported_finished = false, false
+local switched_in_place = false
+local loading_title
 local moving, timer, remaining = false, nil, 5
+mp.set_property_native('user-data/newsboat/url', current)
+local original_idle = mp.get_property('idle', 'no')
 local original_keep_open = mp.get_property('keep-open', 'no')
 -- Keep this separate from thumbfast's seek-preview overlay (42).
 local thumbnail_id = 61
@@ -61,16 +65,38 @@ local function configure()
 end
 local function advance(row)
     if moving then return end
-    if not row then mp.osd_message('No more videos in this playlist', 3); return end
+    if not row then mp.osd_message(plan.queue and 'No more videos in this queue direction' or 'No more videos in this playlist', 3); return end
     cancel()
     moving = true
-    mp.commandv('write-watch-later-config')
-    local launched = mp.command_native({name='subprocess', playback_only=false,
-        args={'python3', directory .. 'newsboat-play-video.py', row.url, row.title or ''}})
-    if not launched or launched.status ~= 0 then
-        moving = false
-        mp.osd_message('Could not start the next video', 4)
-    end
+    loading_title = row.title or row.url
+    mp.osd_message('Loading: ' .. loading_title, 3600)
+    -- Resolve local copies without destroying the current window or blocking UI.
+    switch_job = mp.command_native_async({name='subprocess', playback_only=false, capture_stdout=true,
+        args={'python3', directory .. 'newsboat-playback-target.py', row.url, row.title or '',
+              row.queue_token and 'queue' or 'normal'}}, function(success, response)
+        switch_job = nil
+        local target = success and response and response.status == 0 and utils.parse_json(response.stdout)
+        if not target or not target.path or not target.plan then
+            moving = false; loading_title = nil
+            mp.osd_message('Could not load the next video', 4)
+            return
+        end
+        mp.commandv('write-watch-later-config')
+        if plan_job then mp.abort_async_command(plan_job); plan_job = nil end
+        if thumbnail_job then mp.abort_async_command(thumbnail_job); thumbnail_job = nil end
+        hide_thumbnail(); thumbnail, thumbnail_requested = nil, nil
+        current, plan = target.url, target.plan
+        startup_queue_token = plan.current_queue_token
+        reported_playing, reported_finished = false, false
+        switched_in_place = true
+        mp.set_property_native('user-data/newsboat/url', current)
+        mp.set_property('force-window', 'yes')
+        mp.set_property('idle', 'yes')
+        mp.set_property('force-media-title', target.title or '')
+        mp.set_property('cache', target['local'] and 'no' or 'yes')
+        mp.set_property('ytdl-format', 'bestvideo[height<=?1080]+bestaudio/best[height<=?1080]/best')
+        mp.commandv('loadfile', target.path, 'replace')
+    end)
 end
 local function prompt()
     local title = (plan.next.title or plan.next.url):gsub('[\r\n]', ' ')
@@ -102,7 +128,7 @@ local function refresh_queue()
     local version = queue_version()
     if version == queue_seen then return end
     plan_job = mp.command_native_async({name='subprocess', playback_only=false, capture_stdout=true,
-        args={'python3', directory .. 'newsboat_autoplay.py', 'plan', current}},
+        args={'python3', directory .. 'newsboat_autoplay.py', 'plan', current, plan.queue and 'on' or 'off'}},
         function(success, response)
             plan_job = nil
             if not success or not response or response.status ~= 0 then return end
@@ -122,10 +148,16 @@ local function refresh_queue()
         end)
 end
 queue_watcher = mp.add_periodic_timer(.5, refresh_queue)
-local reported_playing = false
 mp.register_event('playback-restart', function()
     if reported_playing then return end
     reported_playing = true
+    if switched_in_place then
+        moving = false; loading_title = nil
+        mp.set_property('idle', original_idle)
+        mp.osd_message('', 0)
+        mp.command_native({name='subprocess', playback_only=false, detach=true,
+            args={'python3', directory .. 'newsboat-playback-started.py', current}})
+    end
     if startup_queue_token and startup_queue_token ~= '' then
         mp.command_native_async({name='subprocess', playback_only=false,
             args={'python3', directory .. 'newsboat_queue.py', 'started', current, startup_queue_token}},
@@ -142,25 +174,37 @@ mp.add_forced_key_binding('A', 'newsboat-toggle-autoplay', function()
         ((not saved or saved.status ~= 0) and ' (this player only — could not save preference)' or ''), 3)
     if autoplay and mp.get_property_native('eof-reached') then countdown() end
 end)
-mp.add_forced_key_binding('>', 'newsboat-next-episode', function() advance(plan.next) end)
-if plan.playlist then
-    mp.add_forced_key_binding('<', 'newsboat-previous-episode', function() advance(plan.previous) end)
+mp.add_forced_key_binding('>', 'newsboat-next-episode', function()
+    if plan.queue then advance(plan.queue_next) else advance(plan.next) end
+end)
+mp.add_forced_key_binding('<', 'newsboat-previous-episode', function() advance(plan.previous) end)
+local function finish_queue_item()
+    if reported_finished or not startup_queue_token or startup_queue_token == '' then return end
+    reported_finished = true
+    -- Detached so natural EOF followed by player shutdown cannot cancel removal.
+    mp.command_native({name='subprocess', playback_only=false, detach=true,
+        args={'python3', directory .. 'newsboat_queue.py', 'finished', current, startup_queue_token}})
 end
 -- keep-open holds the last frame: eof-reached fires even without end-file.
 mp.observe_property('eof-reached', 'bool', function(_, eof)
-    if eof then countdown() else cancel() end
+    if eof then finish_queue_item(); countdown() else cancel() end
 end)
 mp.register_event('end-file', function(event)
-    if event.reason ~= 'eof' then cancel() end
+    if event.reason == 'eof' then finish_queue_item() else cancel() end
+    if event.reason == 'error' then
+        moving = false; loading_title = nil
+        mp.osd_message('Could not load video — use < or > to choose another', 6)
+    end
 end)
 mp.register_event('shutdown', function()
     cancel()
     if thumbnail_job then mp.abort_async_command(thumbnail_job) end
     if plan_job then mp.abort_async_command(plan_job) end
+    if switch_job then mp.abort_async_command(switch_job) end
     if queue_watcher then queue_watcher:kill() end
 end)
 mp.register_event('file-loaded', function()
     configure()
-    mp.osd_message('Autoplay: ' .. (autoplay and 'ON' or 'OFF') .. ' · Shift+A to toggle', 3)
+    if not loading_title then mp.osd_message('Autoplay: ' .. (autoplay and 'ON' or 'OFF') .. ' · Shift+A to toggle', 3) end
 end)
 configure()

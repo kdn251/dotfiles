@@ -30,9 +30,11 @@ class QueueTests(unittest.TestCase):
             queue.change('started',URLS[2],'wrong-token')
             self.assertEqual(len(queue.entries()),2)
             queue.change('started',URLS[2],token)
+            self.assertEqual(len(queue.entries()),2)
+            queue.change('finished',URLS[2],token)
             self.assertEqual([r['url'] for r in queue.entries()],[URLS[1]])
             queue.change('remove',URLS[1]);self.assertNotIn('Queue',urls.read_text())
-            queue.change('add',URLS[2]);queue.change('started',URLS[2],token)
+            queue.change('add',URLS[2]);queue.change('finished',URLS[2],token)
             self.assertEqual(len(queue.entries()),1,'stale playback callback must not remove a requeued video')
 
     def test_autoplay_queue_overrides_playlist_and_random_without_popping(self):
@@ -62,7 +64,7 @@ class QueueTests(unittest.TestCase):
                 self.assertEqual([row.strip()[0] for row in rows()],list('123'))
                 queue.change('remove',URLS[2])
                 wait(lambda _:len(rows())==2 and 'Video0' in rows()[0])
-                queue.change('started',URLS[0],queue.entries()[0]['queue_token'])
+                queue.change('finished',URLS[0],queue.entries()[0]['queue_token'])
                 wait(lambda _:len(rows())==1 and 'Video1' in rows()[0])
                 queue.change('remove',URLS[1]);wait(lambda _:not rows())
 
@@ -89,7 +91,11 @@ class QueueTests(unittest.TestCase):
                 (scripts/name).symlink_to(queue.SCRIPTS/name)
             shutil.copyfile(queue.SCRIPTS/'newsboat-playlist-playback.lua',scripts/'newsboat-playlist-playback.lua')
             (scripts/'newsboat-up-next-thumbnail.py').write_text('raise SystemExit(1)\n')
-            (scripts/'newsboat-play-video.py').write_text('import sys\nfrom pathlib import Path\nPath('+repr(str(calls))+').write_text(sys.argv[1])\n')
+            (scripts/'newsboat-playback-started.py').write_text('pass\n')
+            (scripts/'newsboat-playback-target.py').write_text(
+                'import json,sys\nfrom pathlib import Path\nimport newsboat_autoplay\n'
+                'Path('+repr(str(calls))+').write_text(sys.argv[1])\n'
+                'print(json.dumps({"url":sys.argv[1],"path":'+repr(str(root/'audio.wav'))+',"title":sys.argv[2],"local":True,"plan":newsboat_autoplay.plan(sys.argv[1])}))\n')
             source=root/'audio.wav'
             with wave.open(str(source),'wb') as out:
                 out.setnchannels(1);out.setsampwidth(2);out.setframerate(8000);out.writeframes(b'\0'*(8000 if natural_end else 160000))
@@ -106,9 +112,8 @@ class QueueTests(unittest.TestCase):
                 deadline=time.monotonic()+4
                 while not ready.exists() and time.monotonic()<deadline:time.sleep(.05)
                 self.assertTrue(ready.exists())
-                deadline=time.monotonic()+2
-                while any(row['url']==URLS[0] for row in queue.entries()) and time.monotonic()<deadline:time.sleep(.05)
-                self.assertFalse(any(row['url']==URLS[0] for row in queue.entries()),'successful playback consumes its entry')
+                if not natural_end:
+                    self.assertTrue(any(row['url']==URLS[0] for row in queue.entries()),'starting a video keeps it queued')
                 if not natural_end:
                     queue.change('add',URLS[2]);queue.change('add',URLS[3])
                     time.sleep(.8)
@@ -119,9 +124,11 @@ class QueueTests(unittest.TestCase):
                 while not calls.exists() and time.monotonic()<deadline:time.sleep(.05)
                 self.assertTrue(calls.exists())
                 self.assertEqual(calls.read_text(),URLS[3],'edited queue takes priority over playlist episode 1')
-                self.assertEqual(len(queue.entries()),1,'launch request alone must not consume the queued video')
+                self.assertEqual(len(queue.entries()),1 if natural_end else 2,'only natural EOF consumes the current item')
             finally:
                 process.terminate();process.communicate(timeout=3)
+            if not natural_end:
+                self.assertTrue(any(row['url']==URLS[0] for row in queue.entries()),'closing mpv early keeps the item queued')
 
     def test_real_mpv_notices_queue_edits_during_playback(self):self.run_real_mpv()
     def test_real_mpv_autoplays_queue_at_eof(self):self.run_real_mpv(natural_end=True)
@@ -156,3 +163,56 @@ class QueueTests(unittest.TestCase):
                 self.assertEqual(row['queue_token'],'original-token')
                 (st/'feed-titles.json').write_text('{}')
                 self.assertEqual(queue.metadata(URLS[0])['source'],'Fallback author')
+
+    def test_queue_navigation_follows_order_and_retains_completed_previous(self):
+        with isolated() as (root,_):
+            for url in URLS:queue.change('add',url)
+            middle=autoplay.plan(URLS[1])
+            self.assertTrue(middle['queue'])
+            self.assertEqual(middle['next']['url'],URLS[2])
+            self.assertEqual(middle['queue_next']['url'],URLS[2])
+            self.assertEqual(middle['previous']['url'],URLS[0])
+            queue.change('finished',URLS[0],queue.entries()[0]['queue_token'])
+            self.assertEqual(autoplay.plan(URLS[1])['previous']['url'],URLS[0])
+            queue.change('remove',URLS[2])
+            self.assertEqual(autoplay.plan(URLS[1])['queue_next']['url'],URLS[3])
+            self.assertIsNone(autoplay.plan(URLS[3])['queue_next'],'manual next never wraps to earlier queued videos')
+            with patch.dict(os.environ,NEWSBOAT_QUEUE_PLAYBACK='1'):
+                self.assertIsNone(autoplay.plan(URLS[0])['previous'])
+                self.assertEqual(autoplay.plan(URLS[0])['queue_next']['url'],URLS[1])
+
+    def test_mpv_arrow_keys_use_queue_neighbors_even_with_autoplay_off(self):
+        import subprocess
+        harness=r'''
+local keys, launched = {}, nil
+local plan={enabled=false,queue=true,playlist=false,
+ next={url='automatic',queue_token='a'},
+ queue_next={url='next',queue_token='n'}, previous={url='previous',queue_token='p'}}
+package.preload['mp.utils']=function() return {
+ split_path=function() return '/tmp/' end,
+ parse_json=function() return plan end
+} end
+mp={
+ command_native_async=function(cmd) launched=cmd.args;return 1 end,
+ command_native=function(cmd)
+  if cmd.args and cmd.args[2]:match('newsboat_autoplay.py$') then return {status=0,stdout='plan'} end
+  if cmd.args and cmd.args[2]:match('newsboat%-play%-video.py$') then launched=cmd.args end
+  return {status=0}
+ end,
+ get_property=function(_,default) return default end,
+ set_property=function() end,set_property_native=function() end,
+ commandv=function() end,osd_message=function() end,
+ add_forced_key_binding=function(key,_,callback) keys[key]=callback end,
+ observe_property=function() end,register_event=function() end,
+ add_periodic_timer=function() return {kill=function() end} end
+}
+dofile(arg[1])
+assert(keys['<'] and keys['>'],'both directions bound outside a creator playlist')
+keys[arg[2]]()
+assert(launched[5]=='queue','preserve queue context inside the player')
+assert(launched[3]==arg[3],'use the adjacent queue entry, not the autoplay fallback')
+'''
+        with tempfile.TemporaryDirectory() as folder:
+            script=Path(folder)/'test.lua';script.write_text(harness)
+            for key,expected in [('>','next'),('<','previous')]:
+                subprocess.run(['lua',str(script),str(queue.SCRIPTS/'newsboat-playlist-playback.lua'),key,expected],env=dict(os.environ,NEWSBOAT_MEDIA_URL=URLS[1]),check=True,capture_output=True)

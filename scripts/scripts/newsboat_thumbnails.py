@@ -207,7 +207,7 @@ class Fetcher:
 
 
 @lru_cache(maxsize=97)
-def loading_png(frame, failed=False, caption=None):
+def loading_png(frame, failed=False, caption=None, traveling=False):
     """Render the refresh ship inside the existing image placement, not curses."""
     from PIL import Image, ImageDraw, ImageFont
     caption = caption or ('Thumbnail unavailable' if failed else 'Loading thumbnail…')
@@ -222,8 +222,32 @@ def loading_png(frame, failed=False, caption=None):
         font = ImageFont.load_default(size=28)
     colors = {244:'#808080',203:'#ff5f5f',255:'#eeeeee',38:'#00afd7'}
     draw.rounded_rectangle((2,2,677,height-3),radius=20,fill='#1e1e2e',outline='#ffffff',width=4)
-    for row,(color,line) in enumerate(ship_art(frame, 34)):
-        draw.text((340,40+row*40),line,font=font,fill=colors[color],anchor='mt')
+    art=ship_art(frame,34,bob=not traveling)
+    if traveling:
+        # Move the entire ship/smoke on a separate layer. Clip inside the frame,
+        # so even a partially visible ship cannot overwrite the white border.
+        cell=font.getlength(' ')
+        layer=Image.new('RGBA',canvas.size,(0,0,0,0))
+        painter=ImageDraw.Draw(layer)
+        for row,(color,line) in enumerate(art[:-1]):
+            painter.text((340,40+row*40),line,font=font,fill=colors[color],anchor='mt')
+        # Actual painted bounds exclude the ASCII art's padding, so there is
+        # no invisible tail delaying its immediate return at the opposite edge.
+        bounds=layer.getbbox()
+        if bounds:
+            ship=layer.crop(bounds)
+            inner=664
+            width=ship.width
+            start=(inner-width)/2
+            left=round((start+width+frame*cell/4) % (inner+width)-width)
+            strip=Image.new('RGBA',(inner,280),(0,0,0,0))
+            strip.paste(ship,(left,bounds[1]),ship)
+            canvas.alpha_composite(strip,(8,0))
+        color,line=art[-1]
+        draw.text((340,240),line,font=font,fill=colors[color],anchor='mt')
+    else:
+        for row,(color,line) in enumerate(art):
+            draw.text((340,40+row*40),line,font=font,fill=colors[color],anchor='mt')
     for i,line in enumerate(lines):
         draw.text((340,330+40*i),line,font=font,fill='#cdd6f4',anchor='mt')
     output = io.BytesIO()

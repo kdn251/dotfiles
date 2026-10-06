@@ -59,9 +59,20 @@ def normal_plan(current):
 
 
 def plan(current):
-    from newsboat_queue import entries, identity
+    from newsboat_queue import entries, identity, navigation
     rows = entries()
     candidates = [row for row in rows if identity(row['url']) != identity(current)]
+    queued = any(identity(row['url']) == identity(current) for row in rows)
+    queue_playback = queued or os.environ.get('NEWSBOAT_QUEUE_PLAYBACK') == '1'
+    if queue_playback:
+        following, previous, manual_next = navigation(current)
+        result = dict(enabled=enabled(), playlist=False, queue=True,
+                      next=following or (candidates[0] if candidates else None),
+                      previous=previous, queue_next=manual_next)
+        if result['next'] is None:result['next']=normal_plan(current)['next']
+        result['current_queue_token']=next((row['queue_token'] for row in rows if identity(row['url'])==identity(current)), '')
+        return result
+
     # Preserve previous-episode navigation, but the queue owns next-video choice.
     if candidates:
         result = dict(enabled=enabled(), playlist=False, next=candidates[0], previous=None)
@@ -80,4 +91,5 @@ if __name__ == '__main__':
     if sys.argv[1] == 'set':
         media.atomic_write(preference(), json.dumps(dict(enabled=sys.argv[2]=='on')))
     else:
+        if len(sys.argv)>3:os.environ['NEWSBOAT_QUEUE_PLAYBACK']='1' if sys.argv[3]=='on' else '0'
         print(json.dumps(plan(sys.argv[2])))

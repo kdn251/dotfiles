@@ -81,7 +81,13 @@ class GraphicsStream:
         return data
 
 
-def ship_art(frame, inner):
+def ship_position(frame, inner, width=18):
+    """Start centered, drift right, and wrap only after the stern exits."""
+    start = (inner-width)/2
+    return (start+width+frame/4) % (inner+width) - width
+
+
+def ship_art(frame, inner, traveling=False, bob=True):
     """Shared smoke, ship bobbing, and waves for refresh and thumbnail loading."""
     smoke = [list(' ' * 18) for _ in range(2)]
     for stack in (7, 11):
@@ -94,14 +100,23 @@ def ship_art(frame, inner):
         '   \\_o_o_o_o__/   ',
     ]
     colors = [244,244,203,255,203]
-    if 6 <= frame % 32 < 22:
+    if bob and not traveling and 6 <= frame % 32 < 22:
         art = art[1:] + [' ' * 18]
         colors = colors[1:] + [244]
     wave = '~^~~-~~^~~-~~^~~-~~^~~-~~'
     shift = (frame//2) % 6
     art.append(wave[shift:shift+18])
     colors.append(38)
-    art = [line.center(inner) for line in art[:-1]] + [(wave * 3)[shift:shift+inner]]
+    if traveling:
+        body=art[:-1]
+        first=min(len(line)-len(line.lstrip()) for line in body if line.strip())
+        last=max(len(line.rstrip()) for line in body)
+        width=last-first
+        left=int(ship_position(frame,inner,width)//1)
+        art=[(' '*max(0,left)+line[first:last].ljust(width)[max(0,-left):])[:inner].ljust(inner) for line in body]
+    else:
+        art=[line.center(inner) for line in art[:-1]]
+    art += [(wave * 3)[shift:shift+inner]]
     return list(zip(colors, art))
 
 
@@ -147,7 +162,7 @@ class Renderer:
         import io
         width=max(1,min(34,cols-2));visible=max(0,width-offset)
         if not visible:return Renderer.clear_overlay()
-        data=loading_png(frame % 96,caption=caption)
+        data=loading_png(frame,caption=caption,traveling=True)
         if visible < width:
             with Image.open(io.BytesIO(data)) as source:
                 clipped=source.crop((0,0,round(source.width*visible/width),source.height))
@@ -164,7 +179,7 @@ class Renderer:
             lines = ['🚢  ' + caption.splitlines()[-1][:max(0, width-4)]]
         else:
             inner = width - 2
-            colors, art = zip(*ship_art(frame, inner))
+            colors, art = zip(*ship_art(frame, inner, traveling=True))
             lines = [f'│\x1b[38;5;{color}m{line}\x1b[0m│' for color,line in zip(colors,art)]
             lines.extend('│' + line[:inner].center(inner) + '│' for line in caption.splitlines())
             lines = ['╭' + '─' * inner + '╮'] + lines + ['╰' + '─' * inner + '╯']

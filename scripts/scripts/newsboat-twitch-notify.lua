@@ -1,13 +1,15 @@
 -- Notify once playback actually starts, including downloaded VODs.
 local utils = require('mp.utils')
-local sent = false
+local sent
+local original = os.getenv("NEWSBOAT_MEDIA_URL") or ""
 mp.register_event('playback-restart', function()
-    if sent then return end
-    sent = true
+    local url = mp.get_property('user-data/newsboat/url', original)
+    if not url:match('twitch%.tv/videos/%d+') or sent == url then return end
+    sent = url
     local helper = os.getenv('NEWSBOAT_TWITCH_NOTIFY')
     if not helper then return end
     mp.command_native_async({name='subprocess', playback_only=false, args={
-        'python3', helper, os.getenv('NEWSBOAT_TWITCH_URL') or '',
+        'python3', helper, url,
         mp.get_property('path', ''), mp.get_property('media-title', ''),
         utils.format_json(mp.get_property_native('metadata', {}))
     }}, function(success, result, error)

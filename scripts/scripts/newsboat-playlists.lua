@@ -2,7 +2,8 @@
 local pending = false
 mp.add_key_binding('P', 'newsboat-playlists', function()
     if pending then return end
-    local url = os.getenv('NEWSBOAT_MEDIA_URL') or mp.get_property('path', '')
+    local url = mp.get_property('user-data/newsboat/url', '')
+    if url == '' then url = os.getenv('NEWSBOAT_MEDIA_URL') or mp.get_property('path', '') end
     pending = true
     mp.command_native_async({name='subprocess', playback_only=false,
         args={'python3', os.getenv('HOME')..'/scripts/newsboat-playlists.py', 'request', url}},

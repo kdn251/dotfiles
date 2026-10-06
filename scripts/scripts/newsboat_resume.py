@@ -35,7 +35,9 @@ def playlist_row(rows):
 
 def launch(row, context=None):
     if row is None:return 0
-    if context:os.environ['NEWSBOAT_PLAYLIST_CONTEXT']=str(context)
+    if context:
+        os.environ['NEWSBOAT_PLAYLIST_CONTEXT']=str(context)
+        os.environ.pop('NEWSBOAT_QUEUE_PLAYBACK',None)
     else:os.environ.pop('NEWSBOAT_PLAYLIST_CONTEXT',None)
     path=Path(__file__).with_name('newsboat-play-video.py')
     spec=importlib.util.spec_from_file_location('resume_player',path)
