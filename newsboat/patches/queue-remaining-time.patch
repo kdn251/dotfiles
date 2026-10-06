@@ -1,0 +1,42 @@
+--- a/src/feedlistformaction.cpp
++++ b/src/feedlistformaction.cpp
+@@ -83,6 +83,15 @@
+             const auto version = std::to_string(info.st_mtim.tv_sec) + ":" + std::to_string(info.st_mtim.tv_nsec);
+             static std::string previous_queue;
+             if (previous_queue != version) { previous_queue = version; do_redraw = true; }
++        }
++    }
++    if (const char* path = std::getenv("NEWSBOAT_QUEUE_STATUS")) {
++        struct stat info {};
++        const auto summary = std::string(path) + ".time";
++        if (stat(summary.c_str(), &info) == 0) {
++            const auto version = std::to_string(info.st_mtim.tv_sec) + ":" + std::to_string(info.st_mtim.tv_nsec);
++            static std::string previous_time;
++            if (previous_time != version) { previous_time = version; do_redraw = true; }
+         }
+     }
+     if (const char* stars = std::getenv("NEWSBOAT_STARRED_STATUS")) {
+@@ -1392,12 +1401,21 @@
+         feed->rssurl().find("query:⭐ Starred:") == 0 ||
+         feed->rssurl().find("query:📥 Downloads:") == 0;
+     fmt.register_fmt('v', std::to_string(unread_count));
+-    fmt.register_fmt('k', total_view ? "items" : "unread");
++    const bool queue_view = feed->rssurl().find("query:📺 Queue:") == 0;
++    fmt.register_fmt('k', queue_view ? (unread_count == 1 ? "video" : "videos") : total_view ? "items" : "unread");
+ 	fmt.register_fmt('U', std::to_string(total_view ? feed->unread_item_count() : unread_count));
+ 	fmt.register_fmt('c', std::to_string(feed->total_item_count()));
+ 	fmt.register_fmt('n', !total_view && unread_count > 0 ? "N" : " ");
+ 	fmt.register_fmt('S', feed->get_status());
+-	fmt.register_fmt('t', get_title(feed));
++    auto title = get_title(feed);
++    if (queue_view) {
++        if (const char* path = std::getenv("NEWSBOAT_QUEUE_STATUS")) {
++            std::ifstream input(std::string(path) + ".time");
++            std::string summary;
++            if (std::getline(input, summary) && !summary.empty()) { title += " · " + summary; }
++        }
++    }
++    fmt.register_fmt('t', title);
+ 	fmt.register_fmt('T', feed->get_firsttag());
+ 	fmt.register_fmt('l', utils::censor_url(feed->link()));
+ 	fmt.register_fmt('L', utils::censor_url(feed->rssurl()));

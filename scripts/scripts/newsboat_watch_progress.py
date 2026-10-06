@@ -55,6 +55,8 @@ def record(url, position, duration, sampled_at=None):
         target = STATE/'download-status.tsv.watched'
         if not target.exists() or target.read_text() != content:
             media.atomic_write(target, content)
+    from newsboat_queue_time import refresh
+    refresh()
     return True
 
 

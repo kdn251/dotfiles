@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Reset progress and resume anchors without changing read/star/download state."""
 from contextlib import closing
+import sqlite3
 import sys
 import time
 import newsboat_media as media
@@ -12,7 +13,13 @@ def reset(url):
         import newsboat_watch_progress as watch
         import newsboat_download_cleanup as cleanup
         # A stored zero overrides mpv's own watch-later position on next open.
-        watch.record(url, 0, 1)
+        duration=1
+        try:
+            with closing(sqlite3.connect((watch.STATE/'watch-progress.db').as_uri()+'?mode=ro',uri=True)) as db:
+                row=db.execute('SELECT duration FROM progress WHERE identity=?',(':'.join(identity),)).fetchone()
+                if row and row[0] and row[0]>0:duration=row[0]
+        except sqlite3.Error:pass
+        watch.record(url, 0, duration)
         with media.library_lock(), closing(cleanup.database()) as db, db:
             paths = [path for path, stored in db.execute('SELECT path,url FROM watched')
                      if media.identity(stored) == identity]

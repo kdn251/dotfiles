@@ -32,6 +32,8 @@ class ResetTests(unittest.TestCase):
                     db.execute('INSERT INTO watched VALUES (?,?,?,?,?)',('/video.mp4',url,1,1,1))
                 reset.reset('https://youtu.be/abcdefghijk')
                 self.assertEqual(watch.resume_position(url),0)
+                with sqlite3.connect(root/"watch-progress.db") as db:
+                    self.assertEqual(db.execute("SELECT duration FROM progress").fetchone()[0],100)
                 self.assertIn(url+'\t0%',(root/'download-status.tsv.watched').read_text())
                 with cleanup.database() as db:self.assertEqual(db.execute('SELECT COUNT(*) FROM watched').fetchone()[0],0)
                 self.assertEqual(watch.resume_position('https://youtu.be/zzzzzzzzzzz',missing=-1),-1)

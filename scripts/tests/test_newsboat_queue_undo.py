@@ -1,5 +1,6 @@
 import json
 import os
+import time
 from pathlib import Path
 import unittest
 from unittest.mock import patch
@@ -67,4 +68,5 @@ class QueueUndoTests(unittest.TestCase):
                 wait(lambda s:'Source' in s)
                 for index in range(3):
                     send('w');wait(lambda _:log.exists() and len(log.read_text().splitlines())==index+1)
+                    time.sleep(.1) # Allow the interactive helper to return before sending input.
                     if index<2:send('\n');wait(lambda s:'Video' in s)

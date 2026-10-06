@@ -17,7 +17,7 @@ URLS=['https://www.youtube.com/watch?v='+str(i)*11 for i in range(4)]
 def isolated():
     with tempfile.TemporaryDirectory() as folder:
         root=Path(folder);urls=root/'urls';urls.write_text('"query:📬 New:unread = \\"yes\\""\n')
-        with patch.dict(os.environ,XDG_STATE_HOME=folder,NEWSBOAT_URLS_FILE=str(urls),NEWSBOAT_CACHE=str(root/'missing'),NEWSBOAT_PLAYLIST_CONTEXT=''),patch.object(media,'STATE',root/'newsboat'),patch.object(queue,'metadata',side_effect=lambda url:dict(url=url,title='Video'+str(URLS.index(url)),source='Creator')):
+        with patch('newsboat_queue_time.start_worker'),patch.dict(os.environ,XDG_STATE_HOME=folder,NEWSBOAT_URLS_FILE=str(urls),NEWSBOAT_CACHE=str(root/'missing'),NEWSBOAT_PLAYLIST_CONTEXT=''),patch.object(media,'STATE',root/'newsboat'),patch.object(queue,'metadata',side_effect=lambda url:dict(url=url,title='Video'+str(URLS.index(url)),source='Creator')):
             yield root,urls
 
 class QueueTests(unittest.TestCase):
@@ -78,9 +78,9 @@ class QueueTests(unittest.TestCase):
             env=dict(NEWSBOAT_QUEUE_STATUS=str(queue.state()/'viewing-queue.tsv'),NEWSBOAT_STARRED_STATUS=str(queue.state()/'starred-urls.txt'),NEWSBOAT_LIVE_QUERIES=str(urls))
             with reader(root,text,original,env) as (_,screen,send,wait):
                 wait(lambda s:'New' in s)
-                queue.change('add',URLS[0]);wait(lambda s:'Queue 1 items' in s)
+                queue.change('add',URLS[0]);wait(lambda s:'Queue' in s and '1 video' in s)
                 self.assertIn('Queue',screen.display[1]);self.assertIn('New',screen.display[2])
-                queue.change('add',URLS[1]);wait(lambda s:'Queue 2 items' in s)
+                queue.change('add',URLS[1]);wait(lambda s:'Queue' in s and '2 videos' in s)
                 queue.change('remove',URLS[0]);queue.change('remove',URLS[1]);wait(lambda _:not any('Queue' in row for row in screen.display[1:-3]))
 
     def run_real_mpv(self, natural_end=False):
@@ -156,7 +156,7 @@ class QueueTests(unittest.TestCase):
                 db.execute('INSERT INTO rss_item VALUES (1,?,?,?,?)',(URLS[0],'Test video','59','Fallback author'))
             (st/'feed-titles.json').write_text(json.dumps({'59':'Actual channel'}))
             (st/'viewing-queue.json').write_text(json.dumps([dict(url=URLS[0],title='Test video',source='',queue_token='original-token')]))
-            with patch.dict(os.environ,XDG_STATE_HOME=folder,NEWSBOAT_CACHE=str(cache),NEWSBOAT_URLS_FILE=str(root/'missing'),NEWSBOAT_PLAYLIST_CONTEXT=''),patch.object(media,'STATE',st):
+            with patch('newsboat_queue_time.start_worker'),patch.dict(os.environ,XDG_STATE_HOME=folder,NEWSBOAT_CACHE=str(cache),NEWSBOAT_URLS_FILE=str(root/'missing'),NEWSBOAT_PLAYLIST_CONTEXT=''),patch.object(media,'STATE',st):
                 queue.change('refresh')
                 row=queue.entries()[0]
                 self.assertEqual(row['source'],'Actual channel')

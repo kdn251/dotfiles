@@ -60,6 +60,8 @@ def metadata(url):
 
 
 def publish(rows):
+    import newsboat_queue_time as queue_time
+    if queue_time.publish(rows):queue_time.start_worker()
     media.atomic_write(state()/'starred-urls.txt.queue.count',str(len(rows))+'\n')
     media.atomic_write(state()/'viewing-queue.tsv',''.join(row['url']+'\t'+row['queue_token']+'\n' for row in rows))
     urls=Path(os.environ.get('NEWSBOAT_URLS_FILE',Path.home()/'.newsboat/urls'))
