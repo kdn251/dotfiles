@@ -1,0 +1,18 @@
+--- a/src/feedlistformaction.cpp
++++ b/src/feedlistformaction.cpp
+@@ -654,6 +654,15 @@
+ 		v.get_statusline().show_error(_("No feed selected!"));
+ 		return false;
+ 	}
++
++    if (feed->rssurl().find("query:📺 Queue:") == 0) {
++        const auto browser = cfg->get_configvalue("browser");
++        cfg->set_configvalue("browser", "python3 ~/scripts/newsboat_queue.py resume");
++        const auto code = v.open_in_browser("newsboat-queue://resume", "", "", "", false);
++        cfg->set_configvalue("browser", browser);
++        if (!code || *code != 0) { v.get_statusline().show_error("Could not resume Queue"); return false; }
++        return true;
++    }
+ 
+ 	if (feed->is_query_feed()) {
+ 		v.get_statusline().show_error(_("Cannot open query feeds in the browser!"));

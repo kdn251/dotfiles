@@ -26,6 +26,12 @@ def launcher_for(url):
 
 
 def open_url(url):
+    if url == 'newsboat-queue://resume':
+        from newsboat_queue import resume
+        return resume()
+    if url.startswith('newsboat-playthroughs://'):
+        from newsboat_resume import playthrough
+        return playthrough(url)
     launcher = Path(__file__).resolve().with_name(launcher_for(url))
     if launcher.name == 'newsboat-brave-app.sh':
         from newsboat_articles import find
@@ -41,4 +47,4 @@ def open_url(url):
 
 
 if __name__ == '__main__':
-    open_url(sys.argv[1])
+    sys.exit(open_url(sys.argv[1]))

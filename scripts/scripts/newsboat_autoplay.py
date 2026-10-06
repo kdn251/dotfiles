@@ -40,7 +40,7 @@ def download_candidates(current):
     return list(found.values())
 
 
-def plan(current):
+def normal_plan(current):
     result = dict(enabled=enabled(), playlist=False, next=None, previous=None)
     try:
         data = json.loads(Path(os.environ.get('NEWSBOAT_PLAYLIST_CONTEXT', '')).read_text())
@@ -55,6 +55,24 @@ def plan(current):
     if candidates:
         result['next'] = random.choice(candidates)
         result['next']['title'] = media.cached_title(result['next']['url']) or result['next']['title']
+    return result
+
+
+def plan(current):
+    from newsboat_queue import entries, identity
+    rows = entries()
+    candidates = [row for row in rows if identity(row['url']) != identity(current)]
+    # Preserve previous-episode navigation, but the queue owns next-video choice.
+    if candidates:
+        result = dict(enabled=enabled(), playlist=False, next=candidates[0], previous=None)
+        try:
+            data = json.loads(Path(os.environ.get('NEWSBOAT_PLAYLIST_CONTEXT', '')).read_text())
+            index = next(i for i,row in enumerate(data['rows']) if identity(row['url']) == identity(current))
+            result.update(playlist=True, previous=data['rows'][index-1] if index else None)
+        except (OSError, ValueError, KeyError, StopIteration, TypeError):pass
+    else:
+        result = normal_plan(current)
+    result['current_queue_token'] = next((row['queue_token'] for row in rows if identity(row['url']) == identity(current)), '')
     return result
 
 

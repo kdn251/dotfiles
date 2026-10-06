@@ -1,0 +1,271 @@
+--- a/include/itemlistformaction.h
++++ b/include/itemlistformaction.h
+@@ -32,6 +32,7 @@
+     bool has_visual_selection() const { return visual_active; }
+     std::optional<bool> run_visual_commands(const std::vector<MacroCmd>& commands, BindingType type);
+ 	void prepare() override;
++    std::string old_pin_version;
+     std::string thumbnail_request();
+     std::string title_hover_request();
+     std::string playlist_avatar_request();
+--- a/include/view.h
++++ b/include/view.h
+@@ -47,6 +47,7 @@
+     void sync_undoable_read(std::shared_ptr<RssItem> item, bool read);
+     struct UndoState {
+         std::string token, guid, url, title;
++        unsigned long long pin_order = 0;
+         bool unread = false, deleted = false, has_star = false, star = false, target_star = false;
+         // Collection kind: 0 none, 1 Commentary, 2 Favorites (journal-compatible).
+         int has_commentary = 0;
+--- a/src/itemlistformaction.cpp
++++ b/src/itemlistformaction.cpp
+@@ -45,6 +45,8 @@
+ static std::map<std::string, std::string> watched_progress;
+ static std::map<std::string, double> downloaded_at;
+ static std::string last_opened_url;
++static std::map<std::string, unsigned long long> pinned_urls;
++static std::string pins_version;
+ static std::set<std::string> noted_urls;
+ static std::set<std::string> pending_actions;
+ static std::set<std::pair<std::string, std::string>> pending_removals;
+@@ -92,6 +94,7 @@
+ {
+     const char* path = std::getenv("NEWSBOAT_DOWNLOAD_STATUS");
+     const char* notes = std::getenv("NEWSBOAT_NOTES_STATUS");
++    const char* pins = std::getenv("NEWSBOAT_PINS_FILE");
+     const char* last_opened = std::getenv("NEWSBOAT_LAST_OPENED");
+     const char* stars = std::getenv("NEWSBOAT_STARRED_STATUS");
+     const auto revision = [](const char* filename) {
+@@ -106,9 +109,21 @@
+     const std::string order_path = path ? std::string(path) + ".order" : "";
+     const std::string commentary_path = stars ? std::string(stars) + ".commentary" : "";
+     const std::string favorites_path = stars ? std::string(stars) + ".favorites" : "";
+-    const auto version = revision(vod_path.c_str()) + "|" + revision(favorites_path.c_str()) + "|" + revision(read_path.c_str()) + "|" + revision(notes) + "|" + revision(last_opened) + "|" + revision(order_path.c_str()) + "|" + revision(commentary_path.c_str()) + "|" + revision(path) + "|" + revision(stars) + "|" + revision(watched_path.c_str());
++    pins_version = revision(pins);
++    const auto version = pins_version + "|" + revision(vod_path.c_str()) + "|" + revision(favorites_path.c_str()) + "|" + revision(read_path.c_str()) + "|" + revision(notes) + "|" + revision(last_opened) + "|" + revision(order_path.c_str()) + "|" + revision(commentary_path.c_str()) + "|" + revision(path) + "|" + revision(stars) + "|" + revision(watched_path.c_str());
+     static std::string loaded;
+     if (loaded != version) {
++        pinned_urls.clear();
++        if (pins) {
++            std::ifstream input(pins);
++            std::string line;
++            while (std::getline(input, line)) {
++                const auto separator = line.find('\t');
++                if (separator == std::string::npos) { continue; }
++                try { pinned_urls[line.substr(0, separator)] = std::stoull(line.substr(separator + 1)); }
++                catch (const std::exception&) { }
++            }
++        }
+         std::map<std::string, std::string> updated;
+         std::string line;
+         if (path) {
+@@ -545,7 +560,7 @@
+             break;
+         }
+         if (!visible_items.empty()) {
+-            const int commentary = args.empty() ? 0 : args[0] == "favorites" ? 2 : args[0] == "commentary" ? 1 : 0;
++            const int commentary = args.empty() ? 0 : args[0] == "pin" ? 4 : args[0] == "favorites" ? 2 : args[0] == "commentary" ? 1 : 0;
+             v.remember_action(visible_items[itempos].first, feed,
+                 commentary ? std::nullopt : std::optional<bool>(!args.empty() && args[0] == "star"), commentary);
+         }
+@@ -1438,6 +1453,25 @@
+             });
+     }
+ 
++    // Apply pin priority after each view's normal sort. Stable sorting leaves
++    // unpinned rows in that original order and restores it on unpin.
++    if (std::any_of(new_visible_items.begin(), new_visible_items.end(),
++        [](const ItemPtrPosPair& item) { return pinned_urls.count(item.first->link()); })) {
++        std::stable_sort(new_visible_items.begin(), new_visible_items.end(),
++            [](const ItemPtrPosPair& a, const ItemPtrPosPair& b) {
++                const auto active = [](const std::string& url) {
++                    const auto it = download_status.find(url);
++                    return it != download_status.end() && (it->second == "…" || it->second.find("↓") == 0);
++                };
++                const auto aa = active(a.first->link()), ba = active(b.first->link());
++                if (aa != ba) { return aa; }
++                if (aa) { return false; }
++                const auto ap = pinned_urls.find(a.first->link()), bp = pinned_urls.find(b.first->link());
++                if ((ap != pinned_urls.end()) != (bp != pinned_urls.end())) { return ap != pinned_urls.end(); }
++                return ap != pinned_urls.end() && ap->second < bp->second;
++            });
++    }
++
+ 	LOG(Level::DEBUG,
+ 		"ItemListFormAction::do_update_visible_items: size = %" PRIu64,
+ 		static_cast<uint64_t>(visible_items.size()));
+@@ -1502,10 +1536,7 @@
+ 		}
+ 		auto item = visible_items[line];
+         // Number sorted collections by visible position, not RSS import order.
+-        if (feed->title() == "⭐ Starred" || feed->title() == "🎮 Playthroughs" ||
+-            feed->title() == "Playlists · 🎮 Playthroughs") {
+-            item.second = line;
+-        }
++        item.second = line;
+         auto format = item_row_format(line);
+         const bool avatars = std::getenv("NEWSBOAT_THUMBNAILS");
+         const auto title_field = format.find("%t");
+@@ -1538,8 +1569,7 @@
+         const auto title_field = format.find("%t");
+         if (title_field == std::string::npos) { continue; }
+         auto item = visible_items[offset + row];
+-        if (feed->title() == "⭐ Starred" || feed->title() == "🎮 Playthroughs" ||
+-            feed->title() == "Playlists · 🎮 Playthroughs") { item.second = offset + row; }
++        item.second = offset + row;
+         const auto viewport_width = list.get_width();
+         const auto row_width = row >= 1 && row <= thumbnail_height ?
+             viewport_width - std::min(38u, viewport_width) : viewport_width;
+@@ -1567,8 +1597,7 @@
+     std::string result;
+     for (std::uint32_t row = 0; row < list.get_height() && offset + row < visible_items.size(); ++row) {
+         auto item = visible_items[offset + row];
+-        if (feed->title() == "⭐ Starred" || feed->title() == "🎮 Playthroughs" ||
+-            feed->title() == "Playlists · 🎮 Playthroughs") { item.second = offset + row; }
++        item.second = offset + row;
+         const auto format = item_row_format(offset + row);
+         const auto field = format.find("%t");
+         if (field == std::string::npos) { continue; }
+@@ -1621,10 +1650,12 @@
+     const auto storage = library_storage_size(feed->title(), feed->rssurl());
+     if (storage != old_storage) { old_storage = storage; do_redraw = true; }
+     const auto status_version = download_revision();
++    const bool pins_changed = old_pin_version != pins_version;
++    old_pin_version = pins_version;
+     if (status_version != download_status_version) {
+         download_status_version = status_version;
+         // Badges must not refilter read items or move the current page.
+-        if (feed->title() == "🎮 Playthroughs" || feed->title() == "Playlists · 🎮 Playthroughs" || feed->rssurl().find("query:🎮 Playthrough:") == 0 || feed->title() == "📚 Books" || feed->title() == "⭐ Starred" || feed->rssurl().find("query:📥 Downloads:") == 0) {
++        if (pins_changed || !pinned_urls.empty() || feed->title() == "🎮 Playthroughs" || feed->title() == "Playlists · 🎮 Playthroughs" || feed->rssurl().find("query:🎮 Playthrough:") == 0 || feed->title() == "📚 Books" || feed->title() == "⭐ Starred" || feed->rssurl().find("query:📥 Downloads:") == 0) {
+             if (!restore_selection_guid) { store_selection(); }
+             invalidate_list();
+         } else {
+@@ -1739,8 +1770,9 @@
+         badges += "📝";
+     }
+     if (!last_opened_url.empty() && item.first->link() == last_opened_url) {
+-        badges = "📌 " + badges;
+-    }
++        badges = "↪ " + badges;
++    }
++    if (pinned_urls.count(item.first->link())) { badges = "📌 " + badges; }
+     if (pending_actions.count(item.first->link())) {
+         badges = action_spinner() + (badges.empty() ? "" : " " + badges);
+     }
+@@ -2019,23 +2051,11 @@
+ 
+ void ItemListFormAction::handle_cmdline_num(unsigned int idx)
+ {
+-    if ((feed->title() == "📚 Books" || feed->rssurl().find("query:🎬 VODs:") == 0 || feed->rssurl().find("query:📬 New:") == 0 || feed->title() == "⭐ Starred" || feed->title() == "📣 Commentary" || feed->title() == " Favorites") || feed->rssurl().find("query:📥 Downloads:") == 0) {
+-        if (idx > 0 && idx <= visible_items.size()) { list.set_position(idx - 1); }
+-        else { v.get_statusline().show_error(_("Invalid position!")); }
+-        return;
+-    }
+-    if (visible_items.empty()) { return; }
+-	if (idx > 0 &&
+-		idx <= visible_items[visible_items.size() - 1].second + 1) {
+-		int i = get_pos(idx - 1);
+-		if (i == -1) {
+-			v.get_statusline().show_error(_("Position not visible!"));
+-		} else {
+-			list.set_position(i);
+-		}
+-	} else {
+-		v.get_statusline().show_error(_("Invalid position!"));
+-	}
++    if (idx > 0 && idx <= visible_items.size()) {
++        list.set_position(idx - 1);
++    } else {
++        v.get_statusline().show_error(_("Invalid position!"));
++    }
+ }
+ 
+ void ItemListFormAction::handle_cmdline(const std::string& cmd)
+--- a/src/itemviewformaction.cpp
++++ b/src/itemviewformaction.cpp
+@@ -431,8 +431,8 @@
+ 		break;
+     case OP_UNDO_CHECKPOINT:
+         v.remember_action(item, feed,
+-            !args.empty() && (args[0] == "commentary" || args[0] == "favorites") ? std::nullopt : std::optional<bool>(!args.empty() && args[0] == "star"),
+-            args.empty() ? 0 : args[0] == "favorites" ? 2 : args[0] == "commentary" ? 1 : 0);
++            !args.empty() && (args[0] == "commentary" || args[0] == "favorites" || args[0] == "pin") ? std::nullopt : std::optional<bool>(!args.empty() && args[0] == "star"),
++            args.empty() ? 0 : args[0] == "pin" ? 4 : args[0] == "favorites" ? 2 : args[0] == "commentary" ? 1 : 0);
+         break;
+ 	case OP_TOGGLEITEMREAD: {
+         if (!(args.size() > 1 && args[1] == "group")) {
+--- a/src/view.cpp
++++ b/src/view.cpp
+@@ -1163,6 +1163,7 @@
+             >> state.has_star >> state.star >> state.target_star
+             >> state.has_commentary >> state.commentary)) { continue; }
+         row >> std::quoted(state.title); // Optional for older journal entries.
++        row >> state.pin_order;
+         states.push_back(state);
+     }
+     return states;
+@@ -1177,7 +1178,7 @@
+         output << std::quoted(state.token) << ' ' << std::quoted(state.guid) << ' '
+             << std::quoted(state.url) << ' ' << state.unread << ' ' << state.deleted << ' '
+             << state.has_star << ' ' << state.star << ' ' << state.target_star << ' '
+-            << state.has_commentary << ' ' << state.commentary << ' ' << std::quoted(state.title) << '\n';
++            << state.has_commentary << ' ' << state.commentary << ' ' << std::quoted(state.title) << ' ' << state.pin_order << '\n';
+     }
+     output.close(); std::rename(temporary.c_str(), path);
+ }
+@@ -1228,6 +1229,19 @@
+             while (std::getline(input, url)) { if (url == state.url) { state.commentary = true; break; } }
+         }
+     }
++    if (commentary_action == 4) {
++        if (const char* path = std::getenv("NEWSBOAT_PINS_FILE")) {
++            std::ifstream input(path); std::string line;
++            while (std::getline(input, line)) {
++                const auto separator = line.find('\t');
++                if (separator != std::string::npos && line.substr(0, separator) == state.url) {
++                    try { state.pin_order = std::stoull(line.substr(separator + 1)); }
++                    catch (const std::exception&) { }
++                    break;
++                }
++            }
++        }
++    }
+     undo_history.push_back(state);
+     trim_undo_history(undo_history);
+     if (const char* path = std::getenv("NEWSBOAT_UNDO_FILE")) {
+@@ -1275,7 +1289,7 @@
+     } while (bulk && !states.empty() && undo_group_id(states.back().token) == group);
+     if (bulk && count > 1) {
+         const auto number = std::to_string(count);
+-        const std::string action = summary.has_commentary == 3 ? "Restored " + number + " downloads" :
++        const std::string action = summary.has_commentary == 4 ? "Pin change undone: " + number + " items" : summary.has_commentary == 3 ? "Restored " + number + " downloads" :
+             summary.has_commentary == 2 ? "Favorites change undone: " + number + " items" :
+             summary.has_commentary == 1 ? "Commentary change undone: " + number + " items" :
+             summary.has_star ? std::string(summary.target_star ? "Star undone: " : "Unstar undone: ") + number + " items" :
+@@ -1295,7 +1309,15 @@
+     const auto local = std::find_if(undo_history.begin(), undo_history.end(),
+         [&](const auto& item) { return item.token == state.token; });
+     if (local != undo_history.end()) { state = *local; }
+-    if (state.has_commentary == 3) {
++    if (state.has_commentary == 4) {
++        const char* helper = std::getenv("NEWSBOAT_PINS_HELPER");
++        if (!helper) { status_line.show_error("Restart Newsboat to undo pin changes"); return false; }
++        const auto browser = cfg->get_configvalue("browser");
++        cfg->set_configvalue("browser", "python3 " + utils::quote(helper) + " restore %u " + std::to_string(state.pin_order));
++        const auto result = open_in_browser(state.url, "", "", "", false);
++        cfg->set_configvalue("browser", browser);
++        if (!result || *result != 0) { status_line.show_error("Could not undo pin change"); return false; }
++    } else if (state.has_commentary == 3) {
+         const char* helper = std::getenv("NEWSBOAT_DOWNLOAD_UNDO_HELPER");
+         if (!helper) { status_line.show_error("Restart Newsboat to undo download deletion"); return false; }
+         const auto browser = cfg->get_configvalue("browser");
+@@ -1373,7 +1395,7 @@
+     }
+     if (title.empty()) { title = state.url; }
+     for (auto& c : title) { if (static_cast<unsigned char>(c) < 32 || c == 127) { c = ' '; } }
+-    const std::string action = state.has_commentary == 3 ? "Restored download" :
++    const std::string action = state.has_commentary == 4 ? (state.pin_order ? "Pin restored" : "Pin removed") : state.has_commentary == 3 ? "Restored download" :
+         state.has_commentary == 2 ? (state.commentary ? "Restored to Favorites" : "Removed from Favorites") :
+         state.has_commentary == 1 ? (state.commentary ? "Restored to Commentary" : "Removed from Commentary") :
+         state.has_star ? (state.target_star ? "Star undone" : "Unstar undone") :

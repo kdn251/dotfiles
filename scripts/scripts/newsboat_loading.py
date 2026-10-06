@@ -192,6 +192,7 @@ class Renderer:
 def nested_view_environment(directory):
     """Nested views share the wrapper's alternate screen instead of leaving it."""
     env = os.environ.copy()
+    env.pop('NEWSBOAT_QUEUE_VIEW', None)
     term = env.get('TERM', 'xterm-256color')
     result = subprocess.run(['infocmp', '-1', term], capture_output=True, text=True, check=True)
     description = re.sub(r'^\s*(?:smcup|rmcup)=.*\n', '', result.stdout, flags=re.MULTILINE)

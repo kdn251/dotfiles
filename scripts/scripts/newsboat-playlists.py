@@ -109,7 +109,7 @@ def prepare_view(directory, data):
     actions={'bind','bind-key','macro','browser'} if is_playlist else {'bind-key'}
     lines=[line for line in source.read_text().splitlines() if line.split() and line.split()[0] in appearance|actions]
     if not is_playlist:
-        lines += [line for line in source.read_text().splitlines() if line.startswith(('bind ? ','bind h ','bind H '))]
+        lines += [line for line in source.read_text().splitlines() if line.startswith(('bind ? ','bind h ','bind H ','macro p ','macro P '))]
     lines=[line for line in lines if not line.startswith(('bind q ','bind o ','bind O ','bind P ','macro v ','macro d ','macro C '))]
     if is_playlist:
         for helper in ('commentary','favorites'):
@@ -126,6 +126,10 @@ def prepare_view(directory, data):
     for key in ('<ENTER>','o','O','l'):
         lines.append(f'bind {key} articlelist,searchresultslist set browser '+json.dumps(action)+' ; '+browser_op+
                      (' ; toggle-article-read "read" "stay"' if is_playlist else '')+' -- "'+('Play video' if is_playlist else 'Open playlist')+'"')
+    if not is_playlist:
+        lines=[line for line in lines if not line.startswith(('bind o ','bind O '))]
+        for key in ('o','O'):
+            lines.append(f'bind {key} articlelist,searchresultslist set browser '+json.dumps(command('resume'))+' ; open-in-browser-noninteractively -- "Resume playlist (Enter browses episodes)"')
     lines.append('bind P articlelist,article,searchresultslist set browser '+json.dumps(command('show'))+' ; open-in-browser -- "Browse creator playlists"')
     if is_playlist:
         lines += ['macro v set browser '+json.dumps(command('play'))+' ; open-in-browser-noninteractively ; toggle-article-read "read" "stay" -- "Play video"',
@@ -175,6 +179,10 @@ def background(args):
 
 
 def work(action, url, extra=()):
+    if action=='resume':
+        from newsboat_resume import playlist_row, launch
+        data=fetch('playlist',url)
+        return launch(playlist_row(data['rows']),data['context'])
     if action=='download-playlist':return download_playlist(url)
     url=library.video_url(url)
     if action=='download':
@@ -266,7 +274,7 @@ def main(args):
     if args[0]=='work':
         if args[1]=='collect':return work('collect',args[4],args[2:4])
         return work(args[1],args[2])
-    if args[0] in ('play','download','download-playlist','collect'):
+    if args[0] in ('play','resume','download','download-playlist','collect'):
         if args[-1]=='newsboat-playlists://empty':return 0
         background(args);return 0
     raise ValueError('Unknown playlist command')

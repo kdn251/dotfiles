@@ -42,7 +42,6 @@ macro S set browser "~/scripts/cancel-download.sh %u" ; open-in-browser ; set br
 # to watch streamer that's currently live 
 # when RSS feed hasn't updated or RSS feed 
 # for that user hasn't been added
-macro w set browser "~/scripts/twitch-launcher.sh" ; open-in-browser ; set browser "~/scripts/newsboat-brave-app.sh %u" -- "Open Twitch live-channel picker"
 
 # Refresh downloaded videos feed (,R)
 macro R set browser "python3 ~/scripts/newsboat-reset-progress.py %u" ; open-in-browser-noninteractively ; set browser "~/scripts/newsboat-brave-app.sh %u" -- "Reset watched/read progress and resume position"
@@ -83,7 +82,7 @@ max-items 250
 show-read-articles no
 show-read-feeds yes
 # Start with the main views, including when they are empty.
-run-on-startup set-filter "feedtitle = \"📬 New\" or feedtitle = \"⭐ Starred\" or feedtitle = \"📥 Downloads\" or feedtitle = \"🎮 Playthroughs\" or feedtitle = \"🎬 VODs\" or feedtitle = \"📚 Books\" or feedtitle = \"📣 Commentary\" or feedtitle = \" Favorites\" or feedtitle = \"🌎 All\""
+run-on-startup set-filter "feedtitle = \"📺 Queue\" or feedtitle = \"📬 New\" or feedtitle = \"⭐ Starred\" or feedtitle = \"📥 Downloads\" or feedtitle = \"🎮 Playthroughs\" or feedtitle = \"🎬 VODs\" or feedtitle = \"📚 Books\" or feedtitle = \"📣 Commentary\" or feedtitle = \" Favorites\" or feedtitle = \"🌎 All\""
 
 # Ask before closing from the main feed list; q still goes back inside feeds.
 confirm-exit yes
@@ -125,7 +124,8 @@ color article            default default
 
 # Color status glyphs without changing the surrounding text or column widths.
 # Style the adjacent cell too so Kitty sizes stars equally on read/unread rows.
-highlight articlelist ".*📌.*" cyan default bold
+# Make the last-opened item stand out with its arrow and row styling.
+highlight articlelist ".*↪.*" cyan default bold
 highlight articlelist "󰓎 " yellow default bold
 highlight articlelist "" red default bold
 highlight feedlist "" red default bold
@@ -179,3 +179,11 @@ bind ^C articlelist,article,searchresultslist set browser "python3 ~/scripts/new
 # Vim-style full-row selection; existing actions apply to the whole range.
 bind V articlelist,searchresultslist visual-rows -- "Select rows with j/k; apply action to the range"
 bind ESC articlelist,searchresultslist visual-cancel -- "Cancel row selection"
+
+# Pin order is shared across item lists; P browses creator playlists.
+macro p undo-checkpoint pin ; set browser "python3 ~/scripts/newsboat-pins.py save %u" ; open-in-browser-noninteractively ; set browser "~/scripts/newsboat-brave-app.sh %u" -- "Pin item to top"
+macro P undo-checkpoint pin ; set browser "python3 ~/scripts/newsboat-pins.py remove %u" ; open-in-browser-noninteractively ; set browser "~/scripts/newsboat-brave-app.sh %u" -- "Unpin item"
+
+# FIFO viewing queue takes priority over normal autoplay suggestions.
+macro w set browser "python3 ~/scripts/newsboat_queue.py add %u" ; open-in-browser-noninteractively ; set browser "~/scripts/newsboat-brave-app.sh %u" -- "Add video to viewing Queue"
+macro W set browser "python3 ~/scripts/newsboat_queue.py remove %u" ; open-in-browser-noninteractively ; set browser "~/scripts/newsboat-brave-app.sh %u" -- "Remove video from Queue"

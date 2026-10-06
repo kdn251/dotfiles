@@ -148,7 +148,7 @@ class PlaylistTests(unittest.TestCase):
             _,config=ui.prepare_view(d,dict(kind='show',name='Creator',rows=[dict(url=PLAYLIST,title='Series')]))
             text=config.read_text()
             self.assertIn('Open playlist',text)
-            self.assertIn('bind P articlelist,article,searchresultslist',text)
+            self.assertIn('bind P articlelist,article,searchresultslist set browser',text)
             self.assertIn('newsboat-playlists.py show %u',text)
             self.assertNotIn('bind s ',text)
             self.assertIn('macro d ',text)

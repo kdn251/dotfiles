@@ -131,6 +131,10 @@ def run(args):
         last_opened.parent.mkdir(parents=True, exist_ok=True)
         os.environ['NEWSBOAT_LAST_OPENED'] = str(last_opened)
         os.environ['NEWSBOAT_NOTES_STATUS'] = str(last_opened.parent/'noted-urls.txt')
+        os.environ['NEWSBOAT_PINS_FILE'] = str(last_opened.parent/'pins.tsv')
+        os.environ['NEWSBOAT_PINS_HELPER'] = str(Path(__file__).with_name('newsboat-pins.py'))
+        subprocess.run([sys.executable, os.environ['NEWSBOAT_PINS_HELPER'], 'refresh'],
+                       stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=False)
         subprocess.run([sys.executable, str(Path(__file__).with_name('newsboat-notes.py')), '--refresh'],
                        stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=False)
         os.environ['NEWSBOAT_DOWNLOAD_STATUS'] = str(Path(os.environ.get('XDG_STATE_HOME', Path.home()/'.local/state'))/'newsboat/download-status.tsv')
@@ -176,6 +180,9 @@ def run(args):
     os.environ['NEWSBOAT_URLS_FILE'] = str(urls)
     os.environ['NEWSBOAT_CACHE'] = str(cache.resolve())
     os.environ['NEWSBOAT_PLAYLIST_IMPORTS'] = str(Path(os.environ.get('XDG_STATE_HOME', Path.home()/'.local/state'))/'newsboat/youtube-playlists/imports.tsv')
+    os.environ['NEWSBOAT_QUEUE_STATUS'] = str(Path(os.environ.get('XDG_STATE_HOME', Path.home()/'.local/state'))/'newsboat/viewing-queue.tsv')
+    subprocess.run([sys.executable, str(Path(__file__).with_name('newsboat_queue.py')), 'refresh'],
+                   check=False, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     remote = settings.get('urls-source') == 'miniflux'
     if remote:
         subprocess.run([sys.executable, str(Path(__file__).with_name('newsboat-commentary.py')), 'rebuild'], check=False, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
@@ -468,6 +475,8 @@ def run(args):
                                     view_script = "newsboat-starred.py"
                                 if b"FeedListFormAction: opening Commentary view" in line:
                                     view_script = "newsboat-commentary.py"
+                                if b"FeedListFormAction: opening Queue view" in line:
+                                    view_script = "newsboat_queue.py"
                                 if b"FeedListFormAction: opening Favorites view" in line:
                                     view_script = "newsboat-favorites.py"
                                 if b"FeedListFormAction: opening VODs view" in line:

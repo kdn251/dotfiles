@@ -13,6 +13,7 @@ def play(args):
     with tempfile.TemporaryDirectory(prefix='newsboat-play-') as directory:
         ready = Path(directory) / 'ready'
         env = dict(os.environ, NEWSBOAT_PLAY_READY=str(ready))
+        env.pop('NEWSBOAT_QUEUE_VIEW', None)
         launcher = Path(__file__).with_name('mpv-yt')
         process = subprocess.Popen([str(launcher), *args], env=env, start_new_session=True,
                                    stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,

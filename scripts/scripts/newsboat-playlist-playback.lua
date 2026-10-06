@@ -8,7 +8,9 @@ local result = mp.command_native({name='subprocess', playback_only=false, captur
     args={'python3', directory .. 'newsboat_autoplay.py', 'plan', current}})
 local plan = result and result.status == 0 and utils.parse_json(result.stdout)
 if not plan then return end
+local startup_queue_token = plan.current_queue_token
 local autoplay = plan.enabled
+local plan_job, queue_watcher
 local moving, timer, remaining = false, nil, 5
 local original_keep_open = mp.get_property('keep-open', 'no')
 -- Keep this separate from thumbfast's seek-preview overlay (42).
@@ -85,6 +87,51 @@ local function countdown()
     end)
     show_thumbnail()
 end
+-- The queue can change while this player is open. Read a tiny local status
+-- file; only invoke Python when membership changes, never on every tick.
+local queue_path = os.getenv('NEWSBOAT_QUEUE_STATUS') or
+    ((os.getenv('XDG_STATE_HOME') or (os.getenv('HOME') .. '/.local/state')) .. '/newsboat/viewing-queue.tsv')
+local function queue_version()
+    local file = io.open(queue_path, 'r')
+    if not file then return '' end
+    local value = file:read('*a'); file:close(); return value
+end
+local queue_seen = queue_version()
+local function refresh_queue()
+    if moving or plan_job then return end
+    local version = queue_version()
+    if version == queue_seen then return end
+    plan_job = mp.command_native_async({name='subprocess', playback_only=false, capture_stdout=true,
+        args={'python3', directory .. 'newsboat_autoplay.py', 'plan', current}},
+        function(success, response)
+            plan_job = nil
+            if not success or not response or response.status ~= 0 then return end
+            local updated = utils.parse_json(response.stdout)
+            if not updated then return end
+            queue_seen = version
+            local old_next = plan.next and (plan.next.queue_token or plan.next.url)
+            local new_next = updated.next and (updated.next.queue_token or updated.next.url)
+            plan = updated
+            if old_next ~= new_next then
+                cancel()
+                if thumbnail_job then mp.abort_async_command(thumbnail_job); thumbnail_job = nil end
+                thumbnail, thumbnail_requested = nil, nil
+                configure()
+                if autoplay and mp.get_property_native('eof-reached') then countdown() end
+            end
+        end)
+end
+queue_watcher = mp.add_periodic_timer(.5, refresh_queue)
+local reported_playing = false
+mp.register_event('playback-restart', function()
+    if reported_playing then return end
+    reported_playing = true
+    if startup_queue_token and startup_queue_token ~= '' then
+        mp.command_native_async({name='subprocess', playback_only=false,
+            args={'python3', directory .. 'newsboat_queue.py', 'started', current, startup_queue_token}},
+            function() refresh_queue() end)
+    end
+end)
 mp.add_forced_key_binding('A', 'newsboat-toggle-autoplay', function()
     autoplay = not autoplay
     cancel()
@@ -109,6 +156,8 @@ end)
 mp.register_event('shutdown', function()
     cancel()
     if thumbnail_job then mp.abort_async_command(thumbnail_job) end
+    if plan_job then mp.abort_async_command(plan_job) end
+    if queue_watcher then queue_watcher:kill() end
 end)
 mp.register_event('file-loaded', function()
     configure()

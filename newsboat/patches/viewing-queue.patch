@@ -1,0 +1,157 @@
+--- a/src/feedlistformaction.cpp
++++ b/src/feedlistformaction.cpp
+@@ -77,6 +77,14 @@
+ 
+ void FeedListFormAction::prepare()
+ {
++    if (const char* path = std::getenv("NEWSBOAT_QUEUE_STATUS")) {
++        struct stat info {};
++        if (stat(path, &info) == 0) {
++            const auto version = std::to_string(info.st_mtim.tv_sec) + ":" + std::to_string(info.st_mtim.tv_nsec);
++            static std::string previous_queue;
++            if (previous_queue != version) { previous_queue = version; do_redraw = true; }
++        }
++    }
+     if (const char* stars = std::getenv("NEWSBOAT_STARRED_STATUS")) {
+         struct stat info {};
+         const auto path = std::string(stars) + ".vods.count";
+@@ -145,6 +153,11 @@
+ 				"FeedListFormAction: opening feed at position `%d'", pos);
+ 			if (visible_feeds.size() > 0) {
+ 				const auto selected = v.get_ctrl().get_feedcontainer()->get_feed(pos);
++                if (std::getenv("NEWSBOAT_NESTED_VIEWS") && selected &&
++                    selected->rssurl().find("query:📺 Queue:") == 0) {
++                    LOG(Level::INFO, "FeedListFormAction: opening Queue view");
++                    break;
++                }
+                 if (std::getenv("NEWSBOAT_NESTED_VIEWS") && selected &&
+                     selected->rssurl().find("query:📣 Commentary:") == 0) {
+                     LOG(Level::INFO, "FeedListFormAction: opening Commentary view");
+@@ -1273,6 +1286,14 @@
+     const std::shared_ptr<RssFeed>& feed) const
+ {
+ 	unsigned int unread_count = feed->unread_item_count();
++    if (feed->rssurl().find("query:📺 Queue:") == 0) {
++        unsigned int total = 0;
++        if (const char* stars = std::getenv("NEWSBOAT_STARRED_STATUS")) {
++            std::ifstream count_file(std::string(stars) + ".queue.count");
++            count_file >> total;
++        }
++        return total;
++    }
+     if (feed->rssurl().find("query:📣 Commentary:") == 0) {
+         unsigned int total = 0;
+         if (const char* stars = std::getenv("NEWSBOAT_STARRED_STATUS")) {
+@@ -1355,7 +1376,7 @@
+ 		strprintf::fmt("(%u/%u)",
+ 			unread_count,
+ 			static_cast<unsigned int>(feed->total_item_count())));
+-    const bool total_view = feed->rssurl().find("query:🎮 Playthroughs:") == 0 || feed->rssurl().find("query:📚 Books:") == 0 ||
++    const bool total_view = feed->rssurl().find("query:📺 Queue:") == 0 || feed->rssurl().find("query:🎮 Playthroughs:") == 0 || feed->rssurl().find("query:📚 Books:") == 0 ||
+         feed->rssurl().find("query:🎬 VODs:") == 0 ||
+         feed->rssurl().find("query: Favorites:") == 0 ||
+         feed->rssurl().find("query:📣 Commentary:") == 0 ||
+--- a/src/itemlistformaction.cpp
++++ b/src/itemlistformaction.cpp
+@@ -47,6 +47,7 @@
+ static std::string last_opened_url;
+ static std::map<std::string, unsigned long long> pinned_urls;
+ static std::string pins_version;
++static std::map<std::string, unsigned int> queue_urls;
+ static std::set<std::string> noted_urls;
+ static std::set<std::string> pending_actions;
+ static std::set<std::pair<std::string, std::string>> pending_removals;
+@@ -110,9 +111,19 @@
+     const std::string commentary_path = stars ? std::string(stars) + ".commentary" : "";
+     const std::string favorites_path = stars ? std::string(stars) + ".favorites" : "";
+     pins_version = revision(pins);
+-    const auto version = pins_version + "|" + revision(vod_path.c_str()) + "|" + revision(favorites_path.c_str()) + "|" + revision(read_path.c_str()) + "|" + revision(notes) + "|" + revision(last_opened) + "|" + revision(order_path.c_str()) + "|" + revision(commentary_path.c_str()) + "|" + revision(path) + "|" + revision(stars) + "|" + revision(watched_path.c_str());
++    const char* queue_path = std::getenv("NEWSBOAT_QUEUE_STATUS");
++    const auto version = revision(queue_path) + "|" + pins_version + "|" + revision(vod_path.c_str()) + "|" + revision(favorites_path.c_str()) + "|" + revision(read_path.c_str()) + "|" + revision(notes) + "|" + revision(last_opened) + "|" + revision(order_path.c_str()) + "|" + revision(commentary_path.c_str()) + "|" + revision(path) + "|" + revision(stars) + "|" + revision(watched_path.c_str());
+     static std::string loaded;
+     if (loaded != version) {
++        queue_urls.clear();
++        if (queue_path) {
++            std::ifstream input(queue_path); std::string row;
++            unsigned int index = 0;
++            while (std::getline(input, row)) {
++                const auto tab = row.find('\t');
++                if (tab != std::string::npos) { queue_urls[row.substr(0, tab)] = index++; }
++            }
++        }
+         pinned_urls.clear();
+         if (pins) {
+             std::ifstream input(pins);
+@@ -242,6 +253,7 @@
+         if (cmd.op == OP_SET && cmd.args.size() == 2 && cmd.args[0] == "browser") {
+             const auto& browser = cmd.args[1];
+             if (browser.find("delete-downloaded.sh ") != std::string::npos) { bulk = true; deleting_downloads = true; }
++            if (browser.find("newsboat_queue.py ") != std::string::npos) { bulk = true; }
+             if (browser.find("newsboat-download-video.sh ") != std::string::npos ||
+                 browser.find("newsboat-playlists.py download ") != std::string::npos ||
+                 browser.find("newsboat-playlists.py download-playlist ") != std::string::npos) {
+@@ -1380,7 +1392,8 @@
+ 	unsigned int i = 0;
+ 	for (const auto& item : items) {
+ 		item->set_index(i + 1);
+-		if ((show_read || item->unread()) &&
++		if ((!std::getenv("NEWSBOAT_QUEUE_VIEW") || queue_urls.count(item->link())) &&
++            (show_read || item->unread()) &&
+ 			(!filter_active || matcher.matches(item.get()))) {
+ 			new_visible_items.push_back(ItemPtrPosPair(item, i));
+ 		}
+@@ -1455,7 +1468,7 @@
+ 
+     // Apply pin priority after each view's normal sort. Stable sorting leaves
+     // unpinned rows in that original order and restores it on unpin.
+-    if (std::any_of(new_visible_items.begin(), new_visible_items.end(),
++    if (!std::getenv("NEWSBOAT_QUEUE_VIEW") && std::any_of(new_visible_items.begin(), new_visible_items.end(),
+         [](const ItemPtrPosPair& item) { return pinned_urls.count(item.first->link()); })) {
+         std::stable_sort(new_visible_items.begin(), new_visible_items.end(),
+             [](const ItemPtrPosPair& a, const ItemPtrPosPair& b) {
+@@ -1469,6 +1482,13 @@
+                 const auto ap = pinned_urls.find(a.first->link()), bp = pinned_urls.find(b.first->link());
+                 if ((ap != pinned_urls.end()) != (bp != pinned_urls.end())) { return ap != pinned_urls.end(); }
+                 return ap != pinned_urls.end() && ap->second < bp->second;
++            });
++    }
++
++    if (std::getenv("NEWSBOAT_QUEUE_VIEW")) {
++        std::stable_sort(new_visible_items.begin(), new_visible_items.end(),
++            [](const ItemPtrPosPair& a, const ItemPtrPosPair& b) {
++                return queue_urls[a.first->link()] < queue_urls[b.first->link()];
+             });
+     }
+ 
+@@ -1655,8 +1675,22 @@
+     if (status_version != download_status_version) {
+         download_status_version = status_version;
+         // Badges must not refilter read items or move the current page.
+-        if (pins_changed || !pinned_urls.empty() || feed->title() == "🎮 Playthroughs" || feed->title() == "Playlists · 🎮 Playthroughs" || feed->rssurl().find("query:🎮 Playthrough:") == 0 || feed->title() == "📚 Books" || feed->title() == "⭐ Starred" || feed->rssurl().find("query:📥 Downloads:") == 0) {
++        if (std::getenv("NEWSBOAT_QUEUE_VIEW") || pins_changed || !pinned_urls.empty() || feed->title() == "🎮 Playthroughs" || feed->title() == "Playlists · 🎮 Playthroughs" || feed->rssurl().find("query:🎮 Playthrough:") == 0 || feed->title() == "📚 Books" || feed->title() == "⭐ Starred" || feed->rssurl().find("query:📥 Downloads:") == 0) {
+             if (!restore_selection_guid) { store_selection(); }
++            if (std::getenv("NEWSBOAT_QUEUE_VIEW") && !visible_items.empty()) {
++                const auto pos = std::min(list.get_position(), static_cast<unsigned int>(visible_items.size() - 1));
++                if (!queue_urls.count(visible_items[pos].first->link())) {
++                    restore_selection_guid.reset();
++                    for (unsigned int i = pos; i < visible_items.size(); ++i) {
++                        if (queue_urls.count(visible_items[i].first->link())) { restore_selection_guid = visible_items[i].first->guid(); break; }
++                    }
++                    if (!restore_selection_guid) {
++                        for (auto i = pos; i > 0; --i) {
++                            if (queue_urls.count(visible_items[i-1].first->link())) { restore_selection_guid = visible_items[i-1].first->guid(); break; }
++                        }
++                    }
++                }
++            }
+             invalidate_list();
+         } else {
+             invalidate(list.get_position());
+@@ -1772,6 +1806,7 @@
+     if (!last_opened_url.empty() && item.first->link() == last_opened_url) {
+         badges = "↪ " + badges;
+     }
++    if (queue_urls.count(item.first->link())) { badges = "📺 " + badges; }
+     if (pinned_urls.count(item.first->link())) { badges = "📌 " + badges; }
+     if (pending_actions.count(item.first->link())) {
+         badges = action_spinner() + (badges.empty() ? "" : " " + badges);

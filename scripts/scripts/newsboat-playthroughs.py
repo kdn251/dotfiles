@@ -41,6 +41,10 @@ def prepare_view(directory, ident=None):
         lines.append('articlelist-format "%4i  %4w  %p %t"')
         action='python3 '+str(Path(__file__).resolve())+' group %u'
         lines=[line.replace(ui.command('playlist'),action) for line in lines]
+        # Enter browses episodes; o/O continues playback without opening the list.
+        lines=[line for line in lines if not line.startswith(('bind o ','bind O '))]
+        for key in ('o','O'):
+            lines.append(f'bind {key} articlelist,searchresultslist set browser "python3 '+str(SCRIPTS/'newsboat-open.py')+' %u" ; open-in-browser-noninteractively -- "Resume playthrough (or start first episode)"')
         lines=[line.replace('macro D ', 'macro D undo-checkpoint download ; ',1).replace(' -- ', ' ; reload -- ',1) if line.startswith('macro D ') else line for line in lines]
         lines.append('bind U articlelist undo-action ; reload -- "Undo"')
         if not groups:

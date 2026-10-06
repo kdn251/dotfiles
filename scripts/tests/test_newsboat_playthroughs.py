@@ -101,6 +101,8 @@ class PlaythroughTests(unittest.TestCase):
                 self.assertIn('bind U ',text)
             else:
                 self.assertIn('newsboat-playthroughs.py group',text)
+                self.assertIn('newsboat-open.py',next(line for line in text.splitlines() if line.startswith('bind o ')))
+                self.assertIn('newsboat-playthroughs.py group',next(line for line in text.splitlines() if line.startswith('bind <ENTER> ')))
                 self.assertIn('🎮 Playthroughs',text)
                 self.assertIn('macro D undo-checkpoint download ; set browser',text)
                 self.assertIn('download-playlist %u',text)
