@@ -1,0 +1,34 @@
+onboarding = false
+
+[terminal]
+new_cwd = "follow"
+
+[keys]
+prefix = "ctrl+s"
+reload_config = "prefix+r"
+detach = "prefix+d"
+
+# tmux windows correspond to Herdr tabs.
+new_tab = "prefix+c"
+rename_tab = "prefix+comma"
+previous_tab = "prefix+p"
+next_tab = "prefix+n"
+switch_tab = "prefix+1..9"
+
+# Match the primary split bindings in ~/.tmux.conf.
+split_vertical = "prefix+|"
+split_horizontal = "prefix+minus"
+
+resize_pane_left = "prefix+h"
+resize_pane_down = "prefix+j"
+resize_pane_up = "prefix+k"
+resize_pane_right = "prefix+l"
+focus_pane_left = "prefix+left"
+focus_pane_down = "prefix+down"
+focus_pane_up = "prefix+up"
+focus_pane_right = "prefix+right"
+resize_mode = "prefix+shift+r"
+
+[ui]
+prompt_new_tab_name = false
+mouse_scroll_lines = 5
