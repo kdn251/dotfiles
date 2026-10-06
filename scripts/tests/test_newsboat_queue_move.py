@@ -40,7 +40,7 @@ class QueueMoveTests(unittest.TestCase):
             queue.media.atomic_write(queue.state()/'queue-durations.json',json.dumps({queue.identity(url):dict(duration=600) for url in URLS}))
             view=root/'view';view.mkdir();_,config=queue.prepare_view(view)
             generated=config.read_text()
-            cfg='show-read-feeds yes\nshow-read-articles yes\nconfirm-exit no\narticlelist-format "%4i %t"\narticle-sort-order date-asc\nrun-on-startup open\nbind U everywhere undo-action\nbind-key j down\nbind-key k up\n'
+            cfg='show-read-feeds yes\nshow-read-articles yes\nconfirm-exit no\narticlelist-format "%4i %t"\narticle-sort-order date-asc\nrun-on-startup open\nbind U everywhere undo-action\nbind V articlelist visual-rows\nbind-key j down\nbind-key k up\n'
             cfg+='\n'.join(line for line in generated.splitlines() if line.startswith(('bind yy ','bind p ','bind P ')))+'\n'
             (view/'scripts').symlink_to(queue.SCRIPTS,target_is_directory=True)
             env=dict(XDG_STATE_HOME=str(root),NEWSBOAT_QUEUE_STATUS=str(queue.state()/'viewing-queue.tsv'),NEWSBOAT_QUEUE_VIEW='1',NEWSBOAT_UNDO_FILE=str(root/'undo'),NEWSBOAT_CACHE=str(view/'cache'),NEWSBOAT_URLS_FILE=str(root/'urls'))
@@ -60,3 +60,28 @@ class QueueMoveTests(unittest.TestCase):
                 self.assertEqual([row.strip().split()[0] for row in screen.display[1:5]],['1','2','3','4'])
                 send('p');wait(lambda s:'already here' in s)
                 self.assertFalse((root/'undo').exists())
+                send('Vjy');wait(lambda s:'2 Queue rows picked up' in s)
+                self.assertEqual(order(),[0,1,2,3])
+                send('jjp');wait(lambda _:order()==[2,3,0,1] and screen.cursor.y==3)
+                self.assertEqual(len((root/'undo').read_text().splitlines()),1)
+                send('U');wait(lambda _:order()==[0,1,2,3] and screen.cursor.y==1)
+                self.assertEqual(queue.entries(),original)
+                # An upward selection is still pasted in its displayed top-to-bottom order.
+                send('jjVky');wait(lambda s:'2 Queue rows picked up' in s)
+                send('kP');wait(lambda _:order()==[1,2,0,3] and screen.cursor.y==1)
+                send('U');wait(lambda _:order()==[0,1,2,3] and screen.cursor.y==2)
+                self.assertEqual(queue.entries(),original)
+
+    def test_bulk_move_is_atomic_and_undo_does_not_requeue_finished_items(self):
+        with isolated():
+            for url in URLS:queue.change('add',url)
+            original=queue.entries()
+            with patch.dict(os.environ,NEWSBOAT_QUEUE_UNDO_TOKEN='bulk'):
+                queue.change('move-after',URLS[0],URLS[3],URLS[1])
+            self.assertEqual(queue.entries(),[original[i] for i in (2,3,0,1)])
+            queue.change('finished',URLS[0],original[0]['queue_token'])
+            queue.change('restore',URLS[0],'bulk')
+            self.assertEqual(queue.entries(),original[1:])
+            current=queue.entries()
+            with self.assertRaises(ValueError):queue.change('move-before',URLS[0],URLS[3],URLS[1])
+            self.assertEqual(queue.entries(),current)

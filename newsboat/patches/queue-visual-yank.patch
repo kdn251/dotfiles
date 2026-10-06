@@ -1,0 +1,17 @@
+--- a/src/view.cpp
++++ b/src/view.cpp
+@@ -289,6 +289,14 @@
+                 continue;
+             }
+         }
++        if (!have_macroprefix && key_sequence.empty() &&
++            key_combination == KeyCombination("y") && std::getenv("NEWSBOAT_QUEUE_VIEW")) {
++            const auto items = std::dynamic_pointer_cast<ItemListFormAction>(fa);
++            if (items && items->has_visual_selection()) {
++                items->run_visual_commands({{OP_UNDO_CHECKPOINT, {"queue-yank"}}}, BindingType::Bind);
++                continue;
++            }
++        }
+ 		if (have_macroprefix) {
+ 			have_macroprefix = false;
+ 			status_line.show_message("");

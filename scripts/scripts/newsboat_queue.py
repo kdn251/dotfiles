@@ -100,6 +100,13 @@ def checkpoint(rows, url, token):
 def restore(rows,url,token):
     snapshot=json.loads(undo_path(token).read_text())
     if identity(snapshot['url'])!=identity(url):raise ValueError('Queue undo URL mismatch')
+    if 'order' in snapshot:
+        def ordered(items,tokens):
+            rank={token:i for i,token in enumerate(tokens)}
+            return sorted(items,key=lambda row:rank.get(row['queue_token'],len(rank)))
+        navigation=ordered(read_state('queue-navigation.json',[]),snapshot['navigation_order'])
+        media.atomic_write(state()/'queue-navigation.json',json.dumps(navigation,ensure_ascii=False))
+        return ordered(rows,snapshot['order'])
     ident=identity(url)
     rows=[row for row in rows if identity(row['url'])!=ident]
     if snapshot['row'] is not None:
@@ -121,7 +128,7 @@ def restore(rows,url,token):
     return rows
 
 
-def change(action,url='',token=''):
+def change(action,url='',token='',*extra):
     root=state();root.mkdir(parents=True,exist_ok=True)
     with (root/'viewing-queue.lock').open('a') as lock:
         fcntl.flock(lock,fcntl.LOCK_EX)
@@ -154,19 +161,28 @@ def change(action,url='',token=''):
                         (root/'queue-current.json').unlink(missing_ok=True)
                 except (OSError,ValueError):pass
         elif action in ('move-before','move-after'):
-            source=next((row for row in rows if identity(row['url'])==ident),None)
-            target=next((row for row in rows if identity(row['url'])==identity(token)),None)
-            if source is None or target is None:raise ValueError('Selected video is no longer in Queue')
-            if source==target:return
-            if os.environ.get('NEWSBOAT_QUEUE_UNDO_TOKEN'):
-                checkpoint(rows,url,os.environ['NEWSBOAT_QUEUE_UNDO_TOKEN'])
+            selected=list(dict.fromkeys(identity(link) for link in (url,*extra)))
+            by_identity={identity(row['url']):row for row in rows}
+            target=by_identity.get(identity(token))
+            if target is None or any(key not in by_identity for key in selected):
+                raise ValueError('Selected video is no longer in Queue')
+            if identity(token) in selected:return
+            sources=[by_identity[key] for key in selected]
+            source_tokens={row['queue_token'] for row in sources}
             history=read_state('queue-navigation.json',[])
             seen={row['queue_token'] for row in history}
             history += [row for row in rows if row['queue_token'] not in seen]
+            undo_token=os.environ.get('NEWSBOAT_QUEUE_UNDO_TOKEN')
+            if undo_token:
+                path=undo_path(undo_token);path.parent.mkdir(parents=True,exist_ok=True)
+                snapshot=dict(url=url,order=[row['queue_token'] for row in rows],
+                              navigation_order=[row['queue_token'] for row in history])
+                media.atomic_write(path,json.dumps(snapshot,ensure_ascii=False))
             def move(items):
-                items=[row for row in items if row['queue_token']!=source['queue_token']]
+                items=[row for row in items if row['queue_token'] not in source_tokens]
                 at=next(i for i,row in enumerate(items) if row['queue_token']==target['queue_token'])
-                items.insert(at+(action=='move-after'),source)
+                at+=action=='move-after'
+                items[at:at]=sources
                 return items
             rows=move(rows)
             media.atomic_write(root/'queue-navigation.json',json.dumps(move(history),ensure_ascii=False))
@@ -191,7 +207,7 @@ def prepare_view(directory):
     history=importlib.util.module_from_spec(spec);spec.loader.exec_module(history)
     command,config=history.prepare_view(directory)
     rss=ET.Element('rss',version='2.0');channel=ET.SubElement(rss,'channel')
-    for name,value in [('title',TITLE),('link','newsboat-queue://home'),('description','yy picks up a row; p moves below, P above; U undoes; ,W removes an entry.')]:
+    for name,value in [('title',TITLE),('link','newsboat-queue://home'),('description','yy picks up a row; V then y picks up selected rows; p moves below, P above; U undoes; ,W removes an entry.')]:
         ET.SubElement(channel,name).text=value
     from newsboat_sources import source_label
     for i,row in enumerate(entries()):
@@ -203,7 +219,7 @@ def prepare_view(directory):
     lines=[line for line in config.read_text().splitlines() if not line.startswith(('macro C ','article-sort-order ','articlelist-format '))]
     lines += ['article-sort-order date-asc','articlelist-format "%4i  %4w  %-9p %-20a │ %t"',
               'articlelist-title-format " '+TITLE+'"',
-              'bind yy articlelist,searchresultslist undo-checkpoint queue-yank -- "Pick up Queue row; p moves below, P above"',
+              'bind yy articlelist,searchresultslist undo-checkpoint queue-yank -- "Pick up Queue row (V then y for selected rows); p moves below, P above"',
               'bind p articlelist,searchresultslist undo-checkpoint queue-after -- "Move picked-up Queue row below this row"',
               'bind P articlelist,searchresultslist undo-checkpoint queue-before -- "Move picked-up Queue row above this row"']
     config.write_text('\n'.join(lines)+'\n')
