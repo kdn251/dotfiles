@@ -26,6 +26,38 @@
 3. reboot machine for configs to be updated - `sudo reboot`
 4. generate new ssh key - `ssh-keygen -t ed25519 -C "your_email@example.com"` and add it to github
 
+#### shared AI skills and commands
+
+The `agents` Stow package shares personal workflows across Pi, Codex, OpenCode,
+and Claude Code. It contains instructions only, not credentials or session data.
+
+```sh
+# From this repository, on a machine with GNU Stow installed:
+stow --no-folding -t "$HOME" agents
+```
+
+Back up and reconcile existing files first if Stow reports conflicts. Do not
+blindly delete existing harness directories or use `--adopt` to overwrite the
+repository with machine-local files.
+
+- `agents/.agents/skills/`: canonical skills, discovered directly by Pi, Codex,
+  and OpenCode. Claude's per-skill symlinks point here through `~/.agents/skills`.
+- `agents/.agents/commands/`: canonical slash-command prompts. Pi's
+  `~/.pi/agent/prompts/` and OpenCode's `~/.config/opencode/commands/` link here.
+- Skills: `push`, `pr-review`, `fix`, `feature`, `regression`, and `sentry`.
+- Commands: `/fix`, `/feature`, `/regression`, `/sentry`, `/reset-video-post`.
+
+Run `/reload` in Pi after changes. Skills are also available as `/skill:name`.
+The `push` skill is explicit-only, so it is not advertised for automatic use.
+
+These workflows retain their original instructions. Some are Ferryman-specific:
+Sentry, Axiom, and production database tools must be configured separately.
+`/fix` includes a branch push and PR; `/reset-video-post` generates SQL for human
+review and must not execute production mutations. Claude-specific skill metadata
+such as `context: fork` is not guaranteed to work in other harnesses.
+Project-local Ferryman copies are preserved and can override the shared versions
+in OpenCode; update or reconcile them deliberately when changing a workflow.
+
 #### general notes
 1. remember to always deploy personal website when `setup.sh` script changes so that newest changes can be reflected if setting up a new machine
 2. might need to run `sudo stow -t /etc keyd` since `/etc` requires sudo and keyd needs to live in `/etc` not `~/` 
