@@ -13,8 +13,10 @@ toggle_sidebar = ["prefix+=", "prefix+b"]
 new_tab = "prefix+c"
 new_workspace = ["prefix+shift+c", "prefix+shift+n"]
 rename_tab = "prefix+comma"
-previous_tab = "prefix+p"
-next_tab = "prefix+n"
+previous_tab = []
+next_tab = []
+previous_workspace = "prefix+p"
+next_workspace = "prefix+n"
 switch_tab = "prefix+1..9"
 
 # Match the primary split bindings in ~/.tmux.conf.
