@@ -1,0 +1,63 @@
+--- a/src/itemlistformaction.cpp
++++ b/src/itemlistformaction.cpp
+@@ -42,6 +42,13 @@
+ static std::set<std::string> starred_urls;
+ static std::set<std::string> commentary_urls;
+ static std::set<std::string> favorites_urls;
++static std::map<std::string, std::string> video_durations;
++static bool duration_video(const std::string& url)
++{
++    static const std::regex video(R"(^https?://(?:(?:www\.|m\.)?youtube\.com/(?:watch\?|shorts/)|youtu\.be/|(?:www\.)?twitch\.tv/videos/|clips\.twitch\.tv/))");
++    return std::regex_search(url, video);
++}
++
+ static std::map<std::string, std::string> watched_progress;
+ static std::map<std::string, double> downloaded_at;
+ static std::string last_opened_url;
+@@ -1597,6 +1604,12 @@
+                 format.insert(index.position() + index.length(), " " + watched);
+             }
+         }
++    if (std::getenv("NEWSBOAT_VIDEO_DURATIONS")) {
++        const auto title = format.find("%t");
++        if (title != std::string::npos && format.find("%8v") == std::string::npos) {
++            format.insert(title, "%8v ");
++        }
++    }
+     return format;
+ }
+ 
+@@ -1723,6 +1736,23 @@
+ 
+ void ItemListFormAction::prepare()
+ {
++    if (const char* path = std::getenv("NEWSBOAT_VIDEO_DURATIONS")) {
++        static std::string previous;
++        std::ifstream input(path);
++        const std::string contents((std::istreambuf_iterator<char>(input)), std::istreambuf_iterator<char>());
++        if (contents != previous) {
++            previous = contents;
++            video_durations.clear();
++            std::istringstream lines(contents);
++            std::string line;
++            while (std::getline(lines, line)) {
++                const auto tab = line.find('\t');
++                if (tab != std::string::npos) { video_durations[line.substr(0, tab)] = line.substr(tab + 1); }
++            }
++            for (unsigned int i = 0; i < visible_items.size(); ++i) { invalidate(i); }
++        }
++    }
++
+ 	set_keymap_hints();
+ 
+ 	std::lock_guard<std::mutex> mtx(redraw_mtx);
+@@ -1840,6 +1870,9 @@
+ 	fmt.register_fmt('d', item.first->deleted() ? "D" : " ");
+ 	fmt.register_fmt('F', item.first->flags());
+ 	fmt.register_fmt('e', item.first->enclosure_url());
++    const auto video_duration = video_durations.find(item.first->link());
++    fmt.register_fmt('v', video_duration != video_durations.end() ? video_duration->second :
++        duration_video(item.first->link()) ? "…" : "");
+     const auto status = download_status.find(item.first->link());
+     const std::vector<std::string> markers = {
+         !pending_removals.count({item.first->link(), "star"}) && starred_urls.count(item.first->link()) ? "󰓎" : "",

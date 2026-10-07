@@ -313,6 +313,9 @@ def run(command, env):
     queue_header = Header()
     queue_header.update()
     child_env['NEWSBOAT_QUEUE_HEADER'] = str(queue_header.path)
+    from newsboat_video_duration import Durations
+    durations = Durations()
+    child_env['NEWSBOAT_VIDEO_DURATIONS'] = str(durations.path)
     pid, master = pty.fork()
     if pid == 0:
         fcntl.ioctl(0, termios.TIOCSWINSZ, size)
@@ -405,6 +408,7 @@ def run(command, env):
                         hover.update(value)
                     elif kind == 'avatars':
                         avatars.update(value)
+                        durations.update(value)
                     else:
                         selected = selection(value)
                         if selected != current:
@@ -441,6 +445,7 @@ def run(command, env):
                     write(1, transmit(image_id, display_png))
                     last_placeholder = placeholder
                     repaint = True
+            durations.poll()
             queue_header.update()
             if repaint and current and display_png:
                 write(1, placement(image_id, current, size, display_png, loading=not bool(png)))

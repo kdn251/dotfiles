@@ -103,6 +103,7 @@ patch -p1 < "$repo/newsboat/patches/queue-row-move.patch"
 patch -p1 < "$repo/newsboat/patches/queue-bulk-move.patch"
 patch -p1 < "$repo/newsboat/patches/queue-visual-yank.patch"
 patch -p1 < "$repo/newsboat/patches/queue-title-panel.patch"
+patch -p1 < "$repo/newsboat/patches/video-row-durations.patch"
 make -j"${NEWSBOAT_BUILD_JOBS:-4}" WARNFLAGS="-Werror -Wall -Wextra -Wunreachable-code -Wno-error=unused-function" newsboat
 install -m 755 newsboat "$install_dir/newsboat.new"
 mv "$install_dir/newsboat.new" "$install_dir/newsboat"

@@ -199,7 +199,7 @@ def videos(url, force=False):
                    title=entry.get('title') or entry['id'],
                    source=entry.get('channel') or entry.get('uploader') or data.get('channel') or '',
                    channel_id=entry.get('channel_id') or data.get('channel_id'),
-                   published=entry.get('timestamp'), position=position)
+                   published=entry.get('timestamp'), duration=entry.get('duration'), position=position)
         remember(row)
         rows.append(row)
     return data.get('title','Playlist'), rows
