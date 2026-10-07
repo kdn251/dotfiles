@@ -7,11 +7,11 @@ def completion_label(agent):
     project = ''.join(c for c in project if c.isprintable()) or 'Pi'
     if len(project) > 32:
         project = project[:31] + '…'
-    if agent.get('tab_id'):
-        location = 'tab ' + agent['tab_id']
-    else:
-        location = 'pane ' + agent['pane_id']
-    return f'{project} · {location}'
+    tab = ''.join(c for c in (agent.get('tab_label') or '') if c.isprintable()).strip()
+    if len(tab) > 32:
+        tab = tab[:31] + '…'
+    # Missing display metadata should never expose opaque routing IDs.
+    return f'{project} · tab {tab}' if tab else project
 
 
 def detail_text(labels, total):

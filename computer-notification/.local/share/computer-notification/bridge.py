@@ -65,6 +65,13 @@ def main(path):
             agents = [a for a in agents if a.get('agent') == 'pi'
                       and a.get('agent_session', {}).get('source') == 'herdr:pi'
                       and a.get('screen_detection_skipped') is True]
+            # Public IDs are routing keys, not the tab names shown to the user.
+            tab_labels = {}
+            for workspace in sorted({a['workspace_id'] for a in agents}):
+                tabs = request(path, 'tab.list', {'workspace_id': workspace}).get('tabs', [])
+                tab_labels.update({tab['tab_id']: tab.get('label', '') for tab in tabs})
+            for agent in agents:
+                agent['tab_label'] = tab_labels.get(agent.get('tab_id'), '')
             emit('baseline' if first else 'snapshot', agents=agents)
             first = False
             latest = {a['pane_id'] for a in agents}

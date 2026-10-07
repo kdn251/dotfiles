@@ -217,7 +217,9 @@ def daemon():
                                     max(state['deadline'], now + 2))
         state['count'] = min(999, state['count'] + count)
         title.set_text('Clanker is ready' if state['count'] == 1 else f"{state['count']} Clankers are ready")
-        labels = labels if labels is not None else ['Preview · project / tab'] * min(count, 2)
+        labels = labels if labels is not None else [
+            'Preview: ' + state.get('preview_label', 'project · tab name')
+        ] * min(count, 2)
         state['labels'] = (state['labels'] + labels)[-2:]
         detail.set_text(detail_text(state['labels'], state['count']))
         win.show_all()  # Never present(), grab focus, or dispatch Hyprland actions.
@@ -261,6 +263,7 @@ def daemon():
             stale = time.monotonic() - event['received'] > 15
             baseline = kind == 'baseline' or stale or not state['connected']
             agents = event['agents']
+            state['preview_label'] = completion_label(agents[0]) if agents else 'project · tab name'
             ready = detector.update(agents, baseline=baseline)
             state.update(connected=not stale, panes=len(agents))
             if kind == 'baseline':

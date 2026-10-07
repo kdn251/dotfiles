@@ -15,11 +15,14 @@ journalctl --user -u computer-notification.service -f
 ```
 
 The title is “Clanker is ready”, or “N Clankers are ready” for concurrent
-completions. The title and a smaller project/tab line (e.g. `ferryman · tab w9:t7`)
+completions. The title and a smaller project/tab line (e.g. `ferryman · tab 2`)
 are centered to the right of the animation. Concurrent completions show the two
 most recent entries plus a count for any others; long labels are ellipsized.
-The preview uses a clearly marked placeholder rather than implying a real agent
-finished. Project names come from the working directory and tab IDs from Herdr.
+The preview uses metadata from the first connected agent (or a placeholder),
+clearly marked `Preview:` rather than implying a real agent finished. Project
+names come from the working directory and displayed tab names from Herdr's
+`tab.list` API. Internal routing IDs such as `w9:t7` are never used as labels;
+if a name is unavailable, only the project is shown.
 A namespace-specific Hyprland layer rule makes the popup slide
 in from the right and slide back out; other layers retain their existing styles.
 “Ready” means settled/awaiting input, not guaranteed success.

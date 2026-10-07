@@ -63,13 +63,19 @@ class CompletionTests(unittest.TestCase):
 
     def test_project_and_tab_label(self):
         self.assertEqual(completion_label(dict(cwd='/home/me/projects/ferryman',
-                                              tab_id='w9:t7', pane_id='w9:p8')),
-                         'ferryman · tab w9:t7')
+                                              tab_id='w9:t7', tab_label='2', pane_id='w9:p8')),
+                         'ferryman · tab 2')
 
     def test_label_fallback_and_plain_text(self):
-        self.assertEqual(completion_label(dict(pane_id='w1:p2')), 'Pi · pane w1:p2')
+        self.assertEqual(completion_label(dict(pane_id='w1:p2', tab_id='w1:t1')), 'Pi')
         self.assertEqual(completion_label(dict(cwd='/tmp/<hello>\n', pane_id='p')),
-                         '<hello> · pane p')
+                         '<hello>')
+
+    def test_named_tab_not_internal_id(self):
+        label = completion_label(dict(cwd='/work/ferryman', tab_id='w9:tA',
+                                      tab_label='Frontend', pane_id='w9:pB'))
+        self.assertEqual(label, 'ferryman · tab Frontend')
+        self.assertNotIn('w9:', label)
 
     def test_multiple_completion_details(self):
         self.assertEqual(detail_text(['a', 'b', 'c'], 4), 'b\nc\n+2 other completions')
