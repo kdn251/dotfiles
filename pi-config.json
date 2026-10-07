@@ -1,0 +1,29 @@
+{
+  "testedPiVersion": "1.0.4",
+  "resources": [
+    ".agents/skills",
+    ".agents/commands",
+    ".claude/skills",
+    ".pi/agent/prompts",
+    ".config/opencode/commands",
+    ".pi/agent/extensions/00-personal-preferences.ts",
+    ".pi/agent/extensions/calm.ts",
+    ".pi/agent/extensions/calm-animation.ts",
+    ".pi/agent/extensions/minimal-footer.ts",
+    ".pi/agent/extensions/animation-scenes/mac-scene.ts"
+  ],
+  "settings": {
+    "hideThinkingBlock": true,
+    "quietStartup": true
+  },
+  "packages": [
+    "npm:@andrewjacop/pi-herdr@0.6.0",
+    "npm:pi-web-access@0.37.0",
+    "npm:pi-ask-user@0.16.0"
+  ],
+  "npmOverrides": {
+    "pi-web-access": {
+      "@modelcontextprotocol/sdk": "1.32.1"
+    }
+  }
+}
