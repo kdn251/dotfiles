@@ -35,10 +35,51 @@ class QueueHeaderTests(unittest.TestCase):
             with reader(root,cfg,feed.as_uri()+'\n',{'NEWSBOAT_QUEUE_HEADER':str(header.path)}) as (_,screen,send,wait):
                 wait(lambda _: 'Newsboat' in screen.display[0] and 'Video0' in screen.display[0])
                 self.assertTrue(screen.display[0].endswith('8:00 left '))
-                send('\n');wait(lambda _: 'Source' in screen.display[0] and 'Creator' in screen.display[0])
+                send('\n');wait(lambda _: 'Source' in screen.display[0] and 'Video0' in screen.display[0])
                 send('?');wait(lambda _: 'Help' in screen.display[0] and '20%' in screen.display[0])
                 with patch.object(progress,'STATE',queue.state()):progress.record(URLS[0],300,600)
                 header.due=0;header.update()
                 wait(lambda _: '50%' in screen.display[0])
                 queue.change('remove',URLS[0]);header.due=0;header.update()
                 wait(lambda _: 'Video0' not in screen.display[0])
+
+    def test_header_avatar_stays_on_title_row_across_views_and_resize(self):
+        import fcntl, os, pty, select, signal, struct, subprocess, termios, time
+        import pyte
+        import newsboat_thumbnails as thumbs
+        from newsboat_playlist_avatars import parse_rows
+        from test_newsboat_reconnect import BINARY
+        with isolated() as (root,_):
+            queue.change('add',URLS[0]);header=panel.Header();header.update()
+            feed=root/'feed.xml';feed.write_text('<rss version="2.0"><channel><title>Source</title><link>https://example.org</link><description>Test</description><item><guid>1</guid><title>Article</title><link>https://example.org/a</link></item></channel></rss>')
+            config=root/'config';config.write_text('show-read-feeds yes\nshow-read-articles yes\nconfirm-exit no\nfeedlist-title-format " Newsboat"\n')
+            urls=root/'urls';urls.write_text(feed.as_uri()+'\n')
+            cmd=[str(BINARY),'-C',str(config),'-u',str(urls),'-c',str(root/'cache')]
+            subprocess.run(cmd+['-x','reload'],capture_output=True,check=True)
+            pid,fd=pty.fork()
+            if pid==0:
+                fcntl.ioctl(0,termios.TIOCSWINSZ,struct.pack('HHHH',20,120,1200,400))
+                os.execve(str(BINARY),cmd,dict(os.environ,TERM='xterm-256color',NEWSBOAT_THUMBNAILS='1',NEWSBOAT_QUEUE_HEADER=str(header.path)))
+            screen=pyte.Screen(120,20);stream=pyte.ByteStream(screen);decoder=thumbs.Decoder();rows=[]
+            def check():
+                nonlocal rows
+                until=time.monotonic()+.4
+                while time.monotonic()<until:
+                    if select.select([fd],[],[],.02)[0]:
+                        for kind,value in decoder.feed(os.read(fd,65536)):
+                            if kind=='screen':stream.feed(value)
+                            elif kind=='avatars':rows=parse_rows(value)
+                avatar=next((r for r in rows if r[1]==0),None)
+                self.assertIsNotNone(avatar)
+                x,y,request=avatar
+                self.assertEqual(screen.display[0].index('Video0'),x+3)
+                self.assertNotIn('Creator',screen.display[0])
+                self.assertEqual(request.split('\t')[:2],[URLS[0],'Creator'])
+            try:
+                check()
+                os.write(fd,b'\n');check()
+                os.write(fd,b'?');check()
+                fcntl.ioctl(fd,termios.TIOCSWINSZ,struct.pack('HHHH',20,100,1000,400));os.kill(pid,signal.SIGWINCH)
+                screen.resize(20,100);check()
+            finally:
+                os.kill(pid,signal.SIGTERM);os.waitpid(pid,0);os.close(fd)

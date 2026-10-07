@@ -1,0 +1,72 @@
+--- a/include/formaction.h
++++ b/include/formaction.h
+@@ -75,6 +75,7 @@
+ 	void set_value(const std::string& name, const std::string& value);
+ 	void set_status(const std::string& text);
+ 
++	std::string queue_avatar_request() const { return queue_avatar; }
+ 	void draw_form();
+ 	std::string draw_form_wait_for_event(unsigned int timeout);
+ 	void recalculate_widget_dimensions();
+@@ -176,6 +177,7 @@
+ 	void handle_dumpconfig(const std::vector<std::string>& args);
+ 	void handle_exec(const std::vector<std::string>& args);
+ 
++	std::string queue_avatar;
+ 	std::string base_title;
+ 	bool base_title_set = false;
+ 	void update_queue_header();
+--- a/src/formaction.cpp
++++ b/src/formaction.cpp
+@@ -766,27 +766,33 @@
+ {
+     if (!base_title_set) { base_title = head_line.get_text(); base_title_set = true; }
+     const auto path = std::getenv("NEWSBOAT_QUEUE_HEADER");
+-    std::string title, creator, progress;
++    queue_avatar.clear();
++    std::string title, creator, progress, url;
+     if (path) {
+         std::ifstream input(path);
+         std::getline(input, title, '\t');
+         std::getline(input, creator, '\t');
+-        std::getline(input, progress);
++        std::getline(input, progress, '\t');
++        std::getline(input, url);
+     }
+     const auto width = utils::to_u(f.get("title:w"));
+     const auto heart = utils::to_u(f.get("favorite-heart:w"));
+     const auto available = width > heart ? width - heart : 0;
+     if (title.empty() || available < 60) { head_line.set_text(base_title); return; }
+-    const auto budget = available - std::min(24u, available / 3) - 2;
++    const bool avatar = std::getenv("NEWSBOAT_THUMBNAILS") && !url.empty();
++    const auto budget = available - std::min(24u, available / 3) - 2 - (avatar ? 3 : 0);
+     const auto suffix = " " + progress;
+     const auto suffix_width = utils::strwidth(suffix);
+     std::string right;
+     if (budget > suffix_width + 12) {
+-        auto room = budget - suffix_width - 3;
+-        auto author = utils::substr_with_width(creator, std::min<size_t>(20, room / 3));
+-        auto name = utils::substr_with_width(title, room - utils::strwidth(author));
+-        right = name + " · " + author + suffix;
++        auto name = utils::substr_with_width(title, budget - suffix_width);
++        right = name + suffix;
+     } else { right = utils::substr_with_width(progress, budget); }
++    if (avatar) {
++        right = "   " + right;
++        const auto x = utils::to_u(f.get("title:x")) + heart + available - utils::strwidth(right) - 1;
++        queue_avatar = std::to_string(x) + ";" + f.get("title:y") + ";" + url + "\t" + creator + "\t\n";
++    }
+     auto left = utils::substr_with_width(base_title, available - utils::strwidth(right) - 2);
+     head_line.set_text(left + std::string(available - utils::strwidth(left) - utils::strwidth(right) - 1, ' ') + right + " ");
+ }
+--- a/src/view.cpp
++++ b/src/view.cpp
+@@ -227,7 +227,7 @@
+             auto feeds = std::dynamic_pointer_cast<FeedListFormAction>(fa);
+             std::cout << "\033]777;newsboat-thumbnail;titles;" <<
+                 (items ? items->title_hover_request() : feeds ? feeds->title_hover_request() : "") << "\007";
+-            std::cout << "\033]777;newsboat-thumbnail;avatars;" <<
++            std::cout << "\033]777;newsboat-thumbnail;avatars;" << fa->queue_avatar_request() <<
+                 (items ? items->playlist_avatar_request() : feeds ? feeds->row_avatar_request() : "") << "\007" << std::flush;
+         }
+ 

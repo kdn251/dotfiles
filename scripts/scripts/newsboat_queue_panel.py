@@ -5,8 +5,8 @@ import time
 import newsboat_queue_time as queue_time
 
 
-def snapshot():
-    rows = queue_time.read('viewing-queue.json', [])
+def snapshot(rows=None):
+    if rows is None:rows = queue_time.read('viewing-queue.json', [])
     if not rows:
         return None
     row = rows[0]
@@ -44,7 +44,8 @@ class Header:
         if time.monotonic() < self.due:
             return
         self.due = time.monotonic()+.5
-        value = snapshot()
+        rows = queue_time.read('viewing-queue.json', [])
+        value = snapshot(rows)
         text = ''
         if value:
             title, creator, fraction, duration = value
@@ -52,7 +53,8 @@ class Header:
             filled = min(8, round(fraction*8))
             bar = '━'*filled+'─'*(8-filled)
             remaining = clock(duration*(1-fraction))+' left' if duration else 'time unknown'
-            text = f'{clean(title)}\t{clean(creator)}\t{bar} {fraction:.0%} · {remaining}\n'
+            url = rows[0]['url'] if rows else ''
+            text = f'{clean(title)}\t{clean(creator)}\t{bar} {fraction:.0%} · {remaining}\t{clean(url)}\n'
         try:
             previous = self.path.read_text()
         except OSError:
