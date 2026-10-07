@@ -17,7 +17,35 @@ def completion_label(agent):
 def detail_text(labels, total):
     recent = labels[-2:]
     extra = max(0, total - len(recent))
-    return '\n'.join(recent + ([f'+{extra} other completions'] if extra else []))
+    return '\n'.join(recent + ([f'+{extra} other updates'] if extra else []))
+
+
+def popup_title(total, attention):
+    if 0 < attention < total:
+        return f'{total} Clanker updates'
+    if attention:
+        return 'Clanker needs attention' if total == 1 else f'{total} Clankers need attention'
+    return 'Clanker is ready' if total == 1 else f'{total} Clankers are ready'
+
+
+class NeedsAttention:
+    """One alert on entering blocked; no startup/reconnect/history replay."""
+    def __init__(self):
+        self.previous = {}
+
+    def update(self, agents, baseline=False):
+        current = {}
+        blocked = []
+        for agent in agents:
+            key = (agent['pane_id'], agent.get('terminal_id'),
+                   agent.get('agent_session', {}).get('value'))
+            status = agent.get('agent_status')
+            current[key] = status
+            if (not baseline and key in self.previous and status == 'blocked'
+                    and self.previous[key] != 'blocked'):
+                blocked.append(agent)
+        self.previous = current
+        return blocked
 
 
 class Completions:

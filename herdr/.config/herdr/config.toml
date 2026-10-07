@@ -37,3 +37,10 @@ resize_mode = "prefix+shift+r"
 [ui]
 prompt_new_tab_name = false
 mouse_scroll_lines = 5
+
+# Local Clanker service owns visual agent alerts; Herdr still supplies chimes.
+[ui.sound]
+enabled = true
+
+[ui.toast]
+delivery = "off"

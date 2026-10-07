@@ -15,7 +15,9 @@ journalctl --user -u computer-notification.service -f
 ```
 
 The title is “Clanker is ready”, or “N Clankers are ready” for concurrent
-completions. The title and a smaller project/tab line (e.g. `ferryman · tab 2`)
+completions. A transition to blocked shows “Clanker needs attention”; mixed
+ready/blocked arrivals use “N Clanker updates” with needs-input labels.
+The title and a smaller project/tab line (e.g. `ferryman · tab 2`)
 are centered to the right of the animation. Concurrent completions show the two
 most recent entries plus a count for any others; long labels are ellipsized.
 The preview uses metadata from the first connected agent (or a placeholder),
@@ -48,7 +50,9 @@ terminal and Pi session. Herdr resets the optional sequence on working state;
 a new idle/done completion has a fresh sequence. A fresh baseline is established
 on startup/reconnect and new agent discovery; past completions are never replayed.
 Very short work completed entirely while disconnected or before discovery may
-be intentionally missed. Only currently settled agents produce a popup.
+be intentionally missed. Completion popups require a currently settled agent.
+A separate detector emits once when an observed Pi agent enters `blocked`,
+without repeating on heartbeat snapshots or replaying blocked state at reconnect.
 
 SSH is noninteractive, verifies hosts normally, has connection/keepalive timeouts,
 and retries with bounded backoff. It does not reuse/kill your Herdr client's SSH
@@ -73,11 +77,34 @@ There is no unbounded queue of animations.
 
 This app has no audio code and makes no notification.show/notify-send calls.
 Herdr remains responsible for the existing chime and its focus suppression.
-Local `ui.toast.delivery = "system"` and VPS `delivery = "herdr"` were left
-unchanged. Existing Herdr/swaync notifications may therefore coexist with this
-popup. Global suppression would also remove other agents' and needs-input
-alerts; it was deliberately not applied. Herdr's own sound behavior still
-requires its local client and follows its current focus/notification policy.
+To prevent duplicate popups, the **local** Herdr client uses:
+
+```toml
+[ui.sound]
+enabled = true
+
+[ui.toast]
+delivery = "off"
+```
+
+These settings are also saved in the repo's `herdr` package. If your local Herdr
+config is independent of Stow, merge these two settings rather than replacing
+unrelated config. In Herdr 0.9.3 semantic sound effects are processed separately
+from toast delivery, so disabling popups does not disable the chime.
+
+Apply the local settings with Herdr's UI `reload config` action. For an existing
+remote attachment, `ssh boole herdr server reload-config` also asks attached
+clients to reread their local config; this is a live reload, not a server restart.
+The VPS config file is unchanged. The local server can also be refreshed with
+`herdr server reload-config`.
+
+This deliberately disables **all Herdr visual toasts** in this local client,
+including custom and non-Pi toasts. The Clanker watcher currently covers only
+lifecycle-reported Pi agents on boole, including blocked/needs-input transitions;
+other agents do not gain Clanker notifications. Other applications' swaync
+notifications are unaffected. Herdr chimes still require its local client and
+follow its focus/notification policy. If you stop/uninstall Clanker, restore
+`delivery = "system"` and reload Herdr to recover normal visual notifications.
 
 ## Configuration
 
@@ -155,20 +182,24 @@ computer-notification preview
 
 Automated tests cover original frame dimensions/phases, duplicate events,
 intermediate working states, null/missing completion sequence, concurrent agents,
-new/replaced/closed sessions and reconnect baselines.
+new/replaced/closed sessions, blocked transitions and reconnect baselines.
 
 Installation checks verified connection to the three existing lifecycle-reported
 Pi agents, unchanged active Hyprland window/workspace during preview, automatic
 layer dismissal, original-art rendering, concurrent preview coalescing, singleton
 protection, and fresh connection baselines after the watcher's own SSH disconnect.
+After disabling Herdr toasts, a remote `notification show --sound done` test was
+accepted by the attached client, produced no matching desktop DBus Notify call,
+and a simultaneous Clanker preview produced exactly one popup layer. Audible
+perception of the chime still needs human confirmation.
 
 **Real completion / audible chime acceptance test still needs your participation:**
 1. In an existing idle Pi on boole, ask it to reply briefly without tools.
 2. Immediately switch to another desktop application.
 3. Check for “Clanker is ready”, one existing Herdr chime (if Herdr's policy permits
    it), no focus/workspace change, and automatic dismissal.
-4. Check whether Herdr also displays a redundant system/in-app toast. Report that
-   before choosing a targeted suppression policy.
+4. Check that no redundant Herdr system/in-app toast appears; a needs-input
+   transition should instead show one “Clanker needs attention” popup.
 
 No prompt was injected into your existing agents to force this test.
 
@@ -186,4 +217,5 @@ rm -rf "${XDG_RUNTIME_DIR:?}/computer-notification"
 
 Remove the `# Clanker popup` comment and its `layerrule` line from
 `~/.config/hypr/hyprland.conf` when uninstalling. There are no VPS changes to undo,
-and no Herdr or swaync settings to restore.
+and no swaync settings to restore. Set local Herdr `ui.toast.delivery` back to
+`"system"` and reload its config to restore its own visual popups.

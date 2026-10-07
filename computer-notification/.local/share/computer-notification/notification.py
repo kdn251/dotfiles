@@ -16,7 +16,7 @@ import threading
 import time
 import tomllib
 
-from state import Completions, completion_label, detail_text
+from state import Completions, NeedsAttention, completion_label, detail_text, popup_title
 
 BASE = Path(__file__).resolve().parent
 RUNTIME = Path(os.environ.get('XDG_RUNTIME_DIR', f'/run/user/{os.getuid()}')) / 'computer-notification'
@@ -196,6 +196,7 @@ def daemon():
     win.connect('draw', background)
     state = {'start': 0.0, 'deadline': 0.0, 'count': 0, 'connected': False, 'panes': 0}
     detector = Completions()
+    attention_detector = NeedsAttention()
     inbox = queue.Queue(maxsize=32)
     stop = threading.Event()
     thread = threading.Thread(target=watcher, args=(cfg, inbox, stop), daemon=True)
@@ -207,23 +208,24 @@ def daemon():
                                    'connected': state['connected'], 'pi_agents': state['panes']}))
         temp.replace(target)
 
-    def show(count=1, labels=None):
+    def show(count=1, labels=None, attention=0):
         now = time.monotonic()
         if not win.get_visible():
-            state.update(start=now, deadline=now + cfg['duration'], count=0, labels=[])
+            state.update(start=now, deadline=now + cfg['duration'], count=0, labels=[], attention=0)
         else:
             # Coalesce, never queue an unbounded backlog or extend indefinitely.
             state['deadline'] = min(state['start'] + cfg['duration'] * 2,
                                     max(state['deadline'], now + 2))
         state['count'] = min(999, state['count'] + count)
-        title.set_text('Clanker is ready' if state['count'] == 1 else f"{state['count']} Clankers are ready")
+        state['attention'] = min(999, state['attention'] + attention)
+        title.set_text(popup_title(state['count'], state['attention']))
         labels = labels if labels is not None else [
             'Preview: ' + state.get('preview_label', 'project · tab name')
         ] * min(count, 2)
         state['labels'] = (state['labels'] + labels)[-2:]
         detail.set_text(detail_text(state['labels'], state['count']))
         win.show_all()  # Never present(), grab focus, or dispatch Hyprland actions.
-        LOG.info('Popup: %s completion(s)', state['count'])
+        LOG.info('Popup: %s update(s), %s needing attention', state['count'], state['attention'])
 
     def draw(widget, cr):
         elapsed = (time.monotonic() - state['start']) * 6000 / cfg['duration']
@@ -258,6 +260,7 @@ def daemon():
             if kind == 'disconnected':
                 state.update(connected=False, panes=0)
                 detector.previous.clear()
+                attention_detector.previous.clear()
                 save_status()
                 continue
             stale = time.monotonic() - event['received'] > 15
@@ -265,12 +268,15 @@ def daemon():
             agents = event['agents']
             state['preview_label'] = completion_label(agents[0]) if agents else 'project · tab name'
             ready = detector.update(agents, baseline=baseline)
+            blocked = attention_detector.update(agents, baseline=baseline)
             state.update(connected=not stale, panes=len(agents))
             if kind == 'baseline':
                 LOG.info('Connected to %s: %s lifecycle-reported Pi agents; no history replay', cfg['host'], len(agents))
             save_status()
-            if ready:
-                show(len(ready), [completion_label(agent) for agent in ready])
+            if ready or blocked:
+                labels = [completion_label(agent) for agent in ready]
+                labels += [completion_label(agent) + ' · needs input' for agent in blocked]
+                show(len(ready) + len(blocked), labels, attention=len(blocked))
         if win.get_visible():
             if time.monotonic() >= state['deadline']:
                 win.hide()

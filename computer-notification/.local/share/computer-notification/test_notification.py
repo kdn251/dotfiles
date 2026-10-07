@@ -1,12 +1,49 @@
 import json
 from pathlib import Path
 import unittest
-from state import Completions, completion_label, detail_text
+from state import Completions, NeedsAttention, completion_label, detail_text, popup_title
 
 
 def agent(seq=10, status='idle', pane='w1:p1', terminal='t1', session='s1'):
     return dict(pane_id=pane, terminal_id=terminal, completion_seq=seq,
                 agent_status=status, agent_session={'value': session})
+
+
+class AttentionTests(unittest.TestCase):
+    def test_blocked_once(self):
+        detector = NeedsAttention()
+        self.assertEqual(detector.update([agent(status='working')], baseline=True), [])
+        self.assertEqual(len(detector.update([agent(status='blocked')])), 1)
+        self.assertEqual(detector.update([agent(status='blocked')]), [])
+        self.assertEqual(detector.update([agent(status='working')]), [])
+        self.assertEqual(len(detector.update([agent(status='blocked')])), 1)
+
+    def test_no_startup_or_reconnect_replay(self):
+        detector = NeedsAttention()
+        self.assertEqual(detector.update([agent(status='blocked')]), [])
+        detector.update([agent(status='working')])
+        self.assertEqual(detector.update([agent(status='blocked')], baseline=True), [])
+        self.assertEqual(detector.update([agent(status='blocked')]), [])
+
+    def test_replaced_session_not_attention(self):
+        detector = NeedsAttention()
+        detector.update([agent(status='working')], baseline=True)
+        self.assertEqual(detector.update([agent(status='blocked', session='new')]), [])
+
+    def test_completion_and_attention_are_distinct(self):
+        completion, attention = Completions(), NeedsAttention()
+        for detector in (completion, attention):
+            detector.update([agent(status='working')], baseline=True)
+        self.assertEqual(completion.update([agent(None, 'blocked')]), [])
+        self.assertEqual(len(attention.update([agent(None, 'blocked')])), 1)
+        self.assertEqual(len(completion.update([agent(12, 'idle')])), 1)
+        self.assertEqual(attention.update([agent(12, 'idle')]), [])
+
+    def test_titles(self):
+        self.assertEqual(popup_title(1, 0), 'Clanker is ready')
+        self.assertEqual(popup_title(1, 1), 'Clanker needs attention')
+        self.assertEqual(popup_title(2, 2), '2 Clankers need attention')
+        self.assertEqual(popup_title(2, 1), '2 Clanker updates')
 
 
 class CompletionTests(unittest.TestCase):
@@ -78,7 +115,7 @@ class CompletionTests(unittest.TestCase):
         self.assertNotIn('w9:', label)
 
     def test_multiple_completion_details(self):
-        self.assertEqual(detail_text(['a', 'b', 'c'], 4), 'b\nc\n+2 other completions')
+        self.assertEqual(detail_text(['a', 'b', 'c'], 4), 'b\nc\n+2 other updates')
         self.assertEqual(detail_text(['a'], 1), 'a')
 
     def test_frames(self):

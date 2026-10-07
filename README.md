@@ -167,8 +167,12 @@ Run `/reload` only after the current response has finished.
 The `computer-notification` Stow package displays the original pixel-art Macintosh
 next to **“Clanker is ready”** when a remote Pi agent settles. It slides in/out
 from the right without stealing focus, dismisses automatically, and coalesces
-concurrent completions. It adds no sound; the existing local Herdr client keeps
-handling completion chimes.
+concurrent completions. Blocked Pi agents show **“Clanker needs attention”**.
+It adds no sound; the existing local Herdr client keeps handling chimes. The
+`herdr` package sets `ui.toast.delivery = "off"` and `ui.sound.enabled = true`
+to avoid duplicate Herdr popups. Merge those settings into independent local
+Herdr configs and reload Herdr. This disables all Herdr visual toasts; Clanker
+currently covers Pi on boole, not other agent types.
 
 Requires Python 3.11+, GTK3, PyGObject, Cairo, gtk-layer-shell, SSH, and Hyprland.
 On Arch the UI dependencies are `python-gobject python-cairo gtk3 gtk-layer-shell`.
