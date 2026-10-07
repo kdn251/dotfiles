@@ -1,0 +1,4 @@
+# Keep nested README.md deployed with the app (override Stow's default ignore).
+^/\.git
+__pycache__
+\.pyc$

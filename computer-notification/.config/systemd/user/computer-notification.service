@@ -1,0 +1,20 @@
+[Unit]
+Description=Animated Pi completion popup (Herdr over SSH)
+PartOf=graphical-session.target
+After=graphical-session.target
+StartLimitIntervalSec=60
+StartLimitBurst=5
+
+[Service]
+Type=simple
+ExecStart=%h/.local/bin/computer-notification daemon
+Environment=GDK_BACKEND=wayland
+Restart=on-failure
+RestartSec=5
+TimeoutStopSec=8
+KillMode=control-group
+UMask=0077
+NoNewPrivileges=yes
+
+[Install]
+WantedBy=hyprland-session.target

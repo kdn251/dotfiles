@@ -1,0 +1,8 @@
+# Apply changes with: systemctl --user restart computer-notification.service
+host = "boole"
+remote_socket = "~/.config/herdr/herdr.sock"
+pixel_scale = 5                 # 38 x 26 source pixels; integer scaling only
+# Seconds for one sequence; clamped to 4–15.
+duration = 6.0
+margin_top = 48
+margin_right = 18

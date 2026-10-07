@@ -162,6 +162,40 @@ narrow panes.
 Animation selection is intentionally session-local; reload defaults to `mac`.
 Run `/reload` only after the current response has finished.
 
+#### Clanker desktop completion popup
+
+The `computer-notification` Stow package displays the original pixel-art Macintosh
+next to **“Clanker is ready”** when a remote Pi agent settles. It slides in/out
+from the right without stealing focus, dismisses automatically, and coalesces
+concurrent completions. It adds no sound; the existing local Herdr client keeps
+handling completion chimes.
+
+Requires Python 3.11+, GTK3, PyGObject, Cairo, gtk-layer-shell, SSH, and Hyprland.
+On Arch the UI dependencies are `python-gobject python-cairo gtk3 gtk-layer-shell`.
+Herdr 0.9.3 must already be running on `boole`, with its official Pi integration.
+SSH must work noninteractively with normal known-host verification. No VPS changes
+or exposed network listener are installed by this package.
+
+```sh
+# Review/reconcile conflicting local files first; do not use --adopt.
+stow --no-folding -t "$HOME" computer-notification
+# Review ~/.config/computer-notification/config.toml (host, size, duration).
+systemctl --user daemon-reload
+systemctl --user enable --now computer-notification.service
+computer-notification preview
+computer-notification status
+```
+
+The service starts with this repo's `hyprland-session.target`. The `hypr` package
+contains the namespace-specific slide rule; animations must be enabled. If you
+use your own Hyprland configuration, copy the rule from the detailed guide rather
+than replacing your entire desktop configuration. Pre-generated frames are
+included, so Node is needed only when regenerating the original TypeScript art.
+
+[Detailed usage, architecture, testing, and uninstall instructions](computer-notification/.local/share/computer-notification/README.md).
+Runtime sockets, logs, connection baselines, downloaded reference docs, private
+backups, SSH credentials, and Python bytecode are not part of this package.
+
 #### general notes
 1. remember to always deploy personal website when `setup.sh` script changes so that newest changes can be reflected if setting up a new machine
 2. might need to run `sudo stow -t /etc keyd` since `/etc` requires sudo and keyd needs to live in `/etc` not `~/` 
