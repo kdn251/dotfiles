@@ -51,3 +51,10 @@ wallpapers/pictures/screenshots/
 # Python bytecode from scripts/scripts/*.py
 __pycache__/
 *.pyc
+
+# Only portable Pi code/prompts belong in Git. Runtime JSON, auth, sessions,
+# caches, npm installs, and machine-specific generated hooks stay local.
+agents/.pi/agent/*
+!agents/.pi/agent/extensions/
+!agents/.pi/agent/prompts/
+agents/.pi/agent/extensions/herdr-agent-state.ts

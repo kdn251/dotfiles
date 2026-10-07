@@ -29,7 +29,9 @@
 #### shared AI skills and commands
 
 The `agents` Stow package shares personal workflows across Pi, Codex, OpenCode,
-and Claude Code. It contains instructions only, not credentials or session data.
+and Claude Code. It contains shared instructions and personal Pi extensions,
+not credentials or session data. For the complete Pi setup, use the bootstrap
+below instead of only Stow.
 
 ```sh
 # From this repository, on a machine with GNU Stow installed:
@@ -58,6 +60,70 @@ such as `context: fork` is not guaranteed to work in other harnesses.
 Project-local Ferryman copies are preserved and can override the shared versions
 in OpenCode; update or reconcile them deliberately when changing a workflow.
 
+#### Reproduce the Pi setup on a new machine
+
+Install Git, Python 3.10+, Node.js 22.19+ with npm, and Pi. These preferences and
+extensions are tested with Pi **1.0.4**; exact third-party plugin versions are
+recorded in [`pi-config.json`](pi-config.json).
+
+```sh
+# One way to install the tested Pi version (or use Pi's official installer):
+npm install -g --ignore-scripts @earendil-works/pi-coding-agent@1.0.4
+
+git clone git@github.com:kdn251/dotfiles.git ~/projects/dotfiles
+cd ~/projects/dotfiles
+python3 setup-pi.py
+pi
+# In Pi: /login, then choose your provider/model.
+```
+
+On a machine without GitHub SSH keys, clone with
+`https://github.com/kdn251/dotfiles.git` instead. The checkout can live anywhere;
+setup computes the links for that machine. Keep the checkout in place afterward,
+or rerun/reconcile its links if you move it.
+
+The bootstrap:
+
+- Links only the resources listed in `pi-config.json`, including shared skills,
+  commands, the compact footer, Calm, and the Macintosh animation. It supports
+  existing Stow directory links as well as individual file links.
+- Merges `hideThinkingBlock` and `quietStartup` into local settings without
+  replacing unrelated preferences. The question-layout extension defaults to
+  inline questions unless `PI_ASK_USER_DISPLAY_MODE` is explicitly set.
+- Installs pinned `pi-herdr`, `pi-web-access`, and `pi-ask-user` versions through
+  `pi install`, which records them in local settings. An explicit override pins
+  web-access's MCP SDK to the audited version; setup also runs `npm audit`.
+- Enables Calm on first setup, preserving an existing on/off choice.
+- Backs up replaced local settings or identical files to a private
+  `~/.pi-config-backup-*` directory. Different existing resource files cause a
+  conflict error rather than being overwritten. Resolve those deliberately.
+
+**Never copy the entire `~/.pi` directory into Git.** Auth tokens, sessions,
+model caches, installed npm trees, device IDs, generated Herdr hooks, and mutable
+settings stay machine-local. `.gitignore` also guards the Pi runtime directory.
+`pi-config.json` contains only shareable preferences; the bootstrap applies them
+rather than symlinking the mutable `settings.json` into the repo. Local backups
+may contain private settings, so keep them out of Git too.
+
+This reproduces the chosen configuration and direct plugin versions, not a
+byte-identical system image: npm's other transitive dependencies are not locked
+in this repo. Pi's version is documented, not installed or downgraded by setup.
+Logins, optional search API credentials, project tools, and the Herdr executable
+and its host integration still need separate setup. Existing machine-generated
+`herdr-agent-state.ts` is preserved, not copied to other machines. Ferryman-only
+skills also need their project integrations separately.
+
+For later updates, pull from `main`, rerun `python3 setup-pi.py`, and `/reload`
+inside Pi. It is safe to rerun; `--skip-packages` links resources and applies
+preferences without reinstalling plugins. A failed npm/audit step exits nonzero;
+resolve the reported issue and rerun (earlier steps are not rolled back).
+
+```sh
+# Verification (the UI smoke test additionally requires tmux and Pi):
+python3 -m unittest discover -s tests -p 'test_pi_*.py'
+python3 tests/check-pi-animation.py
+```
+
 #### Pi calm display
 
 `agents/.pi/agent/extensions/calm.ts` adds a lightweight `/calm` toggle using
@@ -76,6 +142,25 @@ This is not the Firstmate extension: no boat animation, narration filtering,
 operational-message filtering, or execution overrides are installed. Messages
 and tool results remain in session storage. Turn Calm off before exporting if
 you want stock tool rendering in the exported transcript.
+
+#### Pi footer and activity animation
+
+The compact footer shows model, thinking level, estimated session-branch cost,
+and context usage. `/default-footer` restores the built-in footer until reload.
+The standard editor and Working spinner are not replaced.
+
+While Calm is enabled, a shaded pixel-art Macintosh and floppy delivery scene
+plays during the wait for a response. It disappears on the first streamed text,
+not when the completed response finishes. Thinking and tool-argument deltas do
+not dismiss it. The scene uses 13 rows and falls back to a text label in very
+narrow panes.
+
+- `/calm-animation mac`: preview for 20 seconds and select the Macintosh scene.
+- `/calm-animation off`: disable animation until reload.
+- Other retained experiments: `robot`, `coffee`, `cat`, `rain`, `pong`, `cpu`, `both`.
+
+Animation selection is intentionally session-local; reload defaults to `mac`.
+Run `/reload` only after the current response has finished.
 
 #### general notes
 1. remember to always deploy personal website when `setup.sh` script changes so that newest changes can be reflected if setting up a new machine
