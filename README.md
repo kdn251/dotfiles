@@ -58,6 +58,25 @@ such as `context: fork` is not guaranteed to work in other harnesses.
 Project-local Ferryman copies are preserved and can override the shared versions
 in OpenCode; update or reconcile them deliberately when changing a workflow.
 
+#### Pi calm display
+
+`agents/.pi/agent/extensions/calm.ts` adds a lightweight `/calm` toggle using
+Pi's tool-renderer API (tested with Pi 1.0.4). It starts enabled and hides normal
+tool-call and result rows without replacing tool execution. Errors, `ask_user`
+prompts/results, assistant replies, the standard working spinner, and the footer
+remain visible. Tool images and user-bash rows can remain visible too.
+
+- `/calm off`: restore stock tool rendering.
+- `/calm on`: hide tool activity again.
+- `/calm`: toggle; the command reloads extensions to rebuild existing rows.
+
+The choice persists locally in Pi's agent directory as `calm.json`, not in Git.
+Thinking visibility is separately controlled by Ctrl+t / `hideThinkingBlock`.
+This is not the Firstmate extension: no boat animation, narration filtering,
+operational-message filtering, or execution overrides are installed. Messages
+and tool results remain in session storage. Turn Calm off before exporting if
+you want stock tool rendering in the exported transcript.
+
 #### general notes
 1. remember to always deploy personal website when `setup.sh` script changes so that newest changes can be reflected if setting up a new machine
 2. might need to run `sudo stow -t /etc keyd` since `/etc` requires sudo and keyd needs to live in `/etc` not `~/` 
