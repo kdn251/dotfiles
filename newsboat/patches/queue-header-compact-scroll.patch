@@ -1,0 +1,76 @@
+--- a/include/formaction.h
++++ b/include/formaction.h
+@@ -177,6 +177,7 @@
+ 	void handle_dumpconfig(const std::vector<std::string>& args);
+ 	void handle_exec(const std::vector<std::string>& args);
+ 
++	bool queue_title_scrolling = false;
+ 	std::string queue_avatar;
+ 	std::string base_title;
+ 	bool base_title_set = false;
+--- a/src/formaction.cpp
++++ b/src/formaction.cpp
+@@ -1,6 +1,7 @@
+ #include "formaction.h"
+ 
+ #include <cassert>
++#include <chrono>
+ #include <cstdio>
+ #include <cstdlib>
+ #include <cinttypes>
+@@ -134,7 +135,7 @@
+ std::string FormAction::draw_form_wait_for_event(unsigned int timeout)
+ {
+     update_queue_header();
+-	return f.run(timeout);
++	return f.run(queue_title_scrolling ? std::min(timeout, 150u) : timeout);
+ }
+ 
+ void FormAction::recalculate_widget_dimensions()
+@@ -767,6 +768,7 @@
+     if (!base_title_set) { base_title = head_line.get_text(); base_title_set = true; }
+     const auto path = std::getenv("NEWSBOAT_QUEUE_HEADER");
+     queue_avatar.clear();
++    queue_title_scrolling = false;
+     std::string title, creator, progress, url;
+     if (path) {
+         std::ifstream input(path);
+@@ -780,12 +782,36 @@
+     const auto available = width > heart ? width - heart : 0;
+     if (title.empty() || available < 60) { head_line.set_text(base_title); return; }
+     const bool avatar = std::getenv("NEWSBOAT_THUMBNAILS") && !url.empty();
+-    const auto budget = available - std::min(24u, available / 3) - 2 - (avatar ? 3 : 0);
++    const auto budget = std::min(48u, available - 24u) - (avatar ? 3 : 0);
+     const auto suffix = " " + progress;
+     const auto suffix_width = utils::strwidth(suffix);
+     std::string right;
+     if (budget > suffix_width + 12) {
+-        auto name = utils::substr_with_width(title, budget - suffix_width);
++        const auto title_width = budget - suffix_width;
++        auto name = utils::substr_with_width(title, title_width);
++        queue_title_scrolling = utils::strwidth(title) > title_width;
++        if (queue_title_scrolling) {
++            // Share the timeline across forms so navigation does not restart it.
++            static std::string scrolling_title;
++            static auto started = std::chrono::steady_clock::now();
++            const auto identity = url + "\n" + title;
++            if (identity != scrolling_title) {
++                scrolling_title = identity;
++                started = std::chrono::steady_clock::now();
++            }
++            const auto ticks = std::chrono::duration_cast<std::chrono::milliseconds>(
++                std::chrono::steady_clock::now() - started).count() / 350;
++            const auto distance = utils::strwidth(title) - title_width;
++            const auto phase = static_cast<size_t>(ticks) % (distance + 13);
++            const auto offset = phase < 6 ? 0 : std::min(phase - 6, distance);
++            const auto wide = utils::str2wstr(title);
++            size_t index = 0, skipped = 0;
++            while (index < wide.size() && skipped < offset) {
++                skipped += std::max(0, ::wcwidth(wide[index++]));
++            }
++            name = utils::substr_with_width(utils::wstr2str(wide.substr(index)), title_width);
++            name += std::string(title_width - utils::strwidth(name), ' ');
++        }
+         right = name + suffix;
+     } else { right = utils::substr_with_width(progress, budget); }
+     if (avatar) {

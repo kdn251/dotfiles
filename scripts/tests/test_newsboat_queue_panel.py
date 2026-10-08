@@ -83,3 +83,22 @@ class QueueHeaderTests(unittest.TestCase):
                 screen.resize(20,100);check()
             finally:
                 os.kill(pid,signal.SIGTERM);os.waitpid(pid,0);os.close(fd)
+
+    def test_long_title_scrolls_in_compact_fixed_space_while_idle(self):
+        with isolated() as (root,_):
+            header=root/'header.tsv'
+            title='ABCDEFGHIJ KLMNOPQRST UVWXYZ-end'
+            header.write_text(title+'\tCreator\t━━━━──── 50% · 5:00 left\t'+URLS[0]+'\n')
+            feed=root/'feed.xml';feed.write_text('<rss version="2.0"><channel><title>Source</title><link>https://example.org</link><description>Test</description></channel></rss>')
+            cfg='show-read-feeds yes\nconfirm-exit no\nfeedlist-title-format " Newsboat"\n'
+            with reader(root,cfg,feed.as_uri()+'\n',{'NEWSBOAT_QUEUE_HEADER':str(header)}) as (_,screen,send,wait):
+                wait(lambda _: 'ABCDEFGHIJ' in screen.display[0])
+                start=screen.display[0].index('ABCDEFGHIJ')
+                self.assertGreaterEqual(start,71)
+                suffix=screen.display[0].index('50%')
+                wait(lambda _: 'XYZ-end' in screen.display[0],timeout=10)
+                self.assertEqual(screen.display[0].index('50%'),suffix)
+                self.assertNotIn('ABCDEFGHIJ',screen.display[0])
+                self.assertIn('Newsboat',screen.display[0])
+                header.write_text('New video\tCreator\t━━━━──── 50% · 5:00 left\t'+URLS[1]+'\n')
+                wait(lambda _: 'New video' in screen.display[0])
