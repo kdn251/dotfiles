@@ -8,6 +8,7 @@ codex-desktop-git
 cryptomator
 faugus-launcher
 google-chrome
+handy-bin
 herdr-bin
 neofetch
 openai-codex-bin
