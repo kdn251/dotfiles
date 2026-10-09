@@ -68,7 +68,7 @@ def prepare(directory, config, urls, cache):
         lines.append(f'bind {key} articlelist,searchresultslist set browser '+json.dumps(action)+' ; open-in-browser -- "Open saved item"')
     offline_config.write_text('\n'.join(lines)+'\n')
     env = dict(os.environ)
-    for key in ('NEWSBOAT_LIVE_QUERIES', 'NEWSBOAT_NESTED_VIEWS', 'NEWSBOAT_UNDO_HELPER', 'NEWSBOAT_UNDO_FILE', 'NEWSBOAT_SYNC_VIEW'):
+    for key in ('NEWSBOAT_LIVE_QUERIES', 'NEWSBOAT_NESTED_VIEWS', 'NEWSBOAT_UNDO_HELPER', 'NEWSBOAT_UNDO_FILE', 'NEWSBOAT_SYNC_VIEW', 'NEWSBOAT_GLOBAL_SEARCH_REQUEST'):
         env.pop(key, None)
     env['NEWSBOAT_URLS_FILE'] = str(offline_urls)
     return [executable, '-q', '-C', str(offline_config), '-u', str(offline_urls), '-c', str(offline_cache)], env

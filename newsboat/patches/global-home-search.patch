@@ -1,0 +1,56 @@
+--- a/src/feedlistformaction.cpp
++++ b/src/feedlistformaction.cpp
+@@ -556,7 +556,8 @@
+ 			finished_qna(QnaFinishAction::Search);
+ 		} else {
+ 			std::vector<QnaPair> qna;
+-			qna.push_back(QnaPair(_("Search for: "), ""));
++            const bool global = !all_sources && !std::getenv("NEWSBOAT_HOME_NESTED") && std::getenv("NEWSBOAT_GLOBAL_SEARCH_REQUEST");
++			qna.push_back(QnaPair(global ? "Search everything: " : _("Search for: "), ""));
+ 			this->start_qna(
+ 				qna, QnaFinishAction::Search, &searchhistory);
+ 		}
+@@ -1197,6 +1198,17 @@
+ 		"FeedListFormAction::op_start_search: starting search for "
+ 		"`%s'",
+ 		searchphrase);
++    if (!searchphrase.empty() && !all_sources && !std::getenv("NEWSBOAT_HOME_NESTED")) {
++        if (const char* path = std::getenv("NEWSBOAT_GLOBAL_SEARCH_REQUEST")) {
++            searchhistory.add_line(searchphrase);
++            const auto temporary = std::string(path) + ".tmp";
++            { std::ofstream out(temporary); out << searchphrase; }
++            if (std::rename(temporary.c_str(), path) != 0) {
++                v.get_statusline().show_error("Could not start global search");
++            }
++            return;
++        }
++    }
+ 	if (searchphrase.length() > 0) {
+ 		auto message_lifetime = v.get_statusline().show_message_until_finished(
+ 				_("Searching..."));
+--- a/src/itemlistformaction.cpp
++++ b/src/itemlistformaction.cpp
+@@ -1937,6 +1937,23 @@
+ 	auto itemauthor = utils::utf8_to_locale(item.first->author());
+ 	utils::remove_soft_hyphens(itemauthor);
+ 	fmt.register_fmt('a', itemauthor);
++    // Membership labels belong to the search presentation, never to item titles.
++    if (const char* path = std::getenv("NEWSBOAT_SEARCH_LABELS")) {
++        static std::string loaded_path;
++        static std::map<std::string, std::string> labels;
++        if (loaded_path != path) {
++            loaded_path = path; labels.clear();
++            std::ifstream input(path);
++            std::string line;
++            while (std::getline(input, line)) {
++                const auto tab = line.find('\t');
++                if (tab != std::string::npos) { labels[line.substr(0, tab)] = line.substr(tab+1); }
++            }
++        }
++        const auto label = labels.find(item.first->link());
++        fmt.register_fmt('b', label == labels.end() ? "" : label->second);
++    }
++
+ 
+ 	fmt.register_fmt('L', item.first->length());
+ 

@@ -89,6 +89,7 @@ confirm-exit yes
 
 # Keybinds
 # Native help includes standard keys and descriptions of every custom macro.
+bind / feedlist open-search -- "Search everything from Home (feeds and saved items)"
 bind ? everywhere help -- "Show shortcuts (q to return)"
 bind h everywhere set browser "newsboat-home://show" -- "Home: return to Newsboat's homepage"
 bind P feedlist,articlelist,article,searchresultslist set browser "python3 ~/scripts/newsboat-playlists.py request %u" ; open-in-browser-noninteractively ; set browser "~/scripts/newsboat-brave-app.sh %u" -- "Browse this YouTube creator's playlists (Enter opens, q returns)"

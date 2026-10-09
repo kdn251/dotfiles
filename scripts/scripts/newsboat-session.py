@@ -230,6 +230,8 @@ def run(args):
         os.environ["NEWSBOAT_REFRESH_REQUEST"] = str(refresh_request)
         playlist_request = Path(directory)/"playlist-request"
         os.environ['NEWSBOAT_PLAYLIST_REQUEST'] = str(playlist_request)
+        global_search_request = Path(directory)/"global-search-request"
+        os.environ['NEWSBOAT_GLOBAL_SEARCH_REQUEST'] = str(global_search_request)
         home_request = Path(directory)/"home-request"
         os.environ['NEWSBOAT_HOME_REQUEST'] = str(home_request)
         # Match the terminal by process ancestry, even if focus changed at startup.
@@ -377,13 +379,18 @@ def run(args):
                         offline_requested = True
                         os.kill(pid, signal.SIGTERM)
                         break
-                    if not startup and playlist_master is None and playlist_request.exists():
-                        playlist_url = playlist_request.read_text().strip()
-                        playlist_request.unlink(missing_ok=True)
+                    if not startup and playlist_master is None and (playlist_request.exists() or global_search_request.exists()):
+                        if global_search_request.exists():
+                            query = global_search_request.read_text().strip()
+                            global_search_request.unlink(missing_ok=True)
+                            helper_args = [str(Path(__file__).with_name('newsboat-global-search.py')), query]
+                        else:
+                            playlist_url = playlist_request.read_text().strip()
+                            playlist_request.unlink(missing_ok=True)
+                            helper_args = [str(Path(__file__).with_name('newsboat-playlists.py')), 'show', playlist_url]
                         playlist_pid, playlist_master = pty.fork()
                         if playlist_pid == 0:
-                            os.execve(sys.executable,
-                                [sys.executable,str(Path(__file__).with_name('newsboat-playlists.py')), 'show', playlist_url],view_env)
+                            os.execve(sys.executable, [sys.executable, *helper_args], view_env)
                         resize()
                         selector.register(playlist_master, selectors.EVENT_READ, 'playlists')
                     if not startup and random_prompt.poll():
