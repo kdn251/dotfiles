@@ -24,6 +24,26 @@ class BadgeOrderTests(unittest.TestCase):
                 self.assertTrue(row.endswith('💤 Video'),row)
                 for icon in ['📌','💤','📺','󰓎','📥','📣','']:self.assertGreater(row.index(icon),row.index('↪'))
 
+    def test_new_rows_share_badge_width_with_sleep_and_playing_markers(self):
+        from test_newsboat_reconnect import reader
+        with tempfile.TemporaryDirectory() as directory:
+            root=Path(directory);url='https://example.org/video';feed=root/'feed.xml'
+            feed.write_text(f'<rss version="2.0"><channel><title>Source</title><link>https://example.org</link><description>Test</description><item><title>Marked video</title><link>{url}</link><guid>1</guid></item><item><title>Plain article</title><link>https://example.org/plain</link><guid>2</guid></item></channel></rss>')
+            for name,value in {'stars':url+'\n','downloads':url+'\t📥\n','queue':url+'\ttoken\n','queue.stop':url+'\ttoken\n','last':url+'\n'}.items():
+                (root/name).write_text(value)
+            env={key:str(root/name) for key,name in [('NEWSBOAT_STARRED_STATUS','stars'),('NEWSBOAT_DOWNLOAD_STATUS','downloads'),('NEWSBOAT_QUEUE_STATUS','queue'),('NEWSBOAT_LAST_OPENED','last')]}
+            cfg='show-read-feeds yes\nshow-read-articles yes\nprepopulate-query-feeds yes\narticlelist-format "%4i %-9p │ %t"\nrun-on-startup open\n'
+            urls=json.dumps('query:📬 New:title != ""',ensure_ascii=False)+'\n'+feed.as_uri()+'\n'
+            with reader(root,cfg,urls,env) as (_,screen,send,wait):
+                wait(lambda s:'Marked video' in s and 'Plain article' in s and '💤' in s)
+                rows=[i for i,line in enumerate(screen.display) if 'Marked video' in line or 'Plain article' in line]
+                columns=[next(x for x,cell in screen.buffer[y].items() if cell.data=='│') for y in rows]
+                self.assertEqual(len(columns),2)
+                self.assertEqual(columns[0],columns[1])
+                marked=next(line for line in screen.display if 'Marked video' in line)
+                self.assertLess(marked.index('↪'),marked.index('📺'))
+                self.assertLess(marked.index('📥'),marked.index('💤'))
+
     def test_current_collection_first(self):
         with tempfile.TemporaryDirectory() as directory:
             root=Path(directory);feed=root/'feed.xml';url='https://example.com/video'

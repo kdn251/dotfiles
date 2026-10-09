@@ -1,0 +1,87 @@
+--- a/src/itemlistformaction.cpp
++++ b/src/itemlistformaction.cpp
+@@ -1620,6 +1620,12 @@
+ 
+ void ItemListFormAction::draw_items()
+ {
++    // Use one width across the list, including avatar and hover positioning.
++    badge_column_width = 0;
++    for (const auto& item : visible_items) {
++        badge_column_width = std::max(badge_column_width,
++            static_cast<unsigned int>(utils::strwidth(item_badges(item))));
++    }
+ 	auto datetime_format = cfg->get_configvalue("datetime-format");
+ 	auto render_line = [this, datetime_format](std::uint32_t line,
+ 	std::uint32_t width) -> StflRichText {
+@@ -1863,21 +1869,8 @@
+ 	restore_selection();
+ }
+ 
+-StflRichText ItemListFormAction::item2formatted_line(const ItemPtrPosPair& item,
+-	const unsigned int width,
+-	const std::string& itemlist_format,
+-	const std::string& datetime_format) const
+-{
+-	FmtStrFormatter fmt;
+-	fmt.register_fmt('i', strprintf::fmt("%u", item.second + 1));
+-	fmt.register_fmt('f', gen_flags(item.first));
+-	fmt.register_fmt('n', item.first->unread() ? "N" : " ");
+-	fmt.register_fmt('d', item.first->deleted() ? "D" : " ");
+-	fmt.register_fmt('F', item.first->flags());
+-	fmt.register_fmt('e', item.first->enclosure_url());
+-    const auto video_duration = video_durations.find(item.first->link());
+-    fmt.register_fmt('v', video_duration != video_durations.end() ? video_duration->second :
+-        duration_video(item.first->link()) ? "…" : "");
++std::string ItemListFormAction::item_badges(const ItemPtrPosPair& item) const
++{
+     const auto status = download_status.find(item.first->link());
+     const std::vector<std::string> markers = {
+         !pending_removals.count({item.first->link(), "star"}) && starred_urls.count(item.first->link()) ? "󰓎" : "",
+@@ -1916,6 +1909,26 @@
+         if (!badges.empty()) { badges += " "; }
+         badges += "💤";
+     }
++    return badges;
++}
++
++StflRichText ItemListFormAction::item2formatted_line(const ItemPtrPosPair& item,
++	const unsigned int width,
++	const std::string& itemlist_format,
++	const std::string& datetime_format) const
++{
++	FmtStrFormatter fmt;
++	fmt.register_fmt('i', strprintf::fmt("%u", item.second + 1));
++	fmt.register_fmt('f', gen_flags(item.first));
++	fmt.register_fmt('n', item.first->unread() ? "N" : " ");
++	fmt.register_fmt('d', item.first->deleted() ? "D" : " ");
++	fmt.register_fmt('F', item.first->flags());
++	fmt.register_fmt('e', item.first->enclosure_url());
++    const auto video_duration = video_durations.find(item.first->link());
++    fmt.register_fmt('v', video_duration != video_durations.end() ? video_duration->second :
++        duration_video(item.first->link()) ? "…" : "");
++    const auto status = download_status.find(item.first->link());
++    const auto badges = item_badges(item);
+     fmt.register_fmt('p', badges);
+     const auto progress = watched_progress.find(item.first->link());
+     fmt.register_fmt('w', progress == watched_progress.end() ? "0%" : progress->second);
+@@ -1976,7 +1989,7 @@
+     while (std::regex_search(remaining_format, badge_match, badge_field)) {
+         badge_format += badge_match.prefix().str();
+         const auto badge_width = std::max(utils::to_u(badge_match[2].str()),
+-            static_cast<unsigned int>(utils::strwidth(badges)));
++            badge_column_width);
+         badge_format += "%" + badge_match[1].str() + std::to_string(badge_width) + "p";
+         remaining_format = badge_match.suffix().str();
+     }
+--- a/include/itemlistformaction.h
++++ b/include/itemlistformaction.h
+@@ -148,6 +148,9 @@
+ 
+ 	std::string gen_flags(std::shared_ptr<RssItem> item) const;
+ 
++    unsigned int badge_column_width = 0;
++    std::string item_badges(const ItemPtrPosPair& item) const;
++
+ 	StflRichText item2formatted_line(const ItemPtrPosPair& item,
+ 		const unsigned int width,
+ 		const std::string& itemlist_format,
