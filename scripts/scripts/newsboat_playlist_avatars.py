@@ -7,6 +7,7 @@ import re
 import struct
 import subprocess
 import threading
+import time
 from functools import lru_cache
 
 from newsboat_youtube_playlists import LIBRARY
@@ -21,7 +22,7 @@ def parse_rows(value):
             legacy = re.fullmatch(r'newsboat-playthroughs://([A-Za-z0-9_-]+)', request)
             if legacy:
                 request = legacy[1]
-            elif not request.startswith(('https://','http://','newsboat-playthroughs://','newsboat-feed://')):
+            elif not request.startswith(('https://','http://','newsboat-playthroughs://','newsboat-feed://','newsboat-mailbox://')):
                 continue
             rows.append((int(match[1]), int(match[2]), request))
     return rows
@@ -29,6 +30,7 @@ def parse_rows(value):
 
 def fetch_avatar(playlist_id):
     """Use existing channel metadata and notification avatar cache, never list YouTube."""
+    if playlist_id == 'newsboat-mailbox://unread':return mailbox_png()
     if '://' in playlist_id:
         from newsboat_creator_images import fetch
         return fetch(playlist_id)
@@ -61,6 +63,30 @@ def fit_avatar(data, size):
     return output.getvalue()
 
 
+@lru_cache(maxsize=1)
+def mailbox_png():
+    from PIL import Image, ImageDraw, ImageFont
+    font=ImageFont.truetype('/usr/share/fonts/noto/NotoColorEmoji.ttf',109)
+    canvas=Image.new('RGBA',(160,160))
+    ImageDraw.Draw(canvas).text((0,0),'📬',font=font,embedded_color=True)
+    canvas=canvas.crop(canvas.getbbox())
+    output=io.BytesIO();canvas.save(output,'PNG');return output.getvalue()
+
+
+@lru_cache(maxsize=128)
+def glimmer_mailbox(size, frame):
+    from PIL import Image
+    image=Image.open(io.BytesIO(fit_avatar(mailbox_png(),size))).convert('RGBA')
+    if frame < 12:
+        center=-image.width/3+(frame/11)*(image.width*5/3)
+        for y in range(image.height):
+            for x in range(image.width):
+                r,g,b,a=image.getpixel((x,y))
+                strength=max(0,1-abs(x-y*.2-center)/(image.width*.3))*.65
+                image.putpixel((x,y),(round(r+(255-r)*strength),round(g+(255-g)*strength),round(b+(255-b)*strength),a))
+    output=io.BytesIO();image.save(output,'PNG');return output.getvalue()
+
+
 class Avatars:
     def __init__(self, first_image_id):
         self.first_image_id = first_image_id
@@ -72,6 +98,7 @@ class Avatars:
         self.results = queue.Queue()
         self.started = False
         self.wanted = set()
+        self.glimmer_frame = None
 
     def worker(self):
         while True:
@@ -106,6 +133,9 @@ class Avatars:
 
     def render(self, size, repaint=False):
         from newsboat_thumbnails import delete, transmit
+        frame = int(time.monotonic()/.08)%25
+        animated = any(row[2] == "newsboat-mailbox://unread" for row in self.rows)
+        animation_changed = animated and frame != self.glimmer_frame
         changed = False
         while not self.results.empty():
             ident, image = self.results.get_nowait()
@@ -119,7 +149,7 @@ class Avatars:
             changed = True
         desired = {slot: (x, y, ident, size) for slot, (x, y, ident) in enumerate(self.rows)
                    if self.images.get(ident)}
-        if not repaint and not changed and desired == self.displayed:
+        if not repaint and not changed and not animation_changed and desired == self.displayed:
             return b''
         output = []
         for slot, previous in self.displayed.items():
@@ -128,14 +158,15 @@ class Avatars:
         for slot, row in desired.items():
             x, y, ident, _ = row
             image_id = self.first_image_id+slot
-            if self.displayed.get(slot) != row:
+            if self.displayed.get(slot) != row or (ident == "newsboat-mailbox://unread" and animation_changed):
                 try:
-                    png = fit_avatar(self.images[ident], size)
+                    png = glimmer_mailbox(size,frame) if ident == "newsboat-mailbox://unread" else fit_avatar(self.images[ident], size)
                 except Exception:
                     self.images[ident] = None
                     continue
                 output.append(transmit(image_id, png))
             output.append((f'\x1b7\x1b[{y+1};{x+1}H'
                            f'\x1b_Ga=p,i={image_id},p=1,c=2,r=1,z=1,q=2\x1b\\\x1b8').encode())
+        self.glimmer_frame = frame
         self.displayed = desired
         return b''.join(output)

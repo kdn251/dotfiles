@@ -1,0 +1,11 @@
+--- a/src/feedlistformaction.cpp
++++ b/src/feedlistformaction.cpp
+@@ -1476,7 +1476,7 @@
+         // Keep collection names aligned when the time fits the existing space.
+         const auto columns = row_format.find("%4v %-6k");
+         if (columns != std::string::npos) {
+-            row_format.replace(columns, 8, count_label.size() <= 11 ? "%-11k" : "%k");
++            row_format.replace(columns, 8, count_label.size() <= 10 ? " %-10k" : " %k");
+         } else {
+             const auto field = row_format.find("%-6k");
+             if (field != std::string::npos) { row_format.replace(field, 4, "%k"); }

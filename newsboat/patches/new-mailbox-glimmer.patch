@@ -1,0 +1,24 @@
+--- a/src/feedlistformaction.cpp
++++ b/src/feedlistformaction.cpp
+@@ -782,6 +782,10 @@
+     std::string result;
+     for (std::uint32_t row = 0; row < list.get_height() && offset + row < visible_feeds.size(); ++row) {
+         const auto entry = visible_feeds[offset + row];
++        if (entry.first->rssurl().find("query:📬 New:") == 0 && displayed_unread_count(entry.first) > 0) {
++            const auto prefix = format_line(format.substr(0, title_field), entry.first, entry.second, list.get_width()).plaintext();
++            result += std::to_string(x + utils::strwidth(prefix)) + ";" + std::to_string(y + row) + ";newsboat-mailbox://unread\n";
++        }
+         if (entry.first->is_query_feed()) { continue; }
+         const auto source = entry.first->rssurl();
+         const auto url = source.find_first_not_of("0123456789") == std::string::npos ?
+@@ -1420,6 +1424,10 @@
+ 	fmt.register_fmt('n', !total_view && unread_count > 0 ? "N" : " ");
+ 	fmt.register_fmt('S', feed->get_status());
+     auto title = get_title(feed);
++    if (std::getenv("NEWSBOAT_THUMBNAILS") && feed->rssurl().find("query:📬 New:") == 0 && unread_count > 0) {
++        const auto icon = title.find("📬");
++        if (icon != std::string::npos) { title.replace(icon, std::string("📬").size(), "  "); }
++    }
+     if (feed->rssurl().find("query:📬 New:") == 0 && unread_count == 0) {
+         const auto icon = title.find("📬");
+         if (icon != std::string::npos) { title.replace(icon, std::string("📬").size(), "📪"); }

@@ -1,0 +1,13 @@
+--- a/src/feedlistformaction.cpp
++++ b/src/feedlistformaction.cpp
+@@ -1420,6 +1420,10 @@
+ 	fmt.register_fmt('n', !total_view && unread_count > 0 ? "N" : " ");
+ 	fmt.register_fmt('S', feed->get_status());
+     auto title = get_title(feed);
++    if (feed->rssurl().find("query:📬 New:") == 0 && unread_count == 0) {
++        const auto icon = title.find("📬");
++        if (icon != std::string::npos) { title.replace(icon, std::string("📬").size(), "📪"); }
++    }
+     if (queue_view) {
+         if (const char* path = std::getenv("NEWSBOAT_QUEUE_STATUS")) {
+             std::ifstream input(std::string(path) + ".time");
