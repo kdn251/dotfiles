@@ -30,6 +30,20 @@ class AutoplayTests(unittest.TestCase):
                 self.assertIsNone(autoplay.plan(rows[2]['url'])['next'])
                 random.assert_not_called()
 
+    def test_queue_positions_follow_order_and_next_choice(self):
+        import newsboat_queue as queue
+        rows=[dict(url='https://youtu.be/'+str(i)*11,queue_token=str(i)) for i in range(3)]
+        with patch.object(queue,'entries',return_value=rows), patch.object(queue,'navigation',return_value=(rows[2],rows[0],rows[2])):
+            result=autoplay.plan(rows[1]['url'])
+            self.assertEqual(result['queue_position'],dict(number=2,total=3,token='1'))
+            self.assertEqual(result['next_queue_position'],dict(number=3,total=3,token='2'))
+            self.assertEqual(result['queue_tokens'],['0','1','2'])
+        with patch.object(queue,'entries',return_value=[rows[1],rows[0]]), patch.object(queue,'navigation',return_value=(rows[0],None,rows[0])):
+            result=autoplay.plan(rows[1]['url'])
+            self.assertEqual(result['queue_position']['number'],1)
+            self.assertEqual(result['queue_position']['total'],2)
+            self.assertEqual(result['next_queue_position']['number'],2)
+
     def test_download_pool_excludes_current_unfinished_vods_playthroughs_and_missing(self):
         with tempfile.TemporaryDirectory() as folder:
             root=Path(folder);state=root/'state';state.mkdir();videos=root/'videos';videos.mkdir()

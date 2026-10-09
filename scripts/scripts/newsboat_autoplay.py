@@ -103,6 +103,15 @@ def episode_context(current):
 def plan(current):
     result = _plan(current)
     result['episode'] = episode_context(current)
+    from newsboat_queue import entries, identity
+    rows = entries()
+    result['queue_tokens'] = [row['queue_token'] for row in rows]
+    def position(url):
+        return next((dict(number=i+1, total=len(rows), token=row['queue_token'])
+                     for i,row in enumerate(rows) if identity(row['url']) == identity(url)), None)
+    result['queue_position'] = position(current) if result.get('queue') else None
+    result['next_queue_position'] = position(result['next']['url']) if result.get('next') else None
+    result['next_episode'] = episode_context(result['next']['url']) if result.get('next') else None
     return result
 
 

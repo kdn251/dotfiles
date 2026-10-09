@@ -7,8 +7,28 @@ local result = mp.command_native({name='subprocess', playback_only=false, captur
     args={'python3', directory .. 'newsboat_autoplay.py', 'plan', current}})
 local plan = result and result.status == 0 and utils.parse_json(result.stdout)
 if not plan then return end
-local function episode_label()
+local startup_queue_token = plan.current_queue_token
+-- Completed videos leave the live queue. Retain this player's completed count
+-- so a three-video run advances 1/3, 2/3, 3/3 rather than 1/3, 1/2, 1/1.
+local completed_queue = {}
+local function queue_position(up_next)
+    local live, completed = {}, 0
+    for _, token in ipairs(plan.queue_tokens or {}) do live[token] = true end
+    for token, _ in pairs(completed_queue) do
+        if not live[token] then completed = completed + 1 end
+    end
+    local position = plan.queue_position
+    if up_next then position = plan.next_queue_position end
+    if position then return position.number + completed, position.total + completed end
+    if not up_next and startup_queue_token and completed_queue[startup_queue_token] then
+        return completed_queue[startup_queue_token], #(plan.queue_tokens or {}) + completed
+    end
+end
+local function episode_label(up_next)
+    local number, total = queue_position(up_next)
+    if number then return string.format('Queue video %d of %d', number, total) end
     local episode = plan.episode
+    if up_next then episode = plan.next_episode end
     return episode and string.format('Episode %d of %d', episode.number, episode.total) or nil
 end
 local updating_title = false
@@ -17,7 +37,7 @@ local function update_episode_title()
     local label = episode_label()
     local title = mp.get_property('media-title', '')
     if title == '' then return end
-    local plain = title:gsub('^Episode %d+ of %d+ · ', '')
+    local plain = title:gsub('^Episode %d+ of %d+ · ', ''):gsub('^Queue video %d+ of %d+ · ', '')
     local desired = label and (label .. ' · ' .. plain) or plain
     if desired ~= title then
         updating_title = true
@@ -26,7 +46,6 @@ local function update_episode_title()
     end
 end
 mp.observe_property('media-title', 'string', update_episode_title)
-local startup_queue_token = plan.current_queue_token
 local autoplay = plan.enabled
 local plan_job, queue_watcher, switch_job
 local reported_playing, reported_finished = false, false
@@ -122,7 +141,10 @@ local function advance(row, automatic)
 end
 local function prompt()
     local title = (plan.next.title or plan.next.url):gsub('[\r\n]', ' ')
-    mp.osd_message('Up next in ' .. remaining .. 's: ' .. title ..
+    local next_label = episode_label(true)
+    local current_label = episode_label(false)
+    mp.osd_message((current_label and 'Watching: ' .. current_label .. '\n' or '') ..
+        'Up next in ' .. remaining .. 's: ' .. (next_label and next_label .. ' · ' or '') .. title ..
         '\nShift+A: turn autoplay off    >: play now', 1.5)
 end
 local function countdown()
@@ -160,6 +182,7 @@ local function refresh_queue()
             local old_next = plan.next and (plan.next.queue_token or plan.next.url)
             local new_next = updated.next and (updated.next.queue_token or updated.next.url)
             plan = updated
+            update_episode_title()
             if old_next ~= new_next then
                 cancel()
                 if thumbnail_job then mp.abort_async_command(thumbnail_job); thumbnail_job = nil end
@@ -203,6 +226,8 @@ mp.add_forced_key_binding('<', 'newsboat-previous-episode', function() advance(p
 local function finish_queue_item()
     if reported_finished or not startup_queue_token or startup_queue_token == '' then return end
     reported_finished = true
+    local number = queue_position(false)
+    if number then completed_queue[startup_queue_token] = number end
     -- Detached so natural EOF followed by player shutdown cannot cancel removal.
     mp.command_native({name='subprocess', playback_only=false, detach=true,
         args={'python3', directory .. 'newsboat_queue.py', 'finished', current, startup_queue_token}})
