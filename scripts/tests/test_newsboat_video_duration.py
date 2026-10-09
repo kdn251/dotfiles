@@ -12,7 +12,7 @@ URL='https://www.youtube.com/watch?v=abc123DEF45'
 
 class DurationTests(unittest.TestCase):
     def test_background_lookup_cache_and_article_filter(self):
-        with tempfile.TemporaryDirectory() as directory, patch.object(duration.timing,'state',return_value=Path(directory)), patch.object(duration,'cached_duration',return_value=0):
+        with tempfile.TemporaryDirectory() as directory, patch.object(duration.timing,'state',return_value=Path(directory)), patch.object(duration,'cached_duration',return_value=0), patch.object(duration.reading,'estimate',return_value=0):
             ready=threading.Event();release=threading.Event()
             def resolve(url):
                 ready.set();release.wait(2);return 754
@@ -57,3 +57,8 @@ class DurationTests(unittest.TestCase):
                 self.assertEqual(screen.cursor.y,2)
                 self.assertNotIn('12:34',screen.display[2])
                 self.assertNotIn('…',screen.display[2])
+                status.write_text(URL+'\t12:34\nhttps://example.org/article\t~6m\n')
+                wait(lambda _: '~6m' in screen.display[2])
+                status.write_text(URL+'\t12:34\nhttps://example.org/article\t~2m\n')
+                wait(lambda _: '~2m' in screen.display[2])
+                self.assertEqual(screen.cursor.y,2)

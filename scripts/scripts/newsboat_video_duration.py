@@ -6,12 +6,13 @@ import sqlite3
 import threading
 import time
 import newsboat_queue_time as timing
+import newsboat_reading_time as reading
 from newsboat_playlist_avatars import parse_rows
 
 
 def key(url):
     ident = timing.media.identity(url)
-    return ':'.join(ident) if ident and ident[0] in ('youtube','twitch','twitch-clip') else None
+    return ':'.join(ident) if ident and ident[0] in ('youtube','twitch','twitch-clip') else reading.article_key(url)
 
 
 def label(seconds):
@@ -45,6 +46,7 @@ class Durations:
     def __init__(self):
         self.path=timing.state()/'video-durations.tsv'
         self.cache=timing.read('video-durations.json',{})
+        self.cache={k:v for k,v in self.cache.items() if not k.startswith('article:') or v.get('reading_version')==2}
         self.aliases={}
         self.wanted=set()
         self.requested=set()
@@ -53,6 +55,8 @@ class Durations:
         self.started=False
         self.dirty=False
         self.previous=None
+        self.reading_due=0
+        self.reading_fractions={}
 
     def worker(self):
         while True:
@@ -60,10 +64,10 @@ class Durations:
             if url not in self.wanted:
                 self.results.put((url,None));continue
             try:
-                duration=cached_duration(url) or timing.resolve_duration(url)
+                duration=reading.estimate(url, allow_fetch=True) if key(url).startswith('article:') else cached_duration(url) or timing.resolve_duration(url)
             except Exception:
                 duration=0
-            self.results.put((url,dict(duration=duration,checked=time.time())))
+            self.results.put((url,dict(duration=duration,checked=time.time(),reading_version=2)))
 
     def update(self,value):
         urls=[request.split('\t',1)[0] for _,_,request in parse_rows(value)]
@@ -73,7 +77,7 @@ class Durations:
             if not ident:continue
             self.aliases[url]=ident
             row=self.cache.get(ident,{})
-            if row.get('duration') or time.time()-row.get('checked',0)<600:continue
+            if (row.get('duration') and not ident.startswith('article:')) or time.time()-row.get('checked',0)<600:continue
             if url not in self.requested:
                 self.requested.add(url);self.jobs.put(url)
         if self.wanted and not self.started:
@@ -89,7 +93,11 @@ class Durations:
         if self.dirty:
             timing.media.atomic_write(timing.state()/'video-durations.json',json.dumps(self.cache))
             self.dirty=False
-        text=''.join(url+'\t'+label(self.cache[ident].get('duration'))+'\n'
-                     for url,ident in self.aliases.items() if ident in self.cache)
+        if time.monotonic() >= self.reading_due:
+            self.reading_fractions=reading.progress()
+            self.reading_due=time.monotonic()+.5
+        fractions=self.reading_fractions
+        text=''.join(url+'\t'+(reading.label(self.cache[ident].get('duration'),fractions.get(url,0)) if ident.startswith('article:') else label(self.cache[ident].get('duration')))+'\n'
+                     for url,ident in self.aliases.items() if ident in self.cache and (not ident.startswith('article:') or self.cache[ident].get('duration')))
         if text!=self.previous:
             timing.media.atomic_write(self.path,text);self.previous=text

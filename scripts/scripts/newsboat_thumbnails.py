@@ -79,7 +79,9 @@ class Decoder:
                 self.pending = data[start:]
                 return
             value = data[start+len(MARKER):end].decode(errors='replace')
-            if value.startswith('avatars;'):
+            if value == 'zoom;':
+                yield 'zoom', ''
+            elif value.startswith('avatars;'):
                 yield 'avatars', value[8:]
             elif value.startswith('titles;'):
                 yield 'titles', value[7:]
@@ -115,26 +117,27 @@ def selection(value):
     return (x, y, w, h, key) if key else None
 
 
-def frame_thumbnail(data):
+def frame_thumbnail(data, maximum=680):
     """Match the loader's rounded white frame without altering cached originals."""
     from PIL import Image, ImageDraw
     with Image.open(io.BytesIO(data)) as source:
-        height=max(1,round(680*source.height/source.width))
-        picture=source.convert('RGBA').resize((680,height),Image.Resampling.LANCZOS)
+        width=maximum
+        height=max(1,round(width*source.height/source.width))
+        picture=source.convert('RGBA').resize((width,height),Image.Resampling.LANCZOS)
     mask=Image.new('L',picture.size,0)
-    ImageDraw.Draw(mask).rounded_rectangle((2,2,677,height-3),radius=20,fill=255)
+    ImageDraw.Draw(mask).rounded_rectangle((2,2,width-3,height-3),radius=20,fill=255)
     picture.putalpha(mask)
-    ImageDraw.Draw(picture).rounded_rectangle((2,2,677,height-3),radius=20,outline='#ffffff',width=4)
+    ImageDraw.Draw(picture).rounded_rectangle((2,2,width-3,height-3),radius=20,outline='#ffffff',width=4)
     output=io.BytesIO();picture.save(output,format='PNG')
     return output.getvalue()
 
 
-def fetch_png(ident):
+def fetch_png(ident, high_quality=True):
     from PIL import Image
     directory = LIBRARY/'thumbnails'
-    path = directory/(ident+'.png')
+    path = directory/(ident+('.hd' if high_quality else '')+'.png')
     try:
-        return frame_thumbnail(path.read_bytes())
+        return frame_thumbnail(path.read_bytes(),1280 if high_quality else 680)
     except FileNotFoundError:
         pass
     if ident.startswith('playlist:'):
@@ -149,7 +152,7 @@ def fetch_png(ident):
                           if identity(row.get('url', ''))), None)
             if not first:
                 raise ValueError('No playlist cover available')
-            return fetch_png(first)
+            return fetch_png(first, high_quality)
         if urlparse(thumbnail).scheme not in {'https','http'}:
             raise ValueError('No playlist cover available')
     elif ':' in ident:
@@ -167,20 +170,26 @@ def fetch_png(ident):
             raise ValueError('No thumbnail available')
     else:
         thumbnail = 'https://i.ytimg.com/vi/'+ident+'/mqdefault.jpg'
-    request = Request(thumbnail,
-                      headers={'User-Agent': 'Newsboat thumbnail preview'})
-    with urlopen(request, timeout=5) as response:
-        data = response.read(2*1024*1024)
-    with Image.open(io.BytesIO(data)) as source:
-        source.thumbnail((640, 360))
-        output = io.BytesIO()
-        source.convert('RGB').save(output, 'PNG')
+    candidates=[thumbnail]
+    if high_quality and ':' not in ident:
+        candidates=['https://i.ytimg.com/vi/'+ident+'/'+name+'.jpg' for name in ('maxresdefault','sddefault','hqdefault','mqdefault')]
+    for candidate in candidates:
+        try:
+            request=Request(candidate,headers={'User-Agent':'Newsboat thumbnail preview'})
+            with urlopen(request,timeout=5) as response:data=response.read(4*1024*1024)
+            with Image.open(io.BytesIO(data)) as source:
+                if high_quality and source.width<=120:raise ValueError('Thumbnail placeholder')
+                source.thumbnail((1920,1080) if high_quality else (640,360))
+                output=io.BytesIO();source.convert('RGB').save(output,'PNG')
+            break
+        except Exception:
+            if candidate==candidates[-1]:raise
     data = output.getvalue()
     directory.mkdir(parents=True, exist_ok=True)
     temp = path.with_suffix('.'+str(os.getpid())+'.tmp')
     temp.write_bytes(data)
     temp.replace(path)
-    return frame_thumbnail(data)
+    return frame_thumbnail(data,1280 if high_quality else 680)
 
 
 class Fetcher:
@@ -202,7 +211,9 @@ class Fetcher:
             try:
                 data = fetch_png(ident)
             except Exception:
-                data = None  # Missing thumbnails must never break navigation.
+                # Keep an older cached image usable when the network is offline.
+                try:data=frame_thumbnail((LIBRARY/'thumbnails'/(ident+'.png')).read_bytes(),1280)
+                except Exception:data=None
             self.results.put((ident, data))
 
 
@@ -270,7 +281,7 @@ def transmit(image_id, png):
     return b''.join(packets)
 
 
-def placement(image_id, selected, size, png, loading=False):
+def placement(image_id, selected, size, png, loading=False, enlarged=False):
     # Reserve a cell on each edge and retain the thumbnail's aspect ratio.
     from PIL import Image
     rows, cols, pixel_w, pixel_h = struct.unpack('HHHH', size)
@@ -279,16 +290,18 @@ def placement(image_id, selected, size, png, loading=False):
     x, y, w, h, _ = selected
     with Image.open(io.BytesIO(png)) as image:
         iw, ih = image.size
+    if enlarged:
+        x, y, w, h = 0, 0, cols, rows
     width = w-4
     height = max(1, min(h-3, round(width*cell_w*ih/iw/cell_h)))
     width = max(1, min(width, round(height*cell_h*iw/ih/cell_w)))
     left = x+(w-width)//2
-    top = y+1
+    top = (rows-height)//2 if enlarged else y+1
     # Graphics cover the highlight inside the rounded frame, without changing
     # any terminal cells underneath or cutting the selected row at the edges.
     clear = ''
     return (f'\x1b7{clear}\x1b[{top+1};{left+1}H'
-            f'\x1b_Ga=p,i={image_id},p=1,c={width},r={height},z={1 if loading else -1},q=2\x1b\\\x1b8').encode()
+            f'\x1b_Ga=p,i={image_id},p=1,c={width},r={height},z={2 if enlarged else 1 if loading else -1},q=2\x1b\\\x1b8').encode()
 
 
 def write(fd, data):
@@ -330,6 +343,7 @@ def run(command, env):
     terminal_stream = GraphicsStream(preserve_frames=True)
     worker = Fetcher()
     current = None
+    enlarged = False
     png = None
     images = OrderedDict()
     status = None
@@ -401,9 +415,17 @@ def run(command, env):
                             write(1, delete(image_id) + avatars.clear())
                             hover.dismiss()
                             current = png = None
+                            enlarged = False
                             last_placeholder = None
                         write(1, value)
                         repaint = True
+                    elif kind == 'zoom':
+                        if current:
+                            enlarged = not enlarged
+                            hover.dismiss()
+                            # Reposition the already uploaded image using the same
+                            # placement ID; no delete, fetch, or retransmission.
+                            repaint = True
                     elif kind == 'titles':
                         hover.update(value)
                     elif kind == 'avatars':
@@ -412,6 +434,7 @@ def run(command, env):
                     else:
                         selected = selection(value)
                         if selected != current:
+                            enlarged = False
                             write(1, delete(image_id))
                             current, png = selected, None
                             loader_due = time.monotonic() + 0.5
@@ -430,7 +453,7 @@ def run(command, env):
                 images[ident] = data
                 while len(images) > 32:
                     images.popitem(last=False)
-                if current and current[4] == ident:
+                if current and current[4] == ident and data:
                     png = data
                     if png:
                         write(1, transmit(image_id, png))
@@ -448,7 +471,7 @@ def run(command, env):
             durations.poll()
             queue_header.update()
             if repaint and current and display_png:
-                write(1, placement(image_id, current, size, display_png, loading=not bool(png)))
+                write(1, placement(image_id, current, size, display_png, loading=not bool(png), enlarged=enlarged))
             write(1, avatars.render(size, repaint))
             write(1, hover.render(size, repaint))
             done, exit_status = os.waitpid(pid, os.WNOHANG)

@@ -1,0 +1,43 @@
+--- a/include/keymap.h
++++ b/include/keymap.h
+@@ -76,6 +76,7 @@
+ 	OP_TOGGLEITEMREAD,
+ 	OP_UNDO_ACTION,
+ 	OP_UNDO_CHECKPOINT,
++	OP_THUMBNAIL_ZOOM,
+ 	OP_VISUAL_ROWS,
+ 	OP_VISUAL_CANCEL,
+ 	OP_TOGGLESHOWREAD,
+--- a/src/keymap.cpp
++++ b/src/keymap.cpp
+@@ -228,6 +228,8 @@
+ 	},
+     { OP_UNDO_ACTION, "undo-action", {},
+       translatable("Undo last read or star change"), KM_NEWSBOAT },
++    { OP_THUMBNAIL_ZOOM, "thumbnail-zoom", KeyCombination("t", ShiftState::NoShift),
++      translatable("Toggle enlarged thumbnail"), KM_ARTICLELIST | KM_SEARCHRESULTSLIST },
+     { OP_VISUAL_ROWS, "visual-rows", {},
+       translatable("Select a range of article rows"), KM_ARTICLELIST | KM_SEARCHRESULTSLIST },
+     { OP_VISUAL_CANCEL, "visual-cancel", {},
+--- a/src/itemlistformaction.cpp
++++ b/src/itemlistformaction.cpp
+@@ -6,6 +6,7 @@
+ #include <cstring>
+ #include <cstdlib>
+ #include <fstream>
++#include <iostream>
+ #include <filesystem>
+ #include <map>
+ #include <set>
+@@ -386,6 +387,11 @@
+         return result;
+     }
+ 	switch (op) {
++    case OP_THUMBNAIL_ZOOM:
++        if (std::getenv("NEWSBOAT_THUMBNAILS") && !thumbnail_request().empty()) {
++            std::cout << "\033]777;newsboat-thumbnail;zoom;\007" << std::flush;
++        }
++        return true;
+     case OP_VISUAL_ROWS:
+         if (visual_active) { cancel_visual(); }
+         else if (!visible_items.empty()) {

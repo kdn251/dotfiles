@@ -78,7 +78,7 @@ class ThumbnailTests(unittest.TestCase):
             root=Path(directory)
             (root/'playthroughs').mkdir();(root/'thumbnails').mkdir()
             (root/'playthroughs/PLsaved.json').write_text(json.dumps(dict(rows=[dict(url='https://youtu.be/abc123DEF45')])))
-            Image.new('RGB',(320,180),'red').save(root/'thumbnails/abc123DEF45.png')
+            Image.new('RGB',(320,180),'red').save(root/'thumbnails/abc123DEF45.hd.png')
             with patch.object(thumbs,'LIBRARY',root):
                 image=Image.open(io.BytesIO(thumbs.fetch_png('playlist:PLsaved')))
             self.assertEqual(image.getpixel((340,190)),(255,0,0,255))
@@ -91,8 +91,8 @@ class ThumbnailTests(unittest.TestCase):
             root=Path(directory);config_dir=root/'.newsboat';config_dir.mkdir()
             bindir=root/'.local/lib/newsboat-paged';bindir.mkdir(parents=True);(bindir/'newsboat').symlink_to(binary)
             images=root/'state/newsboat/youtube-playlists/thumbnails';images.mkdir(parents=True)
-            Image.new('RGB',(320,180),'red').save(images/'abc123DEF45.png')
-            Image.new('RGB',(320,180),'blue').save(images/'twitch:12345.png')
+            Image.new('RGB',(320,180),'red').save(images/'abc123DEF45.hd.png')
+            Image.new('RGB',(320,180),'blue').save(images/'twitch:12345.hd.png')
             # Real cached creator images, so both avatar placements must survive
             # switching from the refresh toast back to a video thumbnail.
             import json
@@ -109,7 +109,7 @@ class ThumbnailTests(unittest.TestCase):
                     ('YouTube video','https://youtu.be/abc123DEF45'),('Article','https://example.com/article'),
                     ('Twitch video','https://www.twitch.tv/videos/12345')]))+'</channel></rss>')
             config=config_dir/'config';urls=config_dir/'urls';urls.write_text(rss.as_uri()+'\n')
-            config.write_text('show-read-feeds yes\nshow-read-articles yes\nconfirm-exit no\narticle-sort-order guid-asc\narticlelist-title-format "MIXED"\nrun-on-startup open\nbind-key j down\nbind-key k up\nbind R feedlist,articlelist reload-all\nbind h everywhere set browser "newsboat-home://show"\nbind t everywhere set browser "newsboat-starred://show"\n')
+            config.write_text('show-read-feeds yes\nshow-read-articles yes\nconfirm-exit no\narticle-sort-order guid-asc\narticlelist-title-format "MIXED"\nrun-on-startup open\nbind-key j down\nbind-key k up\nbind R feedlist,articlelist reload-all\nbind h everywhere set browser "newsboat-home://show"\nbind x everywhere set browser "newsboat-starred://show"\n')
             subprocess.run([str(binary),'-C',str(config),'-u',str(urls),'-c',str(config_dir/'cache.db'),'-x','reload'],capture_output=True,check=True)
             saved_config=root/'saved-config';saved_config.write_text(config.read_text().replace('"MIXED"','"SAVED"'))
             shutil.copy(config_dir/'cache.db',root/'saved-cache')
@@ -134,6 +134,14 @@ class ThumbnailTests(unittest.TestCase):
             try:
                 until(b'MIXED');until(b'a=p,')
                 self.assertNotIn(thumbs.MARKER,data)
+                until(b'z=-1,')
+                data.clear();os.write(fd,b't');until(b'z=2,')
+                self.assertNotIn(thumbs.MARKER,data)
+                self.assertNotIn(f'a=t,f=100,i={0x40000000+pid},'.encode(),data)
+                self.assertNotIn(f'a=d,d=I,i={0x40000000+pid},'.encode(),data)
+                data.clear();os.write(fd,b't');until(b'z=-1,')
+                self.assertNotIn(f'a=t,f=100,i={0x40000000+pid},'.encode(),data)
+                self.assertNotIn(f'a=d,d=I,i={0x40000000+pid},'.encode(),data)
                 data.clear();os.write(fd,b'R')
                 deadline=time.monotonic()+.8
                 while time.monotonic()<deadline:
@@ -159,7 +167,7 @@ class ThumbnailTests(unittest.TestCase):
                 # Repeat while the refresh completion toast is still active.
                 data.clear();os.write(fd,b'j');until(b'a=p,i=1073741822,')
                 data.clear();os.write(fd,b'j');until(thumbnail);until(avatar)
-                data.clear();os.write(fd,b't');until(b'SAVED');until(thumbnail)
+                data.clear();os.write(fd,b'x');until(b'SAVED');until(thumbnail)
                 data.clear();os.write(fd,b'h');until(b'Your feeds')
                 self.assertNotIn(b'\x1b[23;0t',data)
                 self.assertNotIn(b'set-background-opacity',data)
@@ -269,6 +277,26 @@ os.read(0,1)
             self.assertEqual(image.getpixel((340,2)),(255,255,255,255))
             self.assertEqual(image.getpixel((340,100)),(255,0,0,255))
 
+    def test_enlarged_preview_fetches_and_caches_high_resolution_with_fallback(self):
+        from urllib.error import HTTPError
+        with tempfile.TemporaryDirectory() as directory,patch.object(thumbs,'LIBRARY',Path(directory)):
+            folder=Path(directory)/'thumbnails';folder.mkdir()
+            Image.new('RGB',(320,180),'red').save(folder/'abc123DEF45.png')
+            original=io.BytesIO();Image.new('RGB',(1280,720),'blue').save(original,'PNG')
+            calls=[]
+            def fetch(request,timeout):
+                calls.append(request.full_url)
+                if 'maxresdefault' in request.full_url:raise HTTPError(request.full_url,404,'missing',{},None)
+                return io.BytesIO(original.getvalue())
+            with patch.object(thumbs,'urlopen',side_effect=fetch):
+                result=thumbs.fetch_png('abc123DEF45')
+                self.assertEqual(Image.open(io.BytesIO(result)).size,(1280,720))
+                self.assertTrue(calls[0].endswith('/maxresdefault.jpg'))
+                self.assertTrue(calls[1].endswith('/sddefault.jpg'))
+                self.assertEqual(thumbs.fetch_png('abc123DEF45'),result)
+                self.assertEqual(len(calls),2)
+                self.assertEqual(Image.open(folder/'abc123DEF45.png').size,(320,180))
+
     def test_graphics_packets_and_geometry(self):
         out=io.BytesIO();Image.new('RGB',(320,180),'red').save(out,'PNG')
         data=out.getvalue()
@@ -283,13 +311,21 @@ os.read(0,1)
         self.assertNotIn(b'\x1b[34X',overlay)
         self.assertIn(b'z=-1,',place)
         self.assertEqual(thumbs.delete(42),b'\x1b_Ga=d,d=I,i=42,q=2\x1b\\')
+        large=thumbs.placement(42,(82,1,38,21,'abc123DEF45'),struct.pack('HHHH',24,120,1200,480),data,enlarged=True)
+        import re
+        top,left=map(int,re.search(rb'\x1b\[(\d+);(\d+)H',large).groups())
+        width,height=map(int,re.search(rb'c=(\d+),r=(\d+)',large).groups())
+        self.assertGreater(width,34)
+        self.assertLessEqual(abs((left-1)*2+width-120),1)
+        self.assertLessEqual(abs((top-1)*2+height-24),1)
+        self.assertIn(b'z=2,',large)
 
     def test_creator_playlist_covers_in_native_browser(self):
         binary=Path.home()/'.local/lib/newsboat-paged/newsboat'
         if not binary.exists():self.skipTest('custom Newsboat required')
         with tempfile.TemporaryDirectory() as directory:
             root=Path(directory);library=root/'library';(library/'thumbnails').mkdir(parents=True)
-            cover=library/'thumbnails/playlist:PLtest_123.png'
+            cover=library/'thumbnails/playlist:PLtest_123.hd.png'
             Image.new('RGB',(480,270),'green').save(cover)
             rows=[dict(title='A Game',url='https://www.youtube.com/playlist?list=PLtest_123')]
             cmd,config=ui.prepare_view(root,dict(kind='show',name='Creator',rows=rows))
@@ -304,7 +340,7 @@ os.read(0,1)
                     run_child(cmd,env)
             data=bytearray();end=time.monotonic()+5
             try:
-                packet=thumbs.transmit(0x40000000+pid,thumbs.frame_thumbnail(cover.read_bytes()))
+                packet=thumbs.transmit(0x40000000+pid,thumbs.frame_thumbnail(cover.read_bytes(),1280))
                 while time.monotonic()<end:
                     if select.select([fd],[],[],.05)[0]:data.extend(os.read(fd,65536))
                     if packet in data and b'a=p,' in data:break
@@ -320,7 +356,7 @@ os.read(0,1)
         with tempfile.TemporaryDirectory() as directory:
             root=Path(directory);library=root/'library';(library/'thumbnails').mkdir(parents=True)
             for ident,color in [('abc123DEF45','red'),('abc123DEF46','blue')]:
-                Image.new('RGB',(320,180),color).save(library/'thumbnails'/(ident+'.png'))
+                Image.new('RGB',(320,180),color).save(library/'thumbnails'/(ident+'.hd.png'))
             rows=[dict(title='First video',source='Creator',url='https://www.youtube.com/watch?v=abc123DEF45'),dict(title='Second video',source='Creator',url='https://www.youtube.com/watch?v=abc123DEF46')]
             cmd,config=ui.prepare_view(root,dict(kind='playlist',name='Preview test',rows=rows))
             subprocess.run(cmd+['-x','reload'],check=True,capture_output=True)
@@ -343,7 +379,7 @@ os.read(0,1)
                 self.fail(repr(bytes(data[-500:])))
             image_id=0x40000000+pid
             try:
-                until(thumbs.transmit(image_id,thumbs.frame_thumbnail((library/'thumbnails/abc123DEF45.png').read_bytes())))
+                until(thumbs.transmit(image_id,thumbs.frame_thumbnail((library/'thumbnails/abc123DEF45.hd.png').read_bytes(),1280)))
                 until(b'a=p,')
                 self.assertIn(b'\x1b[22;0t\x1b]2;Newsboat Playlist Preview\x07',data)
                 self.assertNotIn(thumbs.MARKER,data)
