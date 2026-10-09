@@ -130,6 +130,11 @@ highlight articlelist ".*↪.*" cyan default bold
 highlight articlelist "󰓎 " yellow default bold
 highlight articlelist "" red default bold
 highlight feedlist "" red default bold
+# Platform logos keep the active row background.
+highlight feedlist "" color196 default bold
+highlight feedlist "" color99 default bold
+highlight articlelist "" color196 default bold
+highlight articlelist "" color99 default bold
 
 # Show query feeds
 prepopulate-query-feeds yes
