@@ -7,6 +7,25 @@ local result = mp.command_native({name='subprocess', playback_only=false, captur
     args={'python3', directory .. 'newsboat_autoplay.py', 'plan', current}})
 local plan = result and result.status == 0 and utils.parse_json(result.stdout)
 if not plan then return end
+local function episode_label()
+    local episode = plan.episode
+    return episode and string.format('Episode %d of %d', episode.number, episode.total) or nil
+end
+local updating_title = false
+local function update_episode_title()
+    if updating_title then return end
+    local label = episode_label()
+    local title = mp.get_property('media-title', '')
+    if title == '' then return end
+    local plain = title:gsub('^Episode %d+ of %d+ · ', '')
+    local desired = label and (label .. ' · ' .. plain) or plain
+    if desired ~= title then
+        updating_title = true
+        mp.set_property('force-media-title', desired)
+        updating_title = false
+    end
+end
+mp.observe_property('media-title', 'string', update_episode_title)
 local startup_queue_token = plan.current_queue_token
 local autoplay = plan.enabled
 local plan_job, queue_watcher, switch_job
@@ -214,6 +233,7 @@ mp.register_event('file-loaded', function()
         play_on_load = false
     end
     configure()
-    if not loading_title then mp.osd_message('Autoplay: ' .. (autoplay and 'ON' or 'OFF') .. ' · Shift+A to toggle', 3) end
+    update_episode_title()
+    if not loading_title then mp.osd_message((episode_label() and episode_label() .. ' · ' or '') .. 'Autoplay: ' .. (autoplay and 'ON' or 'OFF') .. ' · Shift+A to toggle', 3) end
 end)
 configure()

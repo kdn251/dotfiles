@@ -38,6 +38,8 @@ class PlaylistTests(unittest.TestCase):
             client.assert_not_called()
         with tempfile.TemporaryDirectory() as d:
             cmd,config=ui.prepare_view(d,dict(kind='playlist',name=title,rows=rows))
+            import xml.etree.ElementTree as ET
+            self.assertEqual([node.text for node in ET.parse(Path(d)/'playlist.xml').findall('./channel/item/title')],['Episode 1 of 2 · Episode Z','Episode 2 of 2 · Episode A'])
             self.assertIn('article-sort-order guid-asc',config.read_text())
             self.assertIn('│ %t',config.read_text())
             self.assertNotIn(r'\u2502',config.read_text())

@@ -33,11 +33,12 @@ class PlaylistPlaybackTests(unittest.TestCase):
                 'import json,sys\nfrom pathlib import Path\n'
                 'p=Path(__file__).parent\n'
                 '(p/"calls").write_text(json.dumps(sys.argv[1:3]))\n'
-                'print(json.dumps({"url":sys.argv[1],"path":str(p/"next.wav"),"title":sys.argv[2],"local":True,"plan":json.loads((p/"plan.json").read_text())}))\n')
+                'plan=json.loads((p/"plan.json").read_text());plan["episode"]={"number":int(sys.argv[1][-1])+1,"total":3} if plan.get("playlist") else None\n'
+                'print(json.dumps({"url":sys.argv[1],"path":str(p/"next.wav"),"title":sys.argv[2],"local":True,"plan":plan}))\n')
             rows = [dict(url=f'https://www.youtube.com/watch?v=episode000{i}', title=f'Episode {i}') for i in range(3)]
             manifest = root/'playlist.json'
             manifest.write_text(json.dumps(dict(rows=rows)))
-            plan = dict(enabled=True, playlist=context,
+            plan = dict(enabled=True, playlist=context, episode=dict(number=index+1,total=3) if context else None,
                         next=rows[index+1] if context and index<2 else None,
                         previous=rows[index-1] if context and index>0 else None)
             if action == 'queue_eof':
@@ -61,8 +62,10 @@ class PlaylistPlaybackTests(unittest.TestCase):
             command_file=root/'command'
             loaded=root/'loaded'
             playing=root/'playing'
+            title_file=root/'title'
             driver.write_text(
                 'local utils=require("mp.utils")\n'
+                'mp.observe_property("media-title","string",function(_,title) local f=io.open('+json.dumps(str(title_file))+',"w");f:write(title or "");f:close() end)\n'
                 'mp.observe_property("time-pos","number",function(_,position) if mp.get_property("path")=='+json.dumps(str(root/'next.wav'))+' and position and position>.15 and not mp.get_property_native("pause") then local f=io.open('+json.dumps(str(playing))+',"w");f:write("playing");f:close() end end)\n'
                 'mp.register_event("file-loaded",function() local f=io.open('+json.dumps(str(loaded))+',"a");f:write("loaded\\n");f:close() end)\n'
                 'mp.add_periodic_timer(.02,function() local f=io.open('+json.dumps(str(command_file))+',"r");if f then local cmd=utils.parse_json(f:read("*a"));f:close();os.remove('+json.dumps(str(command_file))+');if cmd[1]=="set_property" then mp.set_property_native(cmd[2],cmd[3]) else mp.command_native(cmd) end end end)\n')
@@ -78,6 +81,10 @@ class PlaylistPlaybackTests(unittest.TestCase):
                 deadline=time.monotonic()+5
                 while not loaded.exists() and time.monotonic()<deadline:time.sleep(.02)
                 self.assertTrue(loaded.exists())
+                if context:
+                    deadline=time.monotonic()+2
+                    while (not title_file.exists() or f'Episode {index+1} of 3' not in title_file.read_text()) and time.monotonic()<deadline:time.sleep(.02)
+                    self.assertIn(f'Episode {index+1} of 3',title_file.read_text())
                 if action in ('eof', 'queue_eof', 'random', 'cancel', 'off'):
                     if action == 'off':command(['keypress','A'])
                     command(['set_property','pause',False])
@@ -97,6 +104,10 @@ class PlaylistPlaybackTests(unittest.TestCase):
                     while len(loaded.read_text().splitlines())<2 and time.monotonic()<deadline:time.sleep(.02)
                     self.assertGreaterEqual(len(loaded.read_text().splitlines()),2,'replacement loaded inside the same player')
                     self.assertIsNone(process.poll(),'player survives the transition')
+                    if context:
+                        deadline=time.monotonic()+2
+                        while f'Episode {expected+1} of 3' not in title_file.read_text() and time.monotonic()<deadline:time.sleep(.02)
+                        self.assertEqual(title_file.read_text(),f'Episode {expected+1} of 3 · '+rows[expected]['title'])
                     if action in ('eof','queue_eof','random'):
                         deadline=time.monotonic()+3
                         while not playing.exists() and time.monotonic()<deadline:time.sleep(.02)

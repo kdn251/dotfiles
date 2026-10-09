@@ -22,6 +22,9 @@ class AutoplayTests(unittest.TestCase):
             manifest.write_text(json.dumps(dict(rows=rows)))
             with patch.dict(os.environ, NEWSBOAT_PLAYLIST_CONTEXT=str(manifest), XDG_STATE_HOME=folder, NEWSBOAT_QUEUE_PLAYBACK='0'), patch.object(autoplay,'download_candidates') as random:
                 plan=autoplay.plan(rows[1]['url'])
+                self.assertEqual(plan['episode'],dict(number=2,total=3))
+                self.assertIsNone(autoplay.episode_context('https://youtu.be/99999999999'))
+                self.assertEqual(autoplay.episode_context('https://youtu.be/11111111111'),dict(number=2,total=3))
                 self.assertEqual(plan['next'], rows[2])
                 self.assertEqual(plan['previous'], rows[0])
                 self.assertIsNone(autoplay.plan(rows[2]['url'])['next'])

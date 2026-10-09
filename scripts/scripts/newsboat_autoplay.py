@@ -58,7 +58,7 @@ def normal_plan(current):
     return result
 
 
-def plan(current):
+def _plan(current):
     from newsboat_queue import entries, identity, navigation
     rows = entries()
     candidates = [row for row in rows if identity(row['url']) != identity(current)]
@@ -84,6 +84,25 @@ def plan(current):
     else:
         result = normal_plan(current)
     result['current_queue_token'] = next((row['queue_token'] for row in rows if identity(row['url']) == identity(current)), '')
+    return result
+
+
+def episode_context(current):
+    try:
+        data = json.loads(Path(os.environ.get('NEWSBOAT_PLAYLIST_CONTEXT', '')).read_text())
+        rows = data['rows']
+        key = media.identity(current)
+        if not key:
+            return None
+        index = next(i for i, row in enumerate(rows) if media.identity(row.get('url', '')) == key)
+        return dict(number=index+1, total=len(rows))
+    except (OSError, ValueError, KeyError, StopIteration, TypeError):
+        return None
+
+
+def plan(current):
+    result = _plan(current)
+    result['episode'] = episode_context(current)
     return result
 
 

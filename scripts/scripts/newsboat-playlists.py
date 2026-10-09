@@ -92,7 +92,8 @@ def prepare_view(directory, data):
     for index,row in enumerate(data['rows'],1):
         item=ET.SubElement(channel,'item')
         # GUID order preserves YouTube's sequence without inventing publication dates.
-        values={'title':row['title'],'link':row['url'],'guid':f'{index:09d}',
+        display_title = f"Episode {index} of {len(data['rows'])} · {row['title']}" if is_playlist else row['title']
+        values={'title':display_title,'link':row['url'],'guid':f'{index:09d}',
                 'author':(' '+row.get('source','')) if is_playlist else '',
                 'description':row['title']}
         for key,value in values.items():ET.SubElement(item,key).text=value
