@@ -9,6 +9,21 @@ BINARY=Path(os.environ.get('NEWSBOAT_PAGED_BINARY',Path.home()/'.local/lib/newsb
 
 @unittest.skipUnless(pyte and BINARY.exists(),'requires custom Newsboat and pyte')
 class BadgeOrderTests(unittest.TestCase):
+    def test_last_opened_arrow_precedes_all_other_badges(self):
+        from test_newsboat_reconnect import reader
+        with tempfile.TemporaryDirectory() as directory:
+            root=Path(directory);url='https://example.org/video';feed=root/'feed.xml'
+            feed.write_text(f'<rss version="2.0"><channel><title>Source</title><link>https://example.org</link><description>Test</description><item><title>Video</title><link>{url}</link><guid>1</guid></item></channel></rss>')
+            for name,text in {'stars':url+'\n','stars.commentary':url+'\n','stars.favorites':url+'\n','downloads':url+'\t📥\n','queue':url+'\ttoken\n','queue.stop':url+'\ttoken\n','pins':url+'\t1\n','last':url+'\n'}.items():
+                (root/name).write_text(text)
+            env={key:str(root/name) for key,name in [('NEWSBOAT_STARRED_STATUS','stars'),('NEWSBOAT_DOWNLOAD_STATUS','downloads'),('NEWSBOAT_QUEUE_STATUS','queue'),('NEWSBOAT_PINS_FILE','pins'),('NEWSBOAT_LAST_OPENED','last')]}
+            with reader(root,'show-read-feeds yes\nshow-read-articles yes\narticlelist-format "%-9p %t"\nrun-on-startup open\n',feed.as_uri()+'\n',env) as (_,screen,send,wait):
+                wait(lambda s:'Video' in s and '💤' in screen.display[1])
+                row=screen.display[1].strip()
+                self.assertTrue(row.startswith('↪ '),row)
+                self.assertTrue(row.endswith('💤 Video'),row)
+                for icon in ['📌','💤','📺','󰓎','📥','📣','']:self.assertGreater(row.index(icon),row.index('↪'))
+
     def test_current_collection_first(self):
         with tempfile.TemporaryDirectory() as directory:
             root=Path(directory);feed=root/'feed.xml';url='https://example.com/video'

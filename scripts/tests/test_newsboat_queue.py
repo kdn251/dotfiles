@@ -21,6 +21,29 @@ def isolated():
             yield root,urls
 
 class QueueTests(unittest.TestCase):
+    def test_stop_marker_set_clear_move_and_native_keys(self):
+        with isolated() as (root,urls):
+            for url in URLS[:2]:queue.change('add',url)
+            (root/'scripts').symlink_to(queue.SCRIPTS,target_is_directory=True)
+            view=root/'view';view.mkdir();_,config=queue.prepare_view(view)
+            env=dict(NEWSBOAT_QUEUE_VIEW='1',NEWSBOAT_QUEUE_STATUS=str(queue.state()/'viewing-queue.tsv'))
+            with reader(root,config.read_text()+'run-on-startup open\n',(view/'urls').read_text(),env) as (_,screen,send,wait):
+                wait(lambda s:'Video0' in s and 'Video1' in s)
+                send('z');wait(lambda s:'💤' in screen.display[1])
+                self.assertTrue(autoplay.plan(URLS[0])['stop_after_current'])
+                send('Z');wait(lambda s:'💤' not in s)
+                self.assertFalse(any(r.get('stop_after') for r in queue.entries()))
+                send('jz');wait(lambda s:'💤' in screen.display[2])
+                queue.change('move-before',URLS[1],URLS[0])
+                wait(lambda s:'Video1' in screen.display[1] and '💤' in screen.display[1])
+                queue.change('stop-after',URLS[0])
+                wait(lambda s:'💤' in screen.display[2] and '💤' not in screen.display[1])
+                self.assertEqual(sum(bool(r.get('stop_after')) for r in queue.entries()),1)
+
+    def test_real_mpv_honors_stop_set_and_clear_while_open(self):
+        self.run_real_mpv(natural_end=True,stop_mode='set')
+        self.run_real_mpv(natural_end=True,stop_mode='clear')
+
     def test_fifo_dedup_membership_and_success_only_consumption(self):
         with isolated() as (root,urls):
             queue.change('add',URLS[2]);queue.change('add',URLS[1]);queue.change('add','https://youtu.be/'+'2'*11)
@@ -83,7 +106,7 @@ class QueueTests(unittest.TestCase):
                 queue.change('add',URLS[1]);wait(lambda s:'Queue' in s and len(queue.entries())==2)
                 queue.change('remove',URLS[0]);queue.change('remove',URLS[1]);wait(lambda _:not any('Queue' in row for row in screen.display[1:-3]))
 
-    def run_real_mpv(self, natural_end=False):
+    def run_real_mpv(self, natural_end=False, stop_mode=None):
         import shutil,subprocess,time,wave
         with isolated() as (root,urls):
             scripts=root/'scripts';scripts.mkdir();ipc_flag=root/'go';calls=root/'calls';ready=root/'ready'
@@ -101,17 +124,23 @@ class QueueTests(unittest.TestCase):
                 out.setnchannels(1);out.setsampwidth(2);out.setframerate(8000);out.writeframes(b'\0'*(8000 if natural_end else 160000))
             driver=root/'driver.lua'
             driver.write_text('mp.register_event("file-loaded",function() local f=io.open('+json.dumps(str(ready))+',"w");f:write("ready");f:close() end)\n'+
-                'mp.add_periodic_timer(.1,function() local f=io.open('+json.dumps(str(ipc_flag))+',"r");if f then f:close();os.remove('+json.dumps(str(ipc_flag))+');mp.commandv("keypress",">") end end)\n'+
-                'mp.add_timeout(8,function() mp.commandv("quit") end)\n')
+                'mp.add_periodic_timer(.1,function() local f=io.open('+json.dumps(str(ipc_flag))+',"r");if f then f:close();os.remove('+json.dumps(str(ipc_flag))+');'+('mp.set_property_native("pause",false)' if stop_mode else 'mp.commandv("keypress",">")')+' end end)\n'+
+                'mp.add_timeout(15,function() mp.commandv("quit") end)\n')
             manifest=root/'playlist.json';manifest.write_text(json.dumps(dict(rows=[dict(url=u,title=u) for u in URLS[:2]])))
             queue.change('add',URLS[0])
             if natural_end:queue.change('add',URLS[3])
             env=dict(os.environ,NEWSBOAT_MEDIA_URL=URLS[0],NEWSBOAT_QUEUE_STATUS=str(queue.state()/'viewing-queue.tsv'),NEWSBOAT_PLAYLIST_CONTEXT=str(manifest))
-            process=subprocess.Popen(['mpv','--no-config','--vo=null','--ao=null','--pause='+('no' if natural_end else 'yes'),'--script='+str(scripts/'newsboat-playlist-playback.lua'),'--script='+str(driver),str(source)],env=env,stdout=subprocess.DEVNULL,stderr=subprocess.PIPE)
+            process=subprocess.Popen(['mpv','--no-config','--vo=null','--ao=null','--pause='+('no' if natural_end and not stop_mode else 'yes'),'--script='+str(scripts/'newsboat-playlist-playback.lua'),'--script='+str(driver),str(source)],env=env,stdout=subprocess.DEVNULL,stderr=subprocess.PIPE)
             try:
                 deadline=time.monotonic()+4
                 while not ready.exists() and time.monotonic()<deadline:time.sleep(.05)
                 self.assertTrue(ready.exists())
+                if stop_mode:
+                    queue.change('stop-after',URLS[0])
+                    time.sleep(.7)
+                    if stop_mode=='clear':
+                        queue.change('clear-stop',URLS[0]);time.sleep(.7)
+                    ipc_flag.touch()
                 if not natural_end:
                     self.assertTrue(any(row['url']==URLS[0] for row in queue.entries()),'starting a video keeps it queued')
                 if not natural_end:
@@ -122,6 +151,11 @@ class QueueTests(unittest.TestCase):
                     ipc_flag.touch()
                 deadline=time.monotonic()+(7 if natural_end else 3)
                 while not calls.exists() and time.monotonic()<deadline:time.sleep(.05)
+                if stop_mode=='set':
+                    self.assertFalse(calls.exists(),'stop marker must prevent autoplay')
+                    self.assertIsNone(process.poll(),'player should remain paused at the end')
+                    self.assertEqual([r['url'] for r in queue.entries()],[URLS[3]])
+                    return
                 self.assertTrue(calls.exists())
                 self.assertEqual(calls.read_text(),URLS[3],'edited queue takes priority over playlist episode 1')
                 self.assertEqual(len(queue.entries()),1 if natural_end else 2,'only natural EOF consumes the current item')

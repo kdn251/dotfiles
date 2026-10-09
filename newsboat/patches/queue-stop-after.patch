@@ -1,0 +1,70 @@
+--- a/src/itemlistformaction.cpp
++++ b/src/itemlistformaction.cpp
+@@ -39,6 +39,7 @@
+ 
+ // External workers publish status; rendering never runs commands or API calls.
+ static std::map<std::string, std::string> download_status;
++static std::string queue_stop_url;
+ static std::set<std::string> starred_urls;
+ static std::set<std::string> commentary_urls;
+ static std::set<std::string> favorites_urls;
+@@ -119,9 +120,13 @@
+     const std::string favorites_path = stars ? std::string(stars) + ".favorites" : "";
+     pins_version = revision(pins);
+     const char* queue_path = std::getenv("NEWSBOAT_QUEUE_STATUS");
+-    const auto version = revision(queue_path) + "|" + pins_version + "|" + revision(vod_path.c_str()) + "|" + revision(favorites_path.c_str()) + "|" + revision(read_path.c_str()) + "|" + revision(notes) + "|" + revision(last_opened) + "|" + revision(order_path.c_str()) + "|" + revision(commentary_path.c_str()) + "|" + revision(path) + "|" + revision(stars) + "|" + revision(watched_path.c_str());
++    const std::string queue_stop_path = queue_path ? std::string(queue_path) + ".stop" : "";
++    const auto version = revision(queue_stop_path.c_str()) + "|" + revision(queue_path) + "|" + pins_version + "|" + revision(vod_path.c_str()) + "|" + revision(favorites_path.c_str()) + "|" + revision(read_path.c_str()) + "|" + revision(notes) + "|" + revision(last_opened) + "|" + revision(order_path.c_str()) + "|" + revision(commentary_path.c_str()) + "|" + revision(path) + "|" + revision(stars) + "|" + revision(watched_path.c_str());
+     static std::string loaded;
+     if (loaded != version) {
++        queue_stop_url.clear();
++        { std::ifstream stop(queue_stop_path); std::getline(stop, queue_stop_url);
++          queue_stop_url = queue_stop_url.substr(0, queue_stop_url.find('\t')); }
+         queue_urls.clear();
+         if (queue_path) {
+             std::ifstream input(queue_path); std::string row;
+@@ -1899,13 +1904,17 @@
+         if (!badges.empty()) { badges += " "; }
+         badges += "📝";
+     }
+-    if (!last_opened_url.empty() && item.first->link() == last_opened_url) {
+-        badges = "↪ " + badges;
+-    }
+     if (queue_urls.count(item.first->link())) { badges = "📺 " + badges; }
+     if (pinned_urls.count(item.first->link())) { badges = "📌 " + badges; }
+     if (pending_actions.count(item.first->link())) {
+         badges = action_spinner() + (badges.empty() ? "" : " " + badges);
++    }
++    if (!last_opened_url.empty() && item.first->link() == last_opened_url) {
++        badges = "↪ " + badges;
++    }
++    if (!queue_stop_url.empty() && item.first->link() == queue_stop_url) {
++        if (!badges.empty()) { badges += " "; }
++        badges += "💤";
+     }
+     fmt.register_fmt('p', badges);
+     const auto progress = watched_progress.find(item.first->link());
+@@ -1957,7 +1966,22 @@
+ 
+ 	fmt.register_fmt('L', item.first->length());
+ 
+-	const auto formattedLine = utils::substr_with_width(fmt.do_format(itemlist_format, width), width);
++    // Badge widths are minimums: playing and stop-after markers must not
++    // disappear when a row has more badges than the configured column fits.
++    auto row_format = itemlist_format;
++    static const std::regex badge_field(R"(%(-?)([0-9]+)p)");
++    std::smatch badge_match;
++    std::string badge_format;
++    auto remaining_format = row_format;
++    while (std::regex_search(remaining_format, badge_match, badge_field)) {
++        badge_format += badge_match.prefix().str();
++        const auto badge_width = std::max(utils::to_u(badge_match[2].str()),
++            static_cast<unsigned int>(utils::strwidth(badges)));
++        badge_format += "%" + badge_match[1].str() + std::to_string(badge_width) + "p";
++        remaining_format = badge_match.suffix().str();
++    }
++    row_format = badge_format + remaining_format;
++	const auto formattedLine = utils::substr_with_width(fmt.do_format(row_format, width), width);
+ 	auto stflFormattedLine = item.first->unread() > 0
+ 		? StflRichText::from_plaintext_with_style(formattedLine, "<unread>")
+ 		: StflRichText::from_plaintext(formattedLine);

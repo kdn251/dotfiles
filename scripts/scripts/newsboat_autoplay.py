@@ -109,6 +109,7 @@ def plan(current):
     def position(url):
         return next((dict(number=i+1, total=len(rows), token=row['queue_token'])
                      for i,row in enumerate(rows) if identity(row['url']) == identity(url)), None)
+    result['stop_after_current'] = any(row.get('stop_after') and identity(row['url'])==identity(current) for row in rows)
     result['queue_position'] = position(current) if result.get('queue') else None
     result['next_queue_position'] = position(result['next']['url']) if result.get('next') else None
     result['next_episode'] = episode_context(result['next']['url']) if result.get('next') else None

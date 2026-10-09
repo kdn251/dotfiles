@@ -53,6 +53,7 @@ local switched_in_place = false
 local loading_title
 local play_on_load = false
 local moving, timer, remaining = false, nil, 5
+local stopped_at_marker = false
 mp.set_property_native('user-data/newsboat/url', current)
 local original_idle = mp.get_property('idle', 'no')
 local original_keep_open = mp.get_property('keep-open', 'no')
@@ -98,7 +99,7 @@ local function cancel()
     hide_thumbnail()
 end
 local function configure()
-    mp.set_property('keep-open', autoplay and plan.next and 'yes' or original_keep_open)
+    mp.set_property('keep-open', (stopped_at_marker or plan.stop_after_current or (autoplay and plan.next)) and 'yes' or original_keep_open)
     mp.set_property_native('user-data/newsboat/autoplay', autoplay)
     prepare_thumbnail()
 end
@@ -164,7 +165,10 @@ local queue_path = os.getenv('NEWSBOAT_QUEUE_STATUS') or
 local function queue_version()
     local file = io.open(queue_path, 'r')
     if not file then return '' end
-    local value = file:read('*a'); file:close(); return value
+    local value = file:read('*a'); file:close()
+    local stop = io.open(queue_path .. '.stop', 'r')
+    if stop then value = value .. '\nstop:' .. stop:read('*a'); stop:close() end
+    return value
 end
 local queue_seen = queue_version()
 local function refresh_queue()
@@ -183,6 +187,7 @@ local function refresh_queue()
             local new_next = updated.next and (updated.next.queue_token or updated.next.url)
             plan = updated
             update_episode_title()
+            configure()
             if old_next ~= new_next then
                 cancel()
                 if thumbnail_job then mp.abort_async_command(thumbnail_job); thumbnail_job = nil end
@@ -211,6 +216,7 @@ mp.register_event('playback-restart', function()
 end)
 mp.add_forced_key_binding('A', 'newsboat-toggle-autoplay', function()
     autoplay = not autoplay
+    if autoplay then stopped_at_marker = false end
     cancel()
     local saved = mp.command_native({name='subprocess', playback_only=false,
         args={'python3', directory .. 'newsboat_autoplay.py', 'set', autoplay and 'on' or 'off'}})
@@ -226,6 +232,23 @@ mp.add_forced_key_binding('<', 'newsboat-previous-episode', function() advance(p
 local function finish_queue_item()
     if reported_finished or not startup_queue_token or startup_queue_token == '' then return end
     reported_finished = true
+    -- Check the marker at EOF as well as polling it while playing, so a
+    -- last-second z/Z is honored before the finished item leaves the queue.
+    local stop_file = io.open(queue_path .. '.stop', 'r')
+    local stop_after = plan.stop_after_current
+    if stop_file then
+        local marker = stop_file:read('*a'); stop_file:close()
+        stop_after = marker:match('\t([^\r\n]+)') == startup_queue_token
+    end
+    if stop_after then
+        stopped_at_marker = true
+        autoplay = false
+        cancel()
+        mp.set_property_native('user-data/newsboat/autoplay', false)
+        mp.set_property('keep-open', 'yes')
+        mp.set_property_native('pause', true)
+        mp.osd_message('💤 Stopping point reached · Autoplay off', 10)
+    end
     local number = queue_position(false)
     if number then completed_queue[startup_queue_token] = number end
     -- Detached so natural EOF followed by player shutdown cannot cancel removal.

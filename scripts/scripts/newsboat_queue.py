@@ -64,6 +64,8 @@ def publish(rows):
     if queue_time.publish(rows):queue_time.start_worker()
     media.atomic_write(state()/'starred-urls.txt.queue.count',str(len(rows))+'\n')
     media.atomic_write(state()/'viewing-queue.tsv',''.join(row['url']+'\t'+row['queue_token']+'\n' for row in rows))
+    stop=next((row for row in rows if row.get('stop_after')),None)
+    media.atomic_write(state()/'viewing-queue.tsv.stop', stop['url']+'\t'+stop['queue_token']+'\n' if stop else '')
     urls=Path(os.environ.get('NEWSBOAT_URLS_FILE',Path.home()/'.newsboat/urls'))
     # Serialize with the other generated collections, preserving their changes.
     with media.library_lock():
@@ -142,6 +144,13 @@ def change(action,url='',token='',*extra):
                 raise ValueError('Queue supports YouTube videos and Twitch VODs')
             if not any(identity(row['url'])==ident for row in rows):
                 rows.append(dict(metadata(url),queue_token=uuid.uuid4().hex))
+        elif action in ('stop-after', 'clear-stop'):
+            selected=next((row for row in rows if identity(row['url'])==ident),None)
+            if selected is None:raise ValueError('Video is no longer in Queue')
+            if action=='stop-after':
+                for row in rows:row.pop('stop_after',None)
+                selected['stop_after']=True
+            else:selected.pop('stop_after',None)
         elif action in ('remove','started','finished'):
             if action=='started':
                 current=next((row for row in rows if identity(row['url'])==ident and row['queue_token']==token),None)
@@ -222,6 +231,8 @@ def prepare_view(directory):
               'bind yy articlelist,searchresultslist undo-checkpoint queue-yank -- "Pick up Queue row (V then y for selected rows); p moves below, P above"',
               'bind p articlelist,searchresultslist undo-checkpoint queue-after -- "Move picked-up Queue row below this row"',
               'bind P articlelist,searchresultslist undo-checkpoint queue-before -- "Move picked-up Queue row above this row"']
+    for key,action,description in [('z','stop-after','Stop autoplay after this video 💤'),('Z','clear-stop','Remove stop-after marker')]:
+        lines.append(f'bind {key} articlelist,searchresultslist set browser "python3 ~/scripts/newsboat_queue.py {action} %u" ; open-in-browser-noninteractively ; set browser "~/scripts/newsboat-brave-app.sh %u" -- "{description}"')
     config.write_text('\n'.join(lines)+'\n')
     return command,config
 
