@@ -9,7 +9,7 @@ import sys
 from PIL import Image, ImageOps
 from newsboat_thumbnails import fetch_png, video_key
 
-WIDTH, HEIGHT = 480, 270
+WIDTH, HEIGHT = 1280, 720
 
 
 def prepare(url):

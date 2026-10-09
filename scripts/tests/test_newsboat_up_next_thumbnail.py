@@ -19,7 +19,8 @@ class UpNextThumbnailTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as folder,patch.dict(os.environ,XDG_CACHE_HOME=folder),patch.object(thumbnail,'fetch_png',return_value=image.getvalue()) as fetch:
             result=thumbnail.prepare('https://youtu.be/abcdefghijk')
             data=Path(result['path']).read_bytes()
-            self.assertEqual(len(data),480*270*4)
+            self.assertEqual((result['width'],result['height']),(1280,720))
+            self.assertEqual(len(data),1280*720*4)
             self.assertEqual(data[:4],b'\0\0\xff\xff')
             self.assertEqual(thumbnail.prepare('https://www.youtube.com/watch?v=abcdefghijk'),result)
             fetch.assert_called_once()

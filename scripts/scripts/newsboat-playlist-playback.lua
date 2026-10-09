@@ -54,6 +54,7 @@ local loading_title
 local play_on_load = false
 local moving, timer, remaining = false, nil, 5
 local stopped_at_marker = false
+local stop_after_retired = false
 mp.set_property_native('user-data/newsboat/url', current)
 local original_idle = mp.get_property('idle', 'no')
 local original_keep_open = mp.get_property('keep-open', 'no')
@@ -99,7 +100,7 @@ local function cancel()
     hide_thumbnail()
 end
 local function configure()
-    mp.set_property('keep-open', (stopped_at_marker or plan.stop_after_current or (autoplay and plan.next)) and 'yes' or original_keep_open)
+    mp.set_property('keep-open', (stopped_at_marker or stop_after_retired or plan.stop_after_current or (autoplay and plan.next)) and 'yes' or original_keep_open)
     mp.set_property_native('user-data/newsboat/autoplay', autoplay)
     prepare_thumbnail()
 end
@@ -164,6 +165,7 @@ local function advance(row, automatic)
         current, plan = target.url, target.plan
         startup_queue_token = plan.current_queue_token
         reported_playing, reported_finished = false, false
+        stop_after_retired = false
         switched_in_place = true
         mp.set_property_native('user-data/newsboat/url', current)
         mp.set_property('force-window', 'yes')
@@ -265,9 +267,9 @@ mp.add_forced_key_binding('>', 'newsboat-next-episode', function()
     if plan.queue then advance(plan.queue_next) else advance(plan.next) end
 end)
 mp.add_forced_key_binding('<', 'newsboat-previous-episode', function() advance(plan.previous) end)
-local function finish_queue_item()
-    if reported_finished or not startup_queue_token or startup_queue_token == '' then return end
-    reported_finished = true
+local function finish_queue_item(at_end)
+    if not startup_queue_token or startup_queue_token == '' then return end
+    if reported_finished and not at_end then return end
     -- Check the marker at EOF as well as polling it while playing, so a
     -- last-second z/Z is honored before the finished item leaves the queue.
     local stop_file = io.open(queue_path .. '.stop', 'r')
@@ -276,7 +278,8 @@ local function finish_queue_item()
         local marker = stop_file:read('*a'); stop_file:close()
         stop_after = marker:match('\t([^\r\n]+)') == startup_queue_token
     end
-    if stop_after then
+    stop_after_retired = stop_after_retired or stop_after
+    if at_end and stop_after_retired then
         snooze_seen = snooze_deadline(); clear_snooze()
         stopped_at_marker = true
         autoplay = false
@@ -286,18 +289,29 @@ local function finish_queue_item()
         mp.set_property_native('pause', true)
         mp.osd_message('💤 Stopping point reached · Autoplay off', 10)
     end
+    if reported_finished then return end
+    reported_finished = true
+    configure()
     local number = queue_position(false)
     if number then completed_queue[startup_queue_token] = number end
     -- Detached so natural EOF followed by player shutdown cannot cancel removal.
     mp.command_native({name='subprocess', playback_only=false, detach=true,
         args={'python3', directory .. 'newsboat_queue.py', 'finished', current, startup_queue_token}})
 end
+-- Retire the Queue row as soon as playback passes 95%, without seeking,
+-- pausing, starting the next video, or firing an end-of-video snooze early.
+mp.observe_property('time-pos', 'number', function(_, position)
+    local duration = mp.get_property_number('duration', 0)
+    if not moving and position and duration > 0 and position / duration > .95 then
+        finish_queue_item(false)
+    end
+end)
 -- keep-open holds the last frame: eof-reached fires even without end-file.
 mp.observe_property('eof-reached', 'bool', function(_, eof)
-    if eof then finish_queue_item(); countdown() else cancel() end
+    if eof then finish_queue_item(true); countdown() else cancel() end
 end)
 mp.register_event('end-file', function(event)
-    if event.reason == 'eof' then finish_queue_item() else cancel() end
+    if event.reason == 'eof' then finish_queue_item(true) else cancel() end
     if event.reason == 'error' then
         play_on_load = false
         moving = false; loading_title = nil

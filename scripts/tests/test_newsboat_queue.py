@@ -106,6 +106,50 @@ class QueueTests(unittest.TestCase):
                 queue.change('add',URLS[1]);wait(lambda s:'Queue' in s and len(queue.entries())==2)
                 queue.change('remove',URLS[0]);queue.change('remove',URLS[1]);wait(lambda _:not any('Queue' in row for row in screen.display[1:-3]))
 
+    def test_progress_retires_row_before_eof_and_preserves_snooze(self):
+        import shutil,socket,subprocess,time,wave
+        with isolated() as (root,_):
+            for url in URLS[:2]:queue.change('add',url)
+            queue.change('stop-after',URLS[0])
+            source=root/'audio.wav'
+            with wave.open(str(source),'wb') as out:
+                out.setnchannels(1);out.setsampwidth(2);out.setframerate(8000);out.writeframes(b'\0\0'*8000*100)
+            scripts=root/'scripts';scripts.mkdir()
+            shutil.copy(queue.SCRIPTS/'newsboat-playlist-playback.lua',scripts)
+            for name in ('newsboat_autoplay.py','newsboat_queue.py'):(scripts/name).symlink_to(queue.SCRIPTS/name)
+            (scripts/'newsboat-up-next-thumbnail.py').write_text('raise SystemExit(1)\n')
+            ipc=root/'ipc'
+            env=dict(os.environ,NEWSBOAT_MEDIA_URL=URLS[0],NEWSBOAT_QUEUE_STATUS=str(queue.state()/'viewing-queue.tsv'))
+            process=subprocess.Popen(['mpv','--no-config','--vo=null','--ao=null','--pause=yes','--input-ipc-server='+str(ipc),'--script='+str(scripts/'newsboat-playlist-playback.lua'),str(source)],env=env,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)
+            try:
+                until=time.monotonic()+5
+                while not ipc.exists() and time.monotonic()<until:time.sleep(.05)
+                sock=socket.socket(socket.AF_UNIX);sock.settimeout(3);sock.connect(str(ipc));stream=sock.makefile('rwb',buffering=0)
+                def command(*args):
+                    stream.write((json.dumps({'command':args,'request_id':1})+'\n').encode())
+                    while True:
+                        response=json.loads(stream.readline())
+                        if response.get('request_id')==1:return response.get('data')
+                until=time.monotonic()+5
+                while command('get_property','duration') is None and time.monotonic()<until:time.sleep(.05)
+                command('seek',95,'absolute+exact');time.sleep(.5)
+                self.assertEqual(len(queue.entries()),2,'exactly 95% remains queued')
+                command('seek',96,'absolute+exact')
+                until=time.monotonic()+4
+                while len(queue.entries())>1 and time.monotonic()<until:time.sleep(.05)
+                self.assertEqual([r['url'] for r in queue.entries()],[URLS[1]])
+                self.assertFalse(command('get_property','eof-reached'))
+                self.assertTrue(command('get_property','user-data/newsboat/autoplay'),'retirement must not stop playback early')
+                command('seek',99.8,'absolute+exact');command('set_property','pause',False)
+                until=time.monotonic()+4
+                while command('get_property','user-data/newsboat/autoplay') and time.monotonic()<until:time.sleep(.05)
+                self.assertFalse(command('get_property','user-data/newsboat/autoplay'))
+                self.assertTrue(command('get_property','pause'),'snooze still fires at actual EOF')
+                self.assertEqual([r['url'] for r in queue.entries()],[URLS[1]])
+                stream.close();sock.close()
+            finally:
+                process.terminate();process.wait(timeout=4)
+
     def run_real_mpv(self, natural_end=False, stop_mode=None):
         import shutil,subprocess,time,wave
         with isolated() as (root,urls):
