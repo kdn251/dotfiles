@@ -1,0 +1,126 @@
+--- a/include/formaction.h
++++ b/include/formaction.h
+@@ -161,6 +161,11 @@
+ 	ConfigContainer* cfg;
+ 	Stfl::Form f;
+ 	bool do_redraw;
++    mutable bool row_title_scrolling = false;
++    mutable std::string scrolling_row_key;
++    mutable long long scrolling_row_started = 0;
++    std::string scroll_row_title(const std::string& title, const std::string& key,
++        unsigned int columns, bool selected) const;
+ 
+ 	std::vector<std::string> qna_responses;
+ 
+--- a/src/formaction.cpp
++++ b/src/formaction.cpp
+@@ -146,10 +146,35 @@
+ 	f.run(-1);
+ }
+ 
++std::string FormAction::scroll_row_title(const std::string& title, const std::string& key,
++    unsigned int columns, bool selected) const
++{
++    if (!selected) { return title; }
++    const auto now = std::chrono::duration_cast<std::chrono::milliseconds>(
++        std::chrono::steady_clock::now().time_since_epoch()).count();
++    const auto identity = key + "\n" + title + "\n" + std::to_string(columns);
++    if (identity != scrolling_row_key) {
++        scrolling_row_key = identity;
++        scrolling_row_started = now;
++    }
++    row_title_scrolling = columns > 0 && utils::strwidth(title) > columns;
++    if (!row_title_scrolling) { return title; }
++    const auto distance = utils::strwidth(title) - columns;
++    const auto ticks = (now - scrolling_row_started) / 175;
++    const auto phase = static_cast<size_t>(ticks) % (distance + 7);
++    const auto offset = phase < 2 ? 0 : std::min(phase - 2, distance);
++    const auto wide = utils::str2wstr(title);
++    size_t index = 0, skipped = 0;
++    while (index < wide.size() && skipped < offset) {
++        skipped += std::max(0, ::wcwidth(wide[index++]));
++    }
++    return utils::wstr2str(wide.substr(index));
++}
++
+ std::string FormAction::draw_form_wait_for_event(unsigned int timeout)
+ {
+     update_queue_header();
+-	return f.run(queue_title_scrolling ? std::min(timeout, 150u) : timeout);
++	return f.run((queue_title_scrolling || row_title_scrolling) ? std::min(timeout, 150u) : timeout);
+ }
+ 
+ void FormAction::recalculate_widget_dimensions()
+--- a/src/itemlistformaction.cpp
++++ b/src/itemlistformaction.cpp
+@@ -1753,6 +1753,8 @@
+ 
+ void ItemListFormAction::prepare()
+ {
++    if (row_title_scrolling && !visible_items.empty()) { invalidate(list.get_position()); }
++    if (visible_items.empty()) { row_title_scrolling = false; }
+     if (const char* path = std::getenv("NEWSBOAT_VIDEO_DURATIONS")) {
+         static std::string previous;
+         std::ifstream input(path);
+@@ -2000,6 +2002,15 @@
+         remaining_format = badge_match.suffix().str();
+     }
+     row_format = badge_format + remaining_format;
++    const auto title_field = row_format.find("%t");
++    if (title_field != std::string::npos) {
++        const auto prefix = fmt.do_format(row_format.substr(0, title_field), width);
++        const auto used = utils::strwidth(prefix);
++        const bool selected = list.get_position() < visible_items.size() &&
++            visible_items[list.get_position()].first == item.first;
++        fmt.register_fmt('t', scroll_row_title(itemtitle, item.first->link(),
++            used < width ? width - used : 0, selected));
++    }
+ 	const auto formattedLine = utils::substr_with_width(fmt.do_format(row_format, width), width);
+ 	auto stflFormattedLine = item.first->unread() > 0
+ 		? StflRichText::from_plaintext_with_style(formattedLine, "<unread>")
+--- a/src/feedlistformaction.cpp
++++ b/src/feedlistformaction.cpp
+@@ -77,6 +77,18 @@
+ 
+ void FeedListFormAction::prepare()
+ {
++    if (row_title_scrolling) {
++        const auto format = cfg->get_configvalue("feedlist-format");
++        list.invalidate_list_content(visible_feeds.size(), [this, format](std::uint32_t line, std::uint32_t width) {
++            auto row_format = format;
++            const auto& entry = visible_feeds.at(line);
++            const auto title = row_format.find("%t");
++            if (std::getenv("NEWSBOAT_THUMBNAILS") && !entry.first->is_query_feed() && title != std::string::npos) {
++                row_format.insert(title, "   ");
++            }
++            return format_line(row_format, entry.first, entry.second, width);
++        });
++    }
+     if (const char* path = std::getenv("NEWSBOAT_QUEUE_STATUS")) {
+         struct stat info {};
+         if (stat(path, &info) == 0) {
+@@ -1458,6 +1470,13 @@
+             if (field != std::string::npos) { row_format.replace(field, 4, "%k"); }
+         }
+     }
++    const auto title_field = row_format.find("%t");
++    if (title_field != std::string::npos) {
++        const auto used = utils::strwidth(fmt.do_format(row_format.substr(0, title_field), width));
++        const bool selected = list.get_position() < visible_feeds.size() &&
++            visible_feeds[list.get_position()].first == feed;
++        fmt.register_fmt('t', scroll_row_title(title, feed->rssurl(), used < width ? width - used : 0, selected));
++    }
+     const auto formattedLine = fmt.do_format(row_format, width);
+ 	auto stflFormattedLine = unread_count > 0
+ 		? StflRichText::from_plaintext_with_style(formattedLine, "<unread>")
+--- a/include/listmovementcontrol.h
++++ b/include/listmovementcontrol.h
+@@ -169,7 +169,7 @@
+ 		}
+ 	}
+ 
+-	std::uint32_t get_position()
++	std::uint32_t get_position() const
+ 	{
+ 		return current_position;
+ 	}

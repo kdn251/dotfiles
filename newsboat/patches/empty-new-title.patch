@@ -1,0 +1,13 @@
+--- a/src/itemlistformaction.cpp
++++ b/src/itemlistformaction.cpp
+@@ -2075,6 +2075,10 @@
+ 	fmt.register_fmt('t', std::to_string(total));
+ 
+ 	auto feedtitle = s;
++    if (url.find("query:📬 New:") == 0 && unread == 0) {
++        const auto icon = feedtitle.find("📬");
++        if (icon != std::string::npos) { feedtitle.replace(icon, std::string("📬").size(), "📪"); }
++    }
+ 	utils::remove_soft_hyphens(feedtitle);
+ 	fmt.register_fmt('T', feedtitle);
+ 

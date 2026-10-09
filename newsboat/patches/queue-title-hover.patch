@@ -1,0 +1,67 @@
+--- a/include/formaction.h
++++ b/include/formaction.h
+@@ -77,6 +77,7 @@
+ 	void set_status(const std::string& text);
+ 
+ 	std::string queue_avatar_request() const { return queue_avatar; }
++	std::string queue_title_hover_request() const { return queue_title_hover; }
+ 	void draw_form();
+ 	std::string draw_form_wait_for_event(unsigned int timeout);
+ 	void recalculate_widget_dimensions();
+@@ -186,6 +187,7 @@
+ 
+ 	bool queue_title_scrolling = false;
+ 	std::string queue_avatar;
++	std::string queue_title_hover;
+ 	std::string base_title;
+ 	bool base_title_set = false;
+ 	void update_queue_header();
+--- a/src/formaction.cpp
++++ b/src/formaction.cpp
+@@ -843,6 +843,7 @@
+     if (!base_title_set) { base_title = head_line.get_text(); base_title_set = true; }
+     const auto path = std::getenv("NEWSBOAT_QUEUE_HEADER");
+     queue_avatar.clear();
++    queue_title_hover.clear();
+     queue_title_scrolling = false;
+     std::string title, creator, progress, url;
+     if (path) {
+@@ -878,10 +879,10 @@
+                 started = std::chrono::steady_clock::now();
+             }
+             const auto ticks = std::chrono::duration_cast<std::chrono::milliseconds>(
+-                std::chrono::steady_clock::now() - started).count() / 350;
++                std::chrono::steady_clock::now() - started).count() / 175;
+             const auto distance = utils::strwidth(title) - title_width;
+-            const auto phase = static_cast<size_t>(ticks) % (distance + 13);
+-            const auto offset = phase < 6 ? 0 : std::min(phase - 6, distance);
++            const auto phase = static_cast<size_t>(ticks) % (distance + 7);
++            const auto offset = phase < 2 ? 0 : std::min(phase - 2, distance);
+             const auto wide = utils::str2wstr(title);
+             size_t index = 0, skipped = 0;
+             while (index < wide.size() && skipped < offset) {
+@@ -896,6 +897,13 @@
+         right = "   " + right;
+         const auto x = utils::to_u(f.get("title:x")) + heart + available - utils::strwidth(right) - 1;
+         queue_avatar = std::to_string(x) + ";" + f.get("title:y") + ";" + url + "\t" + creator + "\t\n";
++    }
++    if (queue_title_scrolling) {
++        const auto x = utils::to_u(f.get("title:x")) + heart + available - utils::strwidth(right) - 1 + (avatar ? 3 : 0);
++        auto full_title = title;
++        for (auto& c : full_title) { if (static_cast<unsigned char>(c) < 32 || c == 127) { c = ' '; } }
++        queue_title_hover = std::to_string(x) + ";" + f.get("title:y") + ";" +
++            std::to_string(x + budget - suffix_width) + ";" + full_title + "\n";
+     }
+     auto left = utils::substr_with_width(base_title, available - utils::strwidth(right) - 2);
+     head_line.set_text(left + std::string(available - utils::strwidth(left) - utils::strwidth(right) - 1, ' ') + right + " ");
+--- a/src/view.cpp
++++ b/src/view.cpp
+@@ -226,7 +226,7 @@
+                 (items ? items->thumbnail_request() : "") << "\007";
+             auto feeds = std::dynamic_pointer_cast<FeedListFormAction>(fa);
+             std::cout << "\033]777;newsboat-thumbnail;titles;" <<
+-                (items ? items->title_hover_request() : feeds ? feeds->title_hover_request() : "") << "\007";
++                fa->queue_title_hover_request() + (items ? items->title_hover_request() : feeds ? feeds->title_hover_request() : "") << "\007";
+             std::cout << "\033]777;newsboat-thumbnail;avatars;" << fa->queue_avatar_request() <<
+                 (items ? items->playlist_avatar_request() : feeds ? feeds->row_avatar_request() : "") << "\007" << std::flush;
+         }

@@ -135,7 +135,8 @@ def frame_thumbnail(data, maximum=680):
 def fetch_png(ident, high_quality=True):
     from PIL import Image
     directory = LIBRARY/'thumbnails'
-    path = directory/(ident+('.hd' if high_quality else '')+'.png')
+    suffix = ('.hd2' if ident.startswith('playlist:') else '.hd') if high_quality else ''
+    path = directory/(ident+suffix+'.png')
     try:
         return frame_thumbnail(path.read_bytes(),1280 if high_quality else 680)
     except FileNotFoundError:
@@ -171,8 +172,13 @@ def fetch_png(ident, high_quality=True):
     else:
         thumbnail = 'https://i.ytimg.com/vi/'+ident+'/mqdefault.jpg'
     candidates=[thumbnail]
-    if high_quality and ':' not in ident:
-        candidates=['https://i.ytimg.com/vi/'+ident+'/'+name+'.jpg' for name in ('maxresdefault','sddefault','hqdefault','mqdefault')]
+    video_id = ident if ':' not in ident else None
+    if ident.startswith('playlist:'):
+        match=re.search(r'/(?:vi|vi_webp)/([A-Za-z0-9_-]{11})/',urlparse(thumbnail).path)
+        if match and (urlparse(thumbnail).hostname or '').endswith('ytimg.com'):video_id=match[1]
+    if high_quality and video_id:
+        candidates=['https://i.ytimg.com/vi/'+video_id+'/'+name+'.jpg' for name in ('maxresdefault','sddefault','hqdefault','mqdefault')]
+        if thumbnail not in candidates:candidates.append(thumbnail)
     for candidate in candidates:
         try:
             request=Request(candidate,headers={'User-Agent':'Newsboat thumbnail preview'})
@@ -212,8 +218,11 @@ class Fetcher:
                 data = fetch_png(ident)
             except Exception:
                 # Keep an older cached image usable when the network is offline.
-                try:data=frame_thumbnail((LIBRARY/'thumbnails'/(ident+'.png')).read_bytes(),1280)
-                except Exception:data=None
+                data=None
+                for suffix in ('.hd.png','.png'):
+                    path=LIBRARY/'thumbnails'/(ident+suffix)
+                    try:data=frame_thumbnail(path.read_bytes(),1280);break
+                    except Exception:pass
             self.results.put((ident, data))
 
 
@@ -374,6 +383,14 @@ def run(command, env):
             restore = opacity_command(env,float(previous_opacity)) if previous_opacity else opacity_command(env,opacity,toggle=True)
             write(1,b'\x1b[23;0t'+restore)
         preview_active = active
+    def forward_keys(keys):
+        nonlocal enlarged
+        shrunk = enlarged and keys.startswith(b'q')
+        if shrunk:
+            enlarged = False
+            keys = keys[1:]
+        if keys:write(master, keys)
+        return shrunk
     try:
         tty.setraw(0)
         # Keep one compositing mode for the whole session. Switching between
@@ -394,14 +411,14 @@ def run(command, env):
             if 0 not in ready:
                 keys = hover.flush_input()
                 if keys:
-                    write(master, keys)
+                    repaint = forward_keys(keys) or repaint
             if 0 in ready:
                 data = os.read(0, 65536)
                 if not data:
                     break
                 keys = hover.feed(data)
                 if keys:
-                    write(master, keys)
+                    repaint = forward_keys(keys) or repaint
             if master in ready:
                 try:
                     data = os.read(master, 65536)

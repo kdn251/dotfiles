@@ -139,7 +139,7 @@ class ThumbnailTests(unittest.TestCase):
                 self.assertNotIn(thumbs.MARKER,data)
                 self.assertNotIn(f'a=t,f=100,i={0x40000000+pid},'.encode(),data)
                 self.assertNotIn(f'a=d,d=I,i={0x40000000+pid},'.encode(),data)
-                data.clear();os.write(fd,b't');until(b'z=-1,')
+                data.clear();os.write(fd,b'q');until(b'z=-1,')
                 self.assertNotIn(f'a=t,f=100,i={0x40000000+pid},'.encode(),data)
                 self.assertNotIn(f'a=d,d=I,i={0x40000000+pid},'.encode(),data)
                 data.clear();os.write(fd,b'R')
@@ -297,6 +297,19 @@ os.read(0,1)
                 self.assertEqual(len(calls),2)
                 self.assertEqual(Image.open(folder/'abc123DEF45.png').size,(320,180))
 
+    def test_playlist_cover_upgrades_low_resolution_source_and_cache(self):
+        import json
+        with tempfile.TemporaryDirectory() as directory,patch.object(thumbs,'LIBRARY',Path(directory)):
+            root=Path(directory);(root/'playlist-covers').mkdir();(root/'thumbnails').mkdir()
+            (root/'playlist-covers/PLtest.json').write_text(json.dumps({'url':'https://i.ytimg.com/vi/abc123DEF45/mqdefault.jpg'}))
+            Image.new('RGB',(320,180),'red').save(root/'thumbnails/playlist:PLtest.hd.png')
+            image=io.BytesIO();Image.new('RGB',(1280,720),'blue').save(image,'PNG')
+            with patch.object(thumbs,'urlopen',return_value=io.BytesIO(image.getvalue())) as fetch:
+                result=thumbs.fetch_png('playlist:PLtest')
+                self.assertTrue(fetch.call_args.args[0].full_url.endswith('/maxresdefault.jpg'))
+                self.assertEqual(Image.open(io.BytesIO(result)).size,(1280,720))
+                self.assertTrue((root/'thumbnails/playlist:PLtest.hd2.png').exists())
+
     def test_graphics_packets_and_geometry(self):
         out=io.BytesIO();Image.new('RGB',(320,180),'red').save(out,'PNG')
         data=out.getvalue()
@@ -325,7 +338,7 @@ os.read(0,1)
         if not binary.exists():self.skipTest('custom Newsboat required')
         with tempfile.TemporaryDirectory() as directory:
             root=Path(directory);library=root/'library';(library/'thumbnails').mkdir(parents=True)
-            cover=library/'thumbnails/playlist:PLtest_123.hd.png'
+            cover=library/'thumbnails/playlist:PLtest_123.hd2.png'
             Image.new('RGB',(480,270),'green').save(cover)
             rows=[dict(title='A Game',url='https://www.youtube.com/playlist?list=PLtest_123')]
             cmd,config=ui.prepare_view(root,dict(kind='show',name='Creator',rows=rows))
@@ -356,7 +369,7 @@ os.read(0,1)
         with tempfile.TemporaryDirectory() as directory:
             root=Path(directory);library=root/'library';(library/'thumbnails').mkdir(parents=True)
             for ident,color in [('abc123DEF45','red'),('abc123DEF46','blue')]:
-                Image.new('RGB',(320,180),color).save(library/'thumbnails'/(ident+'.hd.png'))
+                Image.new('RGB',(320,180),color).save(library/'thumbnails'/(ident+('.hd2' if ident.startswith('playlist:') else '.hd')+'.png'))
             rows=[dict(title='First video',source='Creator',url='https://www.youtube.com/watch?v=abc123DEF45'),dict(title='Second video',source='Creator',url='https://www.youtube.com/watch?v=abc123DEF46')]
             cmd,config=ui.prepare_view(root,dict(kind='playlist',name='Preview test',rows=rows))
             subprocess.run(cmd+['-x','reload'],check=True,capture_output=True)

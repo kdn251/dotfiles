@@ -14,7 +14,8 @@ class EmptyNewTests(unittest.TestCase):
             with reader(root,cfg,urls) as (_,screen,send,wait):
                 wait(lambda s:'1 📬 New' in s)
                 send('\n');wait(lambda s:'Article' in s)
-                send('nq');wait(lambda s:'0 📪 New' in s)
+                send('n');wait(lambda s:'📪 New' in screen.display[0])
+                send('q');wait(lambda s:'0 📪 New' in s)
                 send('u');wait(lambda s:'1 📬 New' in s)
 
     def test_glimmer_changes_only_mailbox_pixels_and_keeps_placement(self):

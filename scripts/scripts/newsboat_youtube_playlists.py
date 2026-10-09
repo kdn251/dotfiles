@@ -174,14 +174,15 @@ def playlists(url, force=False):
         except ValueError:
             continue
         thumbnails = [t for t in (entry.get('thumbnails') or []) if t and t.get('url')]
-        cover = entry.get('thumbnail') or (thumbnails[-1]['url'] if thumbnails else None)
+        cover = max(thumbnails,key=lambda t:((t.get('width') or 0)*(t.get('height') or 0)),default={}).get('url') or entry.get('thumbnail')
         if cover and urlparse(cover).scheme in {'http', 'https'}:
             ident = parse_qs(urlparse(link).query)['list'][0]
             target = LIBRARY/'playlist-covers'/(ident+'.json')
             content = json.dumps({'url':cover,'channel_id':data.get('channel_id')})
             if not target.exists() or target.read_text() != content:
                 atomic_write(target,content)
-                (LIBRARY/'thumbnails'/('playlist:'+ident+'.png')).unlink(missing_ok=True)
+                for suffix in ('','.hd','.hd2'):
+                    (LIBRARY/'thumbnails'/('playlist:'+ident+suffix+'.png')).unlink(missing_ok=True)
         rows.append(dict(url=link, title=entry.get('title') or 'Untitled playlist',
                          source=data.get('channel') or '', channel_id=data.get('channel_id')))
     return data.get('channel') or data.get('title','Creator'), rows

@@ -1,0 +1,39 @@
+--- a/include/formaction.h
++++ b/include/formaction.h
+@@ -162,6 +162,7 @@
+ 	Stfl::Form f;
+ 	bool do_redraw;
+     mutable bool row_title_scrolling = false;
++    int scrolling_row_position = -1;
+     mutable std::string scrolling_row_key;
+     mutable long long scrolling_row_started = 0;
+     std::string scroll_row_title(const std::string& title, const std::string& key,
+--- a/src/itemlistformaction.cpp
++++ b/src/itemlistformaction.cpp
+@@ -1753,7 +1753,11 @@
+ 
+ void ItemListFormAction::prepare()
+ {
+-    if (row_title_scrolling && !visible_items.empty()) { invalidate(list.get_position()); }
++    const auto selected_position = static_cast<int>(list.get_position());
++    if ((row_title_scrolling || selected_position != scrolling_row_position) && !visible_items.empty()) {
++        invalidate(list.get_position());
++    }
++    scrolling_row_position = selected_position;
+     if (visible_items.empty()) { row_title_scrolling = false; }
+     if (const char* path = std::getenv("NEWSBOAT_VIDEO_DURATIONS")) {
+         static std::string previous;
+--- a/src/feedlistformaction.cpp
++++ b/src/feedlistformaction.cpp
+@@ -77,7 +77,10 @@
+ 
+ void FeedListFormAction::prepare()
+ {
+-    if (row_title_scrolling) {
++    const auto selected_position = static_cast<int>(list.get_position());
++    const bool selection_changed = selected_position != scrolling_row_position;
++    scrolling_row_position = selected_position;
++    if (row_title_scrolling || selection_changed) {
+         const auto format = cfg->get_configvalue("feedlist-format");
+         list.invalidate_list_content(visible_feeds.size(), [this, format](std::uint32_t line, std::uint32_t width) {
+             auto row_format = format;

@@ -78,30 +78,40 @@ class HoverTests(unittest.TestCase):
     def test_relay_handles_hover_without_sending_mouse_to_newsboat(self):
         self.check_native(relay=True)
 
-    def check_native(self, relay=False):
+    def test_queue_header_hover_uses_full_title(self):
+        self.check_native(queue=True)
+
+    def check_native(self, relay=False, queue=False):
         with tempfile.TemporaryDirectory() as directory:
             root=Path(directory)
             title='Long title '+('with all the details ' * 10)
             (root/'feed.xml').write_text('<rss version="2.0"><channel><title>Example</title><link>https://example.org</link><description>test</description><item><title>'+title+'</title><guid>1</guid><link>https://example.org/long</link></item><item><title>Short</title><guid>2</guid><link>https://example.org/short</link></item></channel></rss>')
             (root/'urls').write_text((root/'feed.xml').as_uri()+'\n')
             (root/'config').write_text('show-read-feeds yes\nshow-read-articles yes\nconfirm-exit no\narticle-sort-order guid-asc\narticlelist-format "%4i %t"\nrun-on-startup open\n')
+            header=root/'queue-header'
+            header.write_text('QUEUE BEGIN '+('long title '*12)+' END\tCreator\t50%\thttps://example.org/video\n')
             args=[str(BINARY),'-C',str(root/'config'),'-u',str(root/'urls'),'-c',str(root/'cache')]
             subprocess.run(args+['-x','reload'],check=True,capture_output=True)
             pid,fd=pty.fork()
             if pid==0:
                 fcntl.ioctl(0,termios.TIOCSWINSZ,SIZE)
                 if relay:
+                    import newsboat_queue_panel
+                    class EmptyHeader:
+                        path = root/"absent-header"
+                        def update(self): pass
+                    newsboat_queue_panel.Header = EmptyHeader
                     import newsboat_playlist_avatars
                     newsboat_playlist_avatars.fetch_avatar = lambda _: None
                     thumbnails.background_opacity = lambda _: 1.0
-                    env = dict(os.environ,TERM='xterm-256color',KITTY_WINDOW_ID='999999')
+                    env = dict(os.environ,TERM='xterm-256color',KITTY_WINDOW_ID='999999', NEWSBOAT_QUEUE_HEADER=str(root/'absent-header'))
                     env.pop('NEWSBOAT_THUMBNAIL_OWNER',None)
                     try:
                         result = thumbnails.run(args,env)
                     except SystemExit:
                         result = 0
                     os._exit(result)
-                os.execve(str(BINARY),args,dict(os.environ,TERM='xterm-256color',NEWSBOAT_THUMBNAILS='1'))
+                os.execve(str(BINARY),args,dict(os.environ,TERM='xterm-256color',NEWSBOAT_THUMBNAILS='1',**({'NEWSBOAT_QUEUE_HEADER':str(header)} if queue else {})))
             decoder=thumbnails.Decoder();screen=pyte.Screen(100,20);stream=pyte.ByteStream(screen)
             rows=[]
             raw=bytearray()
@@ -121,7 +131,7 @@ class HoverTests(unittest.TestCase):
                     self.assertIn(hover.ENABLE,raw)
                     image_id=0x40200000+pid
                     raw.clear()
-                    os.write(fd,b'\x1b[<35;12;2M')
+                    os.write(fd,b'\x1b[<35;30;2M')
                     read();read()
                     self.assertIn(f'a=t,f=100,i={image_id}'.encode(),raw)
                     self.assertIn(b'z=20',raw)
@@ -132,6 +142,15 @@ class HoverTests(unittest.TestCase):
                     os.write(fd,b'?')
                     raw.clear();read()
                     self.assertIn(hover.DISABLE,raw)
+                    return
+                if queue:
+                    target=next(row for row in rows if row[1]==0)
+                    self.assertEqual(target[3],header.read_text().split("\t")[0])
+                    self.assertEqual(target[0],screen.display[0].index("QUEUE BEGIN"))
+                    self.assertGreater(target[2],target[0])
+                    instance=hover.Hover(77);instance.update(";".join(map(str,target)))
+                    instance.feed(f"\x1b[<35;{target[0]+1};1M".encode())
+                    self.assertEqual(instance.target,target)
                     return
                 self.assertEqual(len(rows),1)
                 left,top,right,full=rows[0]
