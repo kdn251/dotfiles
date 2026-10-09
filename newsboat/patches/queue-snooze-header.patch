@@ -1,0 +1,16 @@
+--- a/src/formaction.cpp
++++ b/src/formaction.cpp
+@@ -782,9 +782,12 @@
+     const auto available = width > heart ? width - heart : 0;
+     if (title.empty() || available < 60) { head_line.set_text(base_title); return; }
+     const bool avatar = std::getenv("NEWSBOAT_THUMBNAILS") && !url.empty();
+-    const auto budget = std::min(48u, available - 24u) - (avatar ? 3 : 0);
+     const auto suffix = " " + progress;
+     const auto suffix_width = utils::strwidth(suffix);
++    // Keep a readable scrolling title when the stop-after estimate is shown.
++    const auto target = progress.find("💤") != std::string::npos ?
++        std::max(48u, static_cast<unsigned int>(suffix_width) + 20u) : 48u;
++    const auto budget = std::min(target, available - 24u) - (avatar ? 3 : 0);
+     std::string right;
+     if (budget > suffix_width + 12) {
+         const auto title_width = budget - suffix_width;

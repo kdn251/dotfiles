@@ -53,6 +53,13 @@ class Header:
             filled = min(8, round(fraction*8))
             bar = '━'*filled+'─'*(8-filled)
             remaining = clock(duration*(1-fraction))+' left' if duration else 'time unknown'
+            stop = next((i for i, row in enumerate(rows) if row.get('stop_after')), None)
+            if stop is not None:
+                seconds, unknown = queue_time.remaining(rows[:stop+1])
+                if unknown:
+                    remaining = '💤 Stop time unknown'
+                else:
+                    remaining = '💤 Stops in ' + queue_time.label(seconds, 0, stop+1)
             url = rows[0]['url'] if rows else ''
             text = f'{clean(title)}\t{clean(creator)}\t{bar} {fraction:.0%} · {remaining}\t{clean(url)}\n'
         try:

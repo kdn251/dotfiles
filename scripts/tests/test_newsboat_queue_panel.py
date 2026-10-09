@@ -24,6 +24,33 @@ class QueueHeaderTests(unittest.TestCase):
             header.due=0;header.update()
             self.assertEqual(header.path.read_text(),'')
 
+    def test_stop_estimate_tracks_progress_reordering_and_removal(self):
+        with isolated():
+            for url in URLS[:3]:queue.change('add',url)
+            with patch.object(progress,'STATE',queue.state()):
+                progress.record(URLS[0],120,600)
+                progress.record(URLS[1],60,1200)
+                progress.record(URLS[2],0,3600)
+            queue.change('stop-after',URLS[1])
+            header=panel.Header()
+            def text():
+                header.due=0;header.update()
+                return header.path.read_text()
+            self.assertIn('💤 Stops in ~27 mins',text())
+            with patch.object(progress,'STATE',queue.state()):progress.record(URLS[0],300,600)
+            self.assertIn('💤 Stops in ~24 mins',text())
+            queue.change('move-before',URLS[1],URLS[0])
+            self.assertIn('💤 Stops in ~19 mins',text())
+            queue.change('clear-stop',URLS[1])
+            self.assertNotIn('💤',text())
+            self.assertIn('19:00 left',text())
+
+    def test_stop_estimate_does_not_guess_unknown_duration(self):
+        with isolated():
+            queue.change('add',URLS[0]);queue.change('stop-after',URLS[0])
+            header=panel.Header();header.update()
+            self.assertIn('💤 Stop time unknown',header.path.read_text())
+
     def test_native_title_row_on_home_list_and_help(self):
         with isolated() as (root,_):
             queue.change('add',URLS[0])
@@ -40,6 +67,12 @@ class QueueHeaderTests(unittest.TestCase):
                 with patch.object(progress,'STATE',queue.state()):progress.record(URLS[0],300,600)
                 header.due=0;header.update()
                 wait(lambda _: '50%' in screen.display[0])
+                queue.change('stop-after',URLS[0]);header.due=0;header.update()
+                wait(lambda _: '💤 Stops in ~5 mins' in screen.display[0])
+                self.assertIn('Video0',screen.display[0])
+                self.assertIn('50%',screen.display[0])
+                queue.change('clear-stop',URLS[0]);header.due=0;header.update()
+                wait(lambda _: '💤' not in screen.display[0])
                 queue.change('remove',URLS[0]);header.due=0;header.update()
                 wait(lambda _: 'Video0' not in screen.display[0])
 
