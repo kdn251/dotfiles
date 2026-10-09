@@ -1,6 +1,9 @@
 """Live Queue-head summary for the native title row."""
 from contextlib import closing
 import sqlite3
+import math
+import os
+from pathlib import Path
 import time
 import newsboat_queue_time as queue_time
 
@@ -46,6 +49,10 @@ class Header:
         self.due = time.monotonic()+.5
         rows = queue_time.read('viewing-queue.json', [])
         value = snapshot(rows)
+        path = Path(os.environ.get('NEWSBOAT_QUEUE_STATUS',str(queue_time.state()/'viewing-queue.tsv'))+'.snooze')
+        try:deadline = int(path.read_text().strip())
+        except (OSError,ValueError):deadline = None
+        if deadline and not value:value = ('Timed snooze', '', 0, 0)
         text = ''
         if value:
             title, creator, fraction, duration = value
@@ -60,6 +67,12 @@ class Header:
                     remaining = '💤 Stop time unknown'
                 else:
                     remaining = '💤 Stops in ' + queue_time.label(seconds, 0, stop+1)
+            if deadline:
+                minutes = max(0, math.ceil((deadline-time.time())/60))
+                hours, minutes = divmod(minutes, 60)
+                duration = (f'{hours}h ' if hours else '') + (f'{minutes}m' if minutes or not hours else '')
+                remaining = f'💤 {duration.strip()} left'
+                if stop is not None:remaining += f' · after #{stop+1}'
             url = rows[0]['url'] if rows else ''
             text = f'{clean(title)}\t{clean(creator)}\t{bar} {fraction:.0%} · {remaining}\t{clean(url)}\n'
         try:

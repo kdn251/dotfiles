@@ -110,7 +110,7 @@ def prepare_view(directory, data):
     actions={'bind','bind-key','macro','browser'} if is_playlist else {'bind-key'}
     lines=[line for line in source.read_text().splitlines() if line.split() and line.split()[0] in appearance|actions]
     if not is_playlist:
-        lines += [line for line in source.read_text().splitlines() if line.startswith(('bind ? ','bind h ','bind H ','macro p ','macro P '))]
+        lines += [line for line in source.read_text().splitlines() if line.startswith(('bind ? ','bind h ','bind H ','macro p ','macro P ','macro z ','macro Z '))]
     lines=[line for line in lines if not line.startswith(('bind q ','bind o ','bind O ','bind P ','macro v ','macro d ','macro C '))]
     if is_playlist:
         for helper in ('commentary','favorites'):

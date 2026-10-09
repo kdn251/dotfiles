@@ -71,7 +71,7 @@ def prepare_view(directory, rows):
     if not source.exists():source=SCRIPTS.parents[1]/'newsboat/.newsboat/config'
     appearance={'color','highlight','highlight-article','scrolloff','text-width'}
     lines=[line for line in source.read_text().splitlines() if line.split() and line.split()[0] in appearance]
-    lines += [line for line in source.read_text().splitlines() if line.startswith(('bind 7 ', 'bind h ', 'bind H '))]
+    lines += [line for line in source.read_text().splitlines() if line.startswith(('bind 7 ', 'bind h ', 'bind H ', 'macro z ', 'macro Z '))]
     browser='python3 '+shlex.quote(str(Path(__file__).resolve()))+' open %u'
     lines += ['show-read-feeds yes','show-read-articles yes','confirm-exit no',
               'article-sort-order title-asc','articlelist-title-format " %T"',

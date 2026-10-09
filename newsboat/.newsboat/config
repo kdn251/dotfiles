@@ -189,3 +189,6 @@ macro P undo-checkpoint pin ; set browser "python3 ~/scripts/newsboat-pins.py re
 bind w everywhere set browser "newsboat-queue://show" -- "Open viewing Queue (q to return)"
 macro w undo-checkpoint queue ; set browser "python3 ~/scripts/newsboat_queue.py add %u" ; open-in-browser-noninteractively ; set browser "~/scripts/newsboat-brave-app.sh %u" -- "Add video to viewing Queue"
 macro W undo-checkpoint queue ; set browser "python3 ~/scripts/newsboat_queue.py remove %u" ; open-in-browser-noninteractively ; set browser "~/scripts/newsboat-brave-app.sh %u" -- "Remove video from Queue"
+
+macro z snooze-timer -- "Set timed snooze (30m, 1h, 1h30m)"
+macro Z snooze-cancel -- "Cancel timed snooze"

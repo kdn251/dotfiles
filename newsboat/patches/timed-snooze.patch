@@ -1,0 +1,112 @@
+--- a/include/keymap.h
++++ b/include/keymap.h
+@@ -76,6 +76,8 @@
+ 	OP_TOGGLEITEMREAD,
+ 	OP_UNDO_ACTION,
+ 	OP_UNDO_CHECKPOINT,
++	OP_SNOOZE_TIMER,
++	OP_SNOOZE_CANCEL,
+ 	OP_THUMBNAIL_ZOOM,
+ 	OP_VISUAL_ROWS,
+ 	OP_VISUAL_CANCEL,
+--- a/include/formaction.h
++++ b/include/formaction.h
+@@ -48,6 +48,7 @@
+ 	None,
+ 	Bookmark,
+ 	RunCmdLine,
++	SnoozeTimer,
+ 	GotoUrlByNumber,
+ 	UpdateFlags,
+ 	Search,
+--- a/src/keymap.cpp
++++ b/src/keymap.cpp
+@@ -228,6 +228,8 @@
+ 	},
+     { OP_UNDO_ACTION, "undo-action", {},
+       translatable("Undo last read or star change"), KM_NEWSBOAT },
++    { OP_SNOOZE_TIMER, "snooze-timer", {}, translatable("Set timed snooze"), KM_NEWSBOAT },
++    { OP_SNOOZE_CANCEL, "snooze-cancel", {}, translatable("Cancel timed snooze"), KM_NEWSBOAT },
+     { OP_THUMBNAIL_ZOOM, "thumbnail-zoom", KeyCombination("t", ShiftState::NoShift),
+       translatable("Toggle enlarged thumbnail"), KM_ARTICLELIST | KM_SEARCHRESULTSLIST },
+     { OP_VISUAL_ROWS, "visual-rows", {},
+--- a/src/formaction.cpp
++++ b/src/formaction.cpp
+@@ -7,6 +7,9 @@
+ #include <cinttypes>
+ #include <ncurses.h>
+ #include <fstream>
++#include <filesystem>
++#include <regex>
++#include <ctime>
+ #include "reloader.h"
+ 
+ #include "config.h"
+@@ -21,6 +24,17 @@
+ #include "view.h"
+ 
+ namespace newsboat {
++
++static std::string snooze_path()
++{
++    if (const char* queue = std::getenv("NEWSBOAT_QUEUE_STATUS")) {
++        return std::string(queue) + ".snooze";
++    }
++    const char* state = std::getenv("XDG_STATE_HOME");
++    const char* home = std::getenv("HOME");
++    return (state ? std::string(state) : std::string(home ? home : "/tmp") + "/.local/state") + "/newsboat/viewing-queue.tsv.snooze";
++}
++
+ 
+ History FormAction::searchhistory;
+ History FormAction::cmdlinehistory;
+@@ -156,6 +170,16 @@
+ 	BindingType bindingType)
+ {
+ 	switch (op) {
++    case OP_SNOOZE_TIMER:
++        start_qna({QnaPair("Snooze after (30m, 1h, 1h30m): ", "")}, QnaFinishAction::SnoozeTimer);
++        return true;
++    case OP_SNOOZE_CANCEL: {
++        std::error_code error;
++        std::filesystem::remove(snooze_path(), error);
++        if (error) { v.get_statusline().show_error("Could not cancel timed snooze"); }
++        else { v.get_statusline().show_message("Timed snooze cancelled"); }
++        return true;
++    }
+     case OP_RELOADALL:
+         if (std::getenv("NEWSBOAT_SYNC_VIEW")) {
+             if (const char* request = std::getenv("NEWSBOAT_REFRESH_REQUEST")) {
+@@ -713,6 +737,32 @@
+ 	v.inside_qna(false);
+ 	v.inside_cmdline(false);
+ 	switch (op) {
++    case QnaFinishAction::SnoozeTimer: {
++        const auto input = qna_responses.empty() ? "" : qna_responses[0];
++        std::smatch parts;
++        const std::regex duration(R"(^\s*(?:([0-9]{1,3})h)?\s*(?:([0-9]{1,4})m)?\s*$)");
++        if (!std::regex_match(input, parts, duration) || (!parts[1].matched && !parts[2].matched)) {
++            v.get_statusline().show_error("Enter a duration such as 30m, 1h, or 1h30m");
++            break;
++        }
++        const int seconds = (parts[1].matched ? std::stoi(parts[1]) * 3600 : 0) +
++            (parts[2].matched ? std::stoi(parts[2]) * 60 : 0);
++        if (seconds <= 0 || seconds > 7 * 86400) {
++            v.get_statusline().show_error("Snooze must be greater than zero and at most 7 days");
++            break;
++        }
++        const auto path = snooze_path();
++        std::error_code error;
++        std::filesystem::create_directories(std::filesystem::path(path).parent_path(), error);
++        std::ofstream output(path + ".tmp");
++        output << std::time(nullptr) + seconds << "\n";
++        output.close();
++        if (error || !output) { v.get_statusline().show_error("Could not save timed snooze"); break; }
++        std::filesystem::rename(path + ".tmp", path, error);
++        if (error) { v.get_statusline().show_error("Could not save timed snooze"); }
++        else { v.get_statusline().show_message("Timed snooze set for " + input); }
++        break;
++    }
+ 	/*
+ 	 * since bookmarking is available in several formactions, I decided to
+ 	 * put this into the base class so that all derived classes can take

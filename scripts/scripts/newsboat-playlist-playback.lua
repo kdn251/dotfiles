@@ -103,7 +103,42 @@ local function configure()
     mp.set_property_native('user-data/newsboat/autoplay', autoplay)
     prepare_thumbnail()
 end
+local snooze_path = (os.getenv('NEWSBOAT_QUEUE_STATUS') or
+    ((os.getenv('XDG_STATE_HOME') or (os.getenv('HOME') .. '/.local/state')) .. '/newsboat/viewing-queue.tsv')) .. '.snooze'
+local snooze_seen, timed_out
+local function snooze_deadline()
+    local file = io.open(snooze_path, 'r')
+    if not file then return nil end
+    local deadline = tonumber(file:read('*l')); file:close()
+    return deadline
+end
+local function clear_snooze()
+    if snooze_seen and snooze_deadline() == snooze_seen then os.remove(snooze_path) end
+    snooze_seen = nil
+end
+local function check_snooze()
+    snooze_seen = snooze_deadline()
+    if not snooze_seen or os.time() < snooze_seen then return false end
+    clear_snooze()
+    timed_out = true
+    stopped_at_marker = true
+    autoplay = false
+    play_on_load = false
+    cancel()
+    if switch_job then mp.abort_async_command(switch_job); switch_job = nil end
+    moving = false; loading_title = nil
+    mp.set_property('idle', original_idle)
+    mp.set_property('keep-open', 'yes')
+    mp.set_property_native('user-data/newsboat/autoplay', false)
+    mp.set_property_native('pause', true)
+    mp.osd_message('💤 Timed snooze reached · Playback paused · Autoplay off', 10)
+    return true
+end
+local snooze_watcher = mp.add_periodic_timer(.25, check_snooze)
+check_snooze()
 local function advance(row, automatic)
+    if check_snooze() then return end
+    if not automatic then timed_out = false end
     if moving then return end
     if not row then mp.osd_message(plan.queue and 'No more videos in this queue direction' or 'No more videos in this playlist', 3); return end
     local should_play = automatic or mp.get_property_native('eof-reached') == true
@@ -149,6 +184,7 @@ local function prompt()
         '\nShift+A: turn autoplay off    >: play now', 1.5)
 end
 local function countdown()
+    if check_snooze() then return end
     if not autoplay or not plan.next or moving or timer then return end
     remaining = 5
     prompt()
@@ -216,7 +252,7 @@ mp.register_event('playback-restart', function()
 end)
 mp.add_forced_key_binding('A', 'newsboat-toggle-autoplay', function()
     autoplay = not autoplay
-    if autoplay then stopped_at_marker = false end
+    if autoplay then stopped_at_marker = false; timed_out = false end
     cancel()
     local saved = mp.command_native({name='subprocess', playback_only=false,
         args={'python3', directory .. 'newsboat_autoplay.py', 'set', autoplay and 'on' or 'off'}})
@@ -241,6 +277,7 @@ local function finish_queue_item()
         stop_after = marker:match('\t([^\r\n]+)') == startup_queue_token
     end
     if stop_after then
+        snooze_seen = snooze_deadline(); clear_snooze()
         stopped_at_marker = true
         autoplay = false
         cancel()
@@ -268,6 +305,9 @@ mp.register_event('end-file', function(event)
     end
 end)
 mp.register_event('shutdown', function()
+    snooze_seen = snooze_deadline()
+    clear_snooze()
+    snooze_watcher:kill()
     cancel()
     if thumbnail_job then mp.abort_async_command(thumbnail_job) end
     if plan_job then mp.abort_async_command(plan_job) end
@@ -275,6 +315,8 @@ mp.register_event('shutdown', function()
     if queue_watcher then queue_watcher:kill() end
 end)
 mp.register_event('file-loaded', function()
+    check_snooze()
+    if timed_out then mp.set_property_native('pause', true); play_on_load = false end
     if play_on_load then
         -- keep-open pauses at EOF; the replacement must not inherit that pause.
         mp.set_property_native('pause', false)
