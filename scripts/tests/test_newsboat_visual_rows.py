@@ -92,11 +92,37 @@ class VisualRowsTests(unittest.TestCase):
 
     def test_macro_delete_uses_snapshot_as_query_shrinks(self):
         with session(query=True) as (root,screen,send,wait):
-            send('jVjj,D');wait(lambda:(root/'actions').exists() and len((root/'actions').read_text().splitlines())==3 and 'Item05' in screen.display[screen.cursor.y])
+            send('jVjj,D');wait(lambda:(root/'actions').exists() and len((root/'actions').read_text().splitlines())==3 and 'Item05' in screen.display[screen.cursor.y] and 'Selected downloads deleted' in '\n'.join(screen.display))
             self.assertEqual((root/'actions').read_text().splitlines(),[f'https://example.org/{i}' for i in (2,3,4)])
             for title in ('Item02','Item03','Item04'):self.assertNotIn(title,'\n'.join(screen.display))
             send('U');wait(lambda:'Restored 3 downloads' in '\n'.join(screen.display) and all(title in '\n'.join(screen.display) for title in ('Item02','Item03','Item04')))
             self.assertEqual((root/'removed').read_text(),'')
+
+    def test_bulk_delete_keeps_navigation_responsive(self):
+        with session(query=True) as (root,screen,send,wait):
+            helper=root/'delete-downloaded.sh'
+            original=helper.read_text()
+            helper.write_text(original.replace('import sys,json', 'import sys,json,time,os').replace('url=sys.argv[1]',
+                'while not (p/"release").exists():time.sleep(.02)\nwith (p/"tokens").open("a") as f:f.write(os.environ.get("NEWSBOAT_DOWNLOAD_UNDO_TOKEN", "missing")+"\\n")\nurl=sys.argv[1]'))
+            try:
+                send('jVjj,D')
+                wait(lambda:(root/'actions').exists() and 'Item05' in screen.display[screen.cursor.y])
+                started=time.monotonic();send('jj')
+                wait(lambda:'Item07' in screen.display[screen.cursor.y])
+                self.assertLess(time.monotonic()-started,1)
+                send('k');wait(lambda:'Item06' in screen.display[screen.cursor.y])
+                self.assertFalse((root/'removed').exists())
+                (root/'release').touch()
+                wait(lambda:'Selected downloads deleted' in '\n'.join(screen.display) and 'Item06' in screen.display[screen.cursor.y])
+                self.assertIn('Item06',screen.display[screen.cursor.y])
+                self.assertEqual((root/'actions').read_text().splitlines(),[f'https://example.org/{i}' for i in (2,3,4)])
+                tokens=(root/'tokens').read_text().splitlines()
+                self.assertEqual(len(set(tokens)),3)
+                self.assertNotIn('missing',tokens)
+                send('U');wait(lambda:'Restored 3 downloads' in '\n'.join(screen.display))
+                self.assertEqual((root/'removed').read_text(),'')
+            finally:
+                (root/'release').touch()
 
     def test_search_results_select_and_bulk_apply(self):
         with session() as (root,screen,send,wait):

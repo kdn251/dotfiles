@@ -1,0 +1,100 @@
+--- a/include/view.h
++++ b/include/view.h
+@@ -4,6 +4,7 @@
+ #include <cstdint>
+ #include <atomic>
+ #include <thread>
++#include <future>
+ #include <mutex>
+ #include <map>
+ #include <optional>
+@@ -39,6 +40,7 @@
+ 	~View();
+     void remember_action(std::shared_ptr<RssItem> item, std::shared_ptr<RssFeed> feed,
+         std::optional<bool> target_star = std::nullopt, int commentary_action = 0);
++    std::vector<std::shared_future<std::optional<std::uint8_t>>> download_deletions;
+     void undo_action();
+     bool undo_single_action();
+     std::string undo_group;
+--- a/src/view.cpp
++++ b/src/view.cpp
+@@ -84,6 +84,7 @@
+ 
+ View::~View()
+ {
++    for (auto& job : download_deletions) { job.wait(); }
+ 	Stfl::reset();
+ }
+ 
+@@ -193,6 +194,19 @@
+ 
+ 	std::vector<KeyCombination> key_sequence;
+ 	while (formaction_stack_size() > 0) {
++        if (!download_deletions.empty() && download_deletions.back().wait_for(std::chrono::seconds(0)) == std::future_status::ready) {
++            bool failed = false;
++            for (auto& job : download_deletions) {
++                const auto result = job.get();
++                failed = failed || !result || *result != 0;
++            }
++            download_deletions.clear();
++            auto current = get_current_formaction();
++            if (current) { current->process_op(OP_RELOADURLS, {}, BindingType::Macro); }
++            if (failed) { status_line.show_error("Some downloads could not be deleted"); }
++            else { status_line.show_message("Selected downloads deleted"); }
++        }
++
+         {
+             std::lock_guard<std::mutex> lock(mtx);
+             if (pending_status) {
+@@ -534,6 +548,20 @@
+ 		pop_current_formaction();
+ 		return ret;
+ 	} else {
++        if (!undo_group.empty() && browser_str.find("delete-downloaded.sh ") != std::string::npos) {
++            // Capture each row's recovery token before the UI moves to another row.
++            if (const char* token = std::getenv("NEWSBOAT_DOWNLOAD_UNDO_TOKEN")) {
++                cmdline = "NEWSBOAT_DOWNLOAD_UNDO_TOKEN=" + utils::preserve_quotes(token) + " " + cmdline;
++            }
++            unsetenv("NEWSBOAT_DOWNLOAD_UNDO_TOKEN");
++            const auto previous = download_deletions.empty() ?
++                std::shared_future<std::optional<std::uint8_t>>() : download_deletions.back();
++            download_deletions.push_back(std::async(std::launch::async, [previous, cmdline]() {
++                if (previous.valid()) { previous.wait(); }
++                return utils::run_non_interactively(cmdline, "View::delete_download");
++            }).share());
++            return 0;
++        }
+ 		const std::shared_ptr<AutoDiscardMessage> message =
+ 			status_line.show_message_until_finished(strprintf::fmt(_("Running browser: %s"), cmdline));
+ 		const auto result = utils::run_non_interactively(cmdline, "View::open_in_browser");
+@@ -1286,6 +1314,11 @@
+ 
+ void View::undo_action()
+ {
++    if (!download_deletions.empty()) {
++        status_line.show_message("Downloads are still being deleted; press U when deletion finishes");
++        return;
++    }
++
+     const char* journal = std::getenv("NEWSBOAT_UNDO_FILE");
+     auto states = journal ? read_undo_history(journal) : undo_history;
+     if (states.empty()) { status_line.show_message("Nothing to undo"); return; }
+--- a/src/itemlistformaction.cpp
++++ b/src/itemlistformaction.cpp
+@@ -338,6 +338,7 @@
+         }
+         for (const auto& cmd : commands) {
+             if (deleting_downloads && cmd.op == OP_UNDO_CHECKPOINT && !cmd.args.empty() && cmd.args[0] == "download") { continue; }
++            if (deleting_downloads && cmd.op == OP_RELOADURLS) { continue; }
+             // Single-item bindings advance the cursor; a bulk action must not.
+             if ((cmd.op > OP_SK_MIN && cmd.op < OP_SK_MAX) || cmd.op == OP_NEXTUNREAD) { continue; }
+             prepare();
+@@ -360,7 +361,7 @@
+     store_selection();
+     invalidate_list();
+     if (success) {
+-        v.get_statusline().show_message(strprintf::fmt("Applied action to %u selected rows", static_cast<unsigned int>(completed)));
++        v.get_statusline().show_message(strprintf::fmt(deleting_downloads ? "Deleting %u selected downloads in background" : "Applied action to %u selected rows", static_cast<unsigned int>(completed)));
+     }
+     return success;
+ }

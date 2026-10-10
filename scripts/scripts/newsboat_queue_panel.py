@@ -38,6 +38,23 @@ def clock(seconds):
 
 
 
+def timed_snooze_target(rows, deadline, now=None):
+    """Predict the video containing the deadline, not the last completed video."""
+    remaining = deadline - (time.time() if now is None else now) if deadline else 0
+    if remaining <= 0:
+        return ''
+    for row, seconds in zip(rows, queue_time.remaining_items(rows)):
+        # Do not guess beyond an episode whose duration is unavailable.
+        if seconds is None:
+            return ''
+        if seconds > 0 and remaining <= seconds:
+            return row['url']
+        remaining -= seconds
+        if row.get('stop_after'):
+            return ''
+    return ''
+
+
 class Header:
     def __init__(self):
         self.path = queue_time.state()/'queue-title-progress.tsv'
@@ -52,6 +69,13 @@ class Header:
         path = Path(os.environ.get('NEWSBOAT_QUEUE_STATUS',str(queue_time.state()/'viewing-queue.tsv'))+'.snooze')
         try:deadline = int(path.read_text().strip())
         except (OSError,ValueError):deadline = None
+        target = timed_snooze_target(rows, deadline)
+        target_path = Path(str(path)+'.target')
+        try: previous_target = target_path.read_text()
+        except OSError: previous_target = None
+        if previous_target != target:
+            target_path.parent.mkdir(parents=True, exist_ok=True)
+            queue_time.media.atomic_write(target_path, target)
         if deadline and not value:value = ('Timed snooze', '', 0, 0)
         text = ''
         if value:

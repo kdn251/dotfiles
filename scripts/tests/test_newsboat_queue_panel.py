@@ -51,6 +51,63 @@ class QueueHeaderTests(unittest.TestCase):
             header=panel.Header();header.update()
             self.assertIn('💤 Stop time unknown',header.path.read_text())
 
+    def test_timed_snooze_marks_video_containing_expiry(self):
+        from pathlib import Path
+        import time
+        with isolated():
+            for url in URLS[:3]:queue.change('add',url)
+            with patch.object(progress,'STATE',queue.state()):
+                progress.record(URLS[0],120,600)  # 8 minutes remain
+                progress.record(URLS[1],0,1200)  # 20 minutes
+                progress.record(URLS[2],0,3600)
+            rows=queue.read_state('viewing-queue.json',[])
+            self.assertEqual(panel.timed_snooze_target(rows,1900,now=100),URLS[2])
+            self.assertEqual(panel.timed_snooze_target(rows,580,now=100),URLS[0])
+            self.assertEqual(panel.timed_snooze_target(rows,581,now=100),URLS[1])
+            self.assertEqual(panel.timed_snooze_target(rows,10000,now=100),'')
+            timer=queue.state()/'viewing-queue.tsv.snooze'
+            target=Path(str(timer)+'.target')
+            timer.write_text(str(int(time.time())+1800))
+            header=panel.Header();header.update()
+            self.assertEqual(target.read_text(),URLS[2])
+            queue.change('move-before',URLS[2],URLS[0])
+            header.due=0;header.update()
+            self.assertEqual(target.read_text(),URLS[2])
+            with patch.object(progress,'STATE',queue.state()):progress.record(URLS[2],3500,3600)
+            header.due=0;header.update()
+            self.assertEqual(target.read_text(),'')  # Queue now ends before the timer.
+            timer.unlink();header.due=0;header.update()
+            self.assertEqual(target.read_text(),'')
+
+    def test_timed_target_respects_manual_stop_and_unknown_duration(self):
+        rows=[dict(url=URLS[0],stop_after=True),dict(url=URLS[1])]
+        with patch.object(panel.queue_time,'remaining_items',return_value=[600,1200]):
+            self.assertEqual(panel.timed_snooze_target(rows,900,now=0),'')
+            self.assertEqual(panel.timed_snooze_target(rows,300,now=0),URLS[0])
+        with patch.object(panel.queue_time,'remaining_items',return_value=[None,1200]):
+            self.assertEqual(panel.timed_snooze_target(rows,900,now=0),'')
+
+    def test_native_timed_marker_updates_and_clears(self):
+        import os,time
+        with isolated() as (root,_):
+            for url in URLS[:2]:queue.change('add',url)
+            with patch.object(progress,'STATE',queue.state()):
+                progress.record(URLS[0],0,600)
+                progress.record(URLS[1],0,1200)
+            status=queue.state()/'viewing-queue.tsv'
+            timer=queue.state()/'viewing-queue.tsv.snooze'
+            header=panel.Header()
+            timer.write_text(str(int(time.time())+900));header.update()
+            view=root/'view';view.mkdir();_,config=queue.prepare_view(view)
+            env=dict(NEWSBOAT_QUEUE_VIEW='1',NEWSBOAT_QUEUE_STATUS=str(status))
+            with reader(root,config.read_text()+'run-on-startup open\n',(view/'urls').read_text(),env) as (_,screen,send,wait):
+                wait(lambda s:'Video1' in screen.display[2] and '💤' in screen.display[2])
+                self.assertNotIn('💤',screen.display[1])
+                timer.write_text(str(int(time.time())+300));header.due=0;header.update()
+                wait(lambda s:'💤' in screen.display[1] and '💤' not in screen.display[2])
+                timer.unlink();header.due=0;header.update()
+                wait(lambda s:'💤' not in screen.display[1]+screen.display[2])
+
     def test_native_title_row_on_home_list_and_help(self):
         with isolated() as (root,_):
             queue.change('add',URLS[0])

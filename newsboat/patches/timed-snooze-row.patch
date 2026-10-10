@@ -1,0 +1,34 @@
+--- a/src/itemlistformaction.cpp
++++ b/src/itemlistformaction.cpp
+@@ -41,6 +41,7 @@
+ // External workers publish status; rendering never runs commands or API calls.
+ static std::map<std::string, std::string> download_status;
+ static std::string queue_stop_url;
++static std::string queue_timed_stop_url;
+ static std::set<std::string> starred_urls;
+ static std::set<std::string> commentary_urls;
+ static std::set<std::string> favorites_urls;
+@@ -122,9 +123,12 @@
+     pins_version = revision(pins);
+     const char* queue_path = std::getenv("NEWSBOAT_QUEUE_STATUS");
+     const std::string queue_stop_path = queue_path ? std::string(queue_path) + ".stop" : "";
+-    const auto version = revision(queue_stop_path.c_str()) + "|" + revision(queue_path) + "|" + pins_version + "|" + revision(vod_path.c_str()) + "|" + revision(favorites_path.c_str()) + "|" + revision(read_path.c_str()) + "|" + revision(notes) + "|" + revision(last_opened) + "|" + revision(order_path.c_str()) + "|" + revision(commentary_path.c_str()) + "|" + revision(path) + "|" + revision(stars) + "|" + revision(watched_path.c_str());
++    const std::string queue_timed_stop_path = queue_path ? std::string(queue_path) + ".snooze.target" : "";
++    const auto version = revision(queue_timed_stop_path.c_str()) + "|" + revision(queue_stop_path.c_str()) + "|" + revision(queue_path) + "|" + pins_version + "|" + revision(vod_path.c_str()) + "|" + revision(favorites_path.c_str()) + "|" + revision(read_path.c_str()) + "|" + revision(notes) + "|" + revision(last_opened) + "|" + revision(order_path.c_str()) + "|" + revision(commentary_path.c_str()) + "|" + revision(path) + "|" + revision(stars) + "|" + revision(watched_path.c_str());
+     static std::string loaded;
+     if (loaded != version) {
++        queue_timed_stop_url.clear();
++        { std::ifstream target(queue_timed_stop_path); std::getline(target, queue_timed_stop_url); }
+         queue_stop_url.clear();
+         { std::ifstream stop(queue_stop_path); std::getline(stop, queue_stop_url);
+           queue_stop_url = queue_stop_url.substr(0, queue_stop_url.find('\t')); }
+@@ -1918,7 +1922,8 @@
+     if (!last_opened_url.empty() && item.first->link() == last_opened_url) {
+         badges = "↪ " + badges;
+     }
+-    if (!queue_stop_url.empty() && item.first->link() == queue_stop_url) {
++    if ((!queue_stop_url.empty() && item.first->link() == queue_stop_url) ||
++        (!queue_timed_stop_url.empty() && item.first->link() == queue_timed_stop_url)) {
+         if (!badges.empty()) { badges += " "; }
+         badges += "💤";
+     }

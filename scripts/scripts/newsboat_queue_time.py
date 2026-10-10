@@ -28,7 +28,7 @@ def positive(value):
     except (ValueError,TypeError):return 0
 
 
-def remaining(rows):
+def remaining_items(rows):
     durations=read('queue-durations.json',{})
     progress={}
     try:
@@ -36,15 +36,20 @@ def remaining(rows):
             db.row_factory=sqlite3.Row
             progress={row['identity']:(row['fraction'],row['duration'] if 'duration' in row.keys() else 0) for row in db.execute('SELECT * FROM progress')}
     except sqlite3.Error:pass
-    total=0;unknown=[]
+    result=[]
     for row in rows:
         key=':'.join(media.identity(row['url']) or ())
         fraction,duration=progress.get(key,(0,0))
         duration=max(positive(duration),positive(durations.get(key,{}).get('duration')),positive(row.get('duration')))
         if duration:
-            total+=duration*(1-min(1,max(0,float(fraction or 0))))
-        else:unknown.append(row['url'])
-    return total,unknown
+            result.append(duration*(1-min(1,max(0,float(fraction or 0)))))
+        else:result.append(None)
+    return result
+
+
+def remaining(rows):
+    values=remaining_items(rows)
+    return sum(value or 0 for value in values), [row['url'] for row,value in zip(rows,values) if value is None]
 
 
 def label(seconds,unknown,count):

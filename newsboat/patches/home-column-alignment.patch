@@ -1,0 +1,44 @@
+--- a/src/feedlistformaction.cpp
++++ b/src/feedlistformaction.cpp
+@@ -1447,13 +1447,15 @@
+         const auto icon = title.find("📬");
+         if (icon != std::string::npos) { title.replace(icon, std::string("📬").size(), "📪"); }
+     }
+-    if (queue_view) {
++    std::string queue_summary = "time unavailable";
++    {
+         if (const char* path = std::getenv("NEWSBOAT_QUEUE_STATUS")) {
+             std::ifstream input(std::string(path) + ".time");
+             std::string summary;
+-            if (std::getline(input, summary) && !summary.empty()) { count_label = summary; }
++            if (std::getline(input, summary) && !summary.empty()) { queue_summary = summary; }
+         }
+     }
++    if (queue_view) { count_label = queue_summary; }
+     fmt.register_fmt('k', count_label);
+     fmt.register_fmt('t', title);
+ 	fmt.register_fmt('T', feed->get_firsttag());
+@@ -1462,16 +1464,13 @@
+ 	fmt.register_fmt('d', utils::utf8_to_locale(feed->description()));
+ 
+ 	auto row_format = feedlist_format;
+-    if (queue_view) {
+-        // Replace the usual count/label columns with the remaining time.
+-        // Keep collection names aligned when the time fits the existing space.
+-        const auto columns = row_format.find("%4v %-6k");
+-        if (columns != std::string::npos) {
+-            row_format.replace(columns, 8, count_label.size() <= 10 ? " %-10k" : " %k");
+-        } else {
+-            const auto field = row_format.find("%-6k");
+-            if (field != std::string::npos) { row_format.replace(field, 4, "%k"); }
+-        }
++    // Reserve the same count/time width on every row, even for long Queue estimates.
++    const auto columns = row_format.find("%4v %-6k");
++    if (columns != std::string::npos) {
++        const auto column_width = std::max(11u, static_cast<unsigned int>(utils::strwidth(queue_summary)) + 1u);
++        const auto replacement = queue_view ? " %-" + std::to_string(column_width - 1) + "k" :
++            "%4v %-" + std::to_string(column_width - 5) + "k";
++        row_format.replace(columns, 8, replacement);
+     }
+     const auto title_field = row_format.find("%t");
+     if (title_field != std::string::npos) {
