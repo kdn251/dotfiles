@@ -23,7 +23,38 @@ class UpNextThumbnailTests(unittest.TestCase):
             self.assertEqual(len(data),1280*720*4)
             self.assertEqual(data[:4],b'\0\0\xff\xff')
             self.assertEqual(thumbnail.prepare('https://www.youtube.com/watch?v=abcdefghijk'),result)
-            fetch.assert_called_once()
+            fetch.assert_called_with("abcdefghijk", high_quality=True)
+            fetch.side_effect = OSError("offline")
+            self.assertEqual(thumbnail.prepare("https://youtu.be/abcdefghijk"),result)
+
+    def test_replaces_old_upscaled_cache_and_tracks_better_source(self):
+        with tempfile.TemporaryDirectory() as folder,patch.dict(os.environ,XDG_CACHE_HOME=folder):
+            def png(color):
+                image=io.BytesIO();Image.new('RGB',(1280,720),color).save(image,'PNG')
+                return image.getvalue()
+            with patch.object(thumbnail,'fetch_png',return_value=png('red')):
+                result=thumbnail.prepare('https://youtu.be/abcdefghijk')
+            path=Path(result['path'])
+            path.write_bytes(b'\0'*(1280*720*4))
+            path.with_suffix('.source').unlink()
+            with patch.object(thumbnail,'fetch_png',return_value=png('blue')) as fetch:
+                thumbnail.prepare('https://youtu.be/abcdefghijk')
+                self.assertEqual(path.read_bytes()[:4],b'\xff\0\0\xff')
+                fetch.assert_called_once_with('abcdefghijk',high_quality=True)
+            with patch.object(thumbnail,'fetch_png',return_value=png('red')):
+                thumbnail.prepare('https://youtu.be/abcdefghijk')
+                self.assertEqual(path.read_bytes()[:4],b'\0\0\xff\xff')
+
+    def test_title_and_creator_avatar_above_thumbnail(self):
+        def png(color):
+            data=io.BytesIO();Image.new('RGB',(1280,720),color).save(data,'PNG');return data.getvalue()
+        with tempfile.TemporaryDirectory() as folder,patch.dict(os.environ,XDG_CACHE_HOME=folder),patch.object(thumbnail,'fetch_png',return_value=png('red')),patch.object(thumbnail,'fetch_avatar',return_value=png('blue')) as avatar:
+            result=thumbnail.prepare('https://youtu.be/abcdefghijk','Video title','Creator')
+            self.assertEqual((result['width'],result['height']),(1280,864))
+            image=Image.frombytes('RGBA',(1280,864),Path(result['path']).read_bytes(),'raw','BGRA')
+            self.assertEqual(image.getpixel((60,72)),(0,0,255,255))
+            self.assertEqual(image.getpixel((640,400)),(255,0,0,255))
+            avatar.assert_called_once_with('https://youtu.be/abcdefghijk\tCreator\t')
 
     def test_countdown_overlay_lifecycle(self):
         harness=r'''
@@ -36,7 +67,7 @@ package.preload['mp.utils']=function() return {
  split_path=function() return '/tmp/' end,
  parse_json=function(value)
   if value=='plan' then return plan end
-  return {path='/tmp/thumbnail.bgra',width=480,height=270}
+  return {path='/tmp/thumbnail.bgra',width=1280,height=864}
  end
 } end
 mp={
@@ -64,8 +95,8 @@ assert(#commands==0,'no picture during ordinary playback')
 observers['eof-reached']('eof-reached',true)
 local draw=commands[#commands]
 assert(draw[1]=='overlay-add' and draw[2]==61)
-assert(draw[3]>=0 and draw[4]>=600*.37 and draw[11]<=800*.75 and draw[12]<=600*.50)
-assert(math.abs(draw[11]/draw[12]-480/270)<.01, "preserve image proportions")
+assert(draw[3]>=0 and draw[4]>=600*.27 and draw[11]<=800*.75 and draw[12]<=600*.60)
+assert(math.abs(draw[11]/draw[12]-1280/864)<.01, "preserve image proportions")
 assert(draw[3]+draw[11]<=800 and draw[4]+draw[12]<=600, "stay inside the window")
 observers['osd-dimensions']()
 assert(commands[#commands][1]=='overlay-add','redraw after resize')

@@ -71,9 +71,9 @@ local function show_thumbnail()
     local width, height = mp.get_osd_size()
     if not width or not height or width < 1 or height < 1 then return end
     -- Leave the upper third clear for the countdown, title and controls.
-    local scale = math.min(width * .75 / thumbnail.width, height * .50 / thumbnail.height)
+    local scale = math.min(width * .75 / thumbnail.width, height * (thumbnail.height == 864 and .60 or .50) / thumbnail.height)
     local w, h = math.max(1, math.floor(thumbnail.width * scale)), math.max(1, math.floor(thumbnail.height * scale))
-    local x, y = math.floor((width-w)/2), math.floor(height * .38)
+    local x, y = math.floor((width-w)/2), math.floor(height * (thumbnail.height == 864 and .28 or .38))
     mp.command_native({'overlay-add', thumbnail_id, x, y, thumbnail.path, 0,
         'bgra', thumbnail.width, thumbnail.height, thumbnail.width*4, w, h})
     thumbnail_visible = true
@@ -82,12 +82,12 @@ local function prepare_thumbnail()
     if thumbnail_requested or not autoplay or not plan.next then return end
     thumbnail_requested = true
     thumbnail_job = mp.command_native_async({name='subprocess', playback_only=false, capture_stdout=true,
-        args={'python3', directory .. 'newsboat-up-next-thumbnail.py', plan.next.url}},
+        args={'python3', directory .. 'newsboat-up-next-thumbnail.py', plan.next.url, plan.next.title or '', plan.next.source or ''}},
         function(success, response)
             thumbnail_job = nil
             if success and response and response.status == 0 then
                 local image = utils.parse_json(response.stdout)
-                if image and type(image.path) == 'string' and image.width == 480 and image.height == 270 then
+                if image and type(image.path) == 'string' and image.width == 1280 and (image.height == 720 or image.height == 864) then
                     thumbnail = image
                     show_thumbnail()
                 end
@@ -182,7 +182,7 @@ local function prompt()
     local next_label = episode_label(true)
     local current_label = episode_label(false)
     mp.osd_message((current_label and 'Watching: ' .. current_label .. '\n' or '') ..
-        'Up next in ' .. remaining .. 's: ' .. (next_label and next_label .. ' · ' or '') .. title ..
+        'Up next in ' .. remaining .. 's: ' .. (next_label and next_label .. (thumbnail and '' or ' · ') or '') .. (thumbnail and '' or title) ..
         '\nShift+A: turn autoplay off    >: play now', 1.5)
 end
 local function countdown()
