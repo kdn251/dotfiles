@@ -25,7 +25,8 @@ def video(**changes):
 
 class RumbleTests(unittest.TestCase):
     def test_live_stream_after_replay(self):
-        result = rumble.resolve(page([video(live=False), video()]), CHANNEL)
+        result = rumble.resolve(page([video(live=False), video(id=123456)]), CHANNEL)
+        self.assertEqual(result['chat_url'], 'https://rumble.com/chat/popup/123456')
         self.assertEqual(result['title'], 'A stream title')
         self.assertEqual(result['url'], 'https://rumble.com/live/test.m3u8')
 

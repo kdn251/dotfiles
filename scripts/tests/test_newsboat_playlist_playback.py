@@ -54,7 +54,7 @@ class PlaylistPlaybackTests(unittest.TestCase):
                             next_queue_position=dict(number=index+2,total=3,token='token'+str(index+1)))
                 (root/'queue.tsv').write_text('initial')
                 (root/'newsboat_queue.py').write_text('import json,sys\nfrom pathlib import Path\np=Path(__file__).parent\nif sys.argv[1]=="finished":\n data=json.loads((p/"plan.json").read_text());data["queue_tokens"].remove(sys.argv[3]);data["queue_position"]=None;data["next_queue_position"]["number"]-=1;data["next_queue_position"]["total"]-=1;(p/"plan.json").write_text(json.dumps(data));(p/"queue.tsv").write_text("updated")\n')
-            if action == 'menu':
+            if action.startswith('menu'):
                 for i,row in enumerate(rows):row['queue_token']='token'+str(i)
                 (root/'newsboat_queue.py').write_text('import json\nprint('+repr(json.dumps(rows))+')\n')
             if action == 'random':
@@ -82,6 +82,9 @@ class PlaylistPlaybackTests(unittest.TestCase):
                 'mp.observe_property("time-pos","number",function(_,position) if mp.get_property("path")=='+json.dumps(str(root/'next.wav'))+' and position and position>.15 and not mp.get_property_native("pause") then local f=io.open('+json.dumps(str(playing))+',"w");f:write("playing");f:close() end end)\n'
                 'mp.register_event("file-loaded",function() local f=io.open('+json.dumps(str(loaded))+',"a");f:write("loaded\\n");f:close() end)\n'
                 'mp.add_periodic_timer(.02,function() local f=io.open('+json.dumps(str(command_file))+',"r");if f then local cmd=utils.parse_json(f:read("*a"));f:close();os.remove('+json.dumps(str(command_file))+');if cmd[1]=="set_property" then mp.set_property_native(cmd[2],cmd[3]) else mp.command_native(cmd) end end end)\n')
+            if action.startswith('menu'):
+                with driver.open('a') as output:
+                    output.write('mp.add_periodic_timer(.02,function() local f=io.open('+json.dumps(str(root/'bindings.tmp'))+',"w");f:write(utils.format_json(mp.get_property_native("input-bindings")));f:close();os.rename('+json.dumps(str(root/'bindings.tmp'))+','+json.dumps(str(root/'bindings'))+') end)\n')
             process = subprocess.Popen(['mpv', '--no-config', '--vo=null', '--ao=null', '--pause', '--keep-open=yes', '--idle=yes',
                 '--log-file='+str(root/'mpv.log'), '--script='+str(driver), '--script='+str(script), str(source)], env=env,
                 stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
@@ -105,11 +108,12 @@ class PlaylistPlaybackTests(unittest.TestCase):
                     time.sleep(1)
                     self.assertFalse(calls.exists(), 'Must display countdown before loading')
                     if action == 'cancel':command(['keypress','A'])
-                elif action == 'menu':
+                elif action.startswith('menu'):
                     command(['keypress','W'])
                     time.sleep(.2)
-                    command(['keypress','j'])
-                    command(['keypress','ENTER'])
+                    if action=='menu':
+                        command(['keypress','j']);command(['keypress','ENTER'])
+                    else:command(['keypress','>' if action=='menu-next' else '<'])
                 elif action == 'replace':command(['loadfile',str(source),'replace'])
                 elif action == 'stop':command(['stop'])
                 else:command(['keypress',action])
@@ -123,6 +127,10 @@ class PlaylistPlaybackTests(unittest.TestCase):
                     while len(loaded.read_text().splitlines())<2 and time.monotonic()<deadline:time.sleep(.02)
                     self.assertGreaterEqual(len(loaded.read_text().splitlines()),2,'replacement loaded inside the same player')
                     self.assertIsNone(process.poll(),'player survives the transition')
+                    if action.startswith('menu'):
+                        time.sleep(.1)
+                        bindings=json.loads((root/'bindings').read_text())
+                        self.assertFalse(any('newsboat-queue-menu-down' in b.get('cmd','') for b in bindings),'menu closes and releases navigation keys')
                     if context:
                         deadline=time.monotonic()+2
                         while f'{label} {expected+1} of 3' not in title_file.read_text() and time.monotonic()<deadline:time.sleep(.02)
@@ -145,6 +153,10 @@ class PlaylistPlaybackTests(unittest.TestCase):
 
     def test_queue_menu_switches_in_existing_player(self):
         self.run_player('menu',expected=2)
+
+    def test_queue_menu_closes_for_next_and_previous(self):
+        self.run_player('menu-next',expected=2)
+        self.run_player('menu-previous',expected=0)
 
     def test_natural_end_advances(self):
         self.run_player('eof', expected=2)

@@ -8,8 +8,10 @@ import subprocess
 import sys
 import time
 from newsboat_media import identity
+from media_chat_live import live_target
 
 CLASS='newsboat-youtube-comments'
+LIVE_CLASS='newsboat-live-chat'
 WORKSPACE='chatterino_chat'
 STATE=Path(os.environ.get('XDG_RUNTIME_DIR','/tmp'))/f'newsboat-comments-{os.getuid()}.json'
 
@@ -52,34 +54,43 @@ def show_workspace():
 def main():
     clients=json.loads(hypr('-j','clients'))
     active=json.loads(hypr('-j','activewindow'))
-    url=video_url(clients,active.get('address'))
-    if not url and active.get('class')==CLASS and not any(c.get('class','').lower()=='mpv' for c in clients):
+    live=live_target(clients,active.get('address'))
+    if live and not live['url']:
+        subprocess.run(['notify-send','-a','Streams',live['title'],'Chat details are unavailable. Reopen the stream from Mod+Shift+T.'])
+        return
+    url=live['url'] if live else video_url(clients,active.get('address'))
+    panel_class=LIVE_CLASS if live else CLASS
+    if not url and active.get('class') in (CLASS,LIVE_CLASS) and not any(c.get('class','').lower()=='mpv' for c in clients):
         hypr('dispatch','togglespecialworkspace',WORKSPACE);return
     if not url:
         switched=close_panels(clients,CLASS)
+        switched=close_panels(clients,LIVE_CLASS) or switched
         if any(c.get('class')=='com.chatterino.chatterino' for c in clients):
             if switched:show_workspace()
             else:hypr('dispatch','togglespecialworkspace',WORKSPACE)
         else:subprocess.Popen(['chatterino'],stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL,start_new_session=True)
         return
     switched=close_panels(clients,'com.chatterino.chatterino')
-    panels=[c for c in clients if c.get('class')==CLASS]
+    switched=close_panels(clients,CLASS if live else LIVE_CLASS) or switched
+    panels=[c for c in clients if c.get('class')==panel_class]
     try:previous=json.loads(STATE.read_text()).get('url')
     except (OSError,ValueError):previous=None
     if panels and previous==url:
         if switched:show_workspace()
         else:hypr('dispatch','togglespecialworkspace',WORKSPACE)
         return
-    for panel in panels:hypr('dispatch','closewindow','address:'+panel['address'])
+    close_panels(clients,panel_class)
     STATE.write_text(json.dumps({'url':url}));STATE.chmod(0o600)
-    subprocess.Popen([sys.executable,str(Path(__file__).with_name('newsboat-youtube-comments.py')),url],
+    command=([sys.executable,str(Path(__file__).with_name('media-live-chat.py')),url,live['title']] if live else
+             [sys.executable,str(Path(__file__).with_name('newsboat-youtube-comments.py')),url])
+    subprocess.Popen(command,
                      stdin=subprocess.DEVNULL,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL,start_new_session=True)
     for _ in range(80):
-        if any(c.get('class')==CLASS for c in json.loads(hypr('-j','clients'))):
+        if any(c.get('class')==panel_class for c in json.loads(hypr('-j','clients'))):
             show_workspace()
             return
         time.sleep(.1)
-    subprocess.run(['notify-send','-a','Newsboat','YouTube comments','The comments window could not open.'])
+    subprocess.run(['notify-send','-a','Newsboat',live['title'] if live else 'YouTube comments','The chat/comments window could not open.'])
 
 
 if __name__=='__main__':
@@ -87,5 +98,7 @@ if __name__=='__main__':
         try:fcntl.flock(lock,fcntl.LOCK_EX | fcntl.LOCK_NB)
         except BlockingIOError:sys.exit(0)
         if sys.argv[1:]==['--close-youtube']:
-            close_panels(json.loads(hypr('-j','clients')),CLASS)
+            clients=json.loads(hypr('-j','clients'))
+            close_panels(clients,CLASS)
+            close_panels(clients,LIVE_CLASS)
         else:main()

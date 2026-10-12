@@ -19,11 +19,12 @@ def resolve(data):
         video_id = entry.get('id', '')
         if re.fullmatch(r'[A-Za-z0-9_-]{11}', video_id):
             return {'url': f'https://www.youtube.com/watch?v={video_id}',
-                    'title': entry.get('title') or 'YouTube live stream'}
+                    'title': entry.get('title') or 'YouTube live stream',
+                    'chat_url': f'https://www.youtube.com/live_chat?v={video_id}&is_popout=1'}
     raise OfflineError('This channel is offline on YouTube. Try again when the stream is live.')
 
 
-def fetch(channel):
+def fetch(channel, enrich=True):
     if not re.fullmatch(r'https://(?:www\.)?youtube\.com/(?:@[\w.-]+|channel/[\w-]+)/?', channel):
         raise ValueError('Expected a YouTube @handle or channel URL.')
     downloader = Path.home() / '.local/bin/yt-dlp'
@@ -41,7 +42,19 @@ def fetch(channel):
     avatar = next((t['url'] for t in data.get('thumbnails', [])
                    if t.get('id') == 'avatar_uncropped'), '')
     icon = cache_avatar(channel, avatar)
-    return dict(resolve(data), icon=icon)
+    stream=dict(resolve(data), icon=icon)
+    if enrich:
+        try:
+            result=subprocess.run([executable,'--ignore-config','--skip-download','--dump-single-json',
+                '--no-playlist','--socket-timeout','8','--retries','0',stream['url']],
+                capture_output=True,text=True,timeout=25)
+            details=json.loads(result.stdout) if result.returncode==0 else {}
+            viewers=details.get('concurrent_view_count')
+            if isinstance(viewers,(int,float)):stream['viewer_count']=viewers
+            category=details.get('game') or next(iter(details.get('categories') or []),None)
+            if isinstance(category,str):stream['category']=category
+        except (OSError,ValueError,subprocess.TimeoutExpired):pass
+    return stream
 
 
 def main():
@@ -51,7 +64,7 @@ def main():
     elif sys.argv[1:] == ['--menu']:
         menu(cache, 'YouTube')
     else:
-        print(json.dumps(fetch(sys.argv[1])))
+        print(json.dumps(fetch(sys.argv[1],enrich=False)))
 
 
 if __name__ == '__main__':

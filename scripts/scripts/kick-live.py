@@ -22,7 +22,11 @@ def resolve(data):
     url = live.get('playback_url') or data.get('playback_url')
     if not isinstance(url, str) or urlparse(url).scheme != 'https':
         raise ValueError('This Kick broadcast has no public playable stream.')
-    return dict(url=url, title=live.get('session_title') or 'Kick live stream')
+    result=dict(url=url, title=live.get('session_title') or 'Kick live stream')
+    if isinstance(live.get('viewer_count'), (int,float)):result['viewer_count']=live['viewer_count']
+    categories=live.get('categories') or []
+    if categories and isinstance(categories[0],dict):result['category']=categories[0].get('name','')
+    return result
 
 
 def fetch(channel):
@@ -38,7 +42,7 @@ def fetch(channel):
     if not isinstance(data, dict):
         raise ValueError('Kick returned an invalid channel response.')
     icon = cache_avatar(channel, (data.get('user') or {}).get('profile_pic') or '')
-    return dict(resolve(data), icon=icon)
+    return dict(resolve(data), icon=icon, channel=channel, chat_url=f'https://kick.com/popout/{slug}/chat')
 
 
 def main():

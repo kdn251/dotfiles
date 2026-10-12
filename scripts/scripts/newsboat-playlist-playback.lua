@@ -137,7 +137,9 @@ local function check_snooze()
 end
 local snooze_watcher = mp.add_periodic_timer(.25, check_snooze)
 check_snooze()
+local queue_menu
 local function advance(row, automatic)
+    if queue_menu then queue_menu.close(true) end
     if check_snooze() then return end
     if not automatic then timed_out = false end
     if moving then return end
@@ -185,7 +187,6 @@ local function prompt()
         'Up next in ' .. remaining .. 's: ' .. (next_label and next_label .. (thumbnail and '' or ' · ') or '') .. (thumbnail and '' or title) ..
         '\nShift+A: turn autoplay off    >: play now', 1.5)
 end
-local queue_menu
 local function countdown()
     if queue_menu and queue_menu.is_open() then return end
     if check_snooze() then return end

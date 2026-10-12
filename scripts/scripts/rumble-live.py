@@ -54,7 +54,16 @@ def resolve(html, channel):
         for video in item.get('videos', []):
             url = video.get('url', '')
             if video.get('type') == 'hls' and urlparse(url).scheme == 'https':
-                return {'url': url, 'title': item.get('title') or 'Rumble live stream'}
+                result = {'url': url, 'title': item.get('title') or 'Rumble live stream'}
+                viewers=item.get('watching_now')
+                if isinstance(viewers,(int,float)):result['viewer_count']=viewers
+                category=item.get('category')
+                if isinstance(category,dict):category=category.get('name')
+                if isinstance(category,str):result['category']=category
+                video_id = str(item.get('id', ''))
+                if video_id.isdigit():
+                    result['chat_url'] = 'https://rumble.com/chat/popup/' + video_id
+                return result
         raise ValueError('The live broadcast has no public playable stream available.')
     raise OfflineError('This channel is offline on Rumble. Try again when the stream is live.')
 

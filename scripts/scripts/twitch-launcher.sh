@@ -25,6 +25,24 @@ notify_loading() {
   notify-send "${args[@]}" "MPV" "Loading $description stream..."
 }
 
+# MPV exits with a signal status when another stream intentionally replaces it.
+# Only the current session may report a genuine player failure.
+stream_session_current() {
+  [ "$(cat "$SESSION_FILE" 2>/dev/null)" = "$SESSION_ID" ]
+}
+
+play_live_stream() {
+  local rc
+  mpv "$@"
+  rc=$?
+  stream_session_current || return 0
+  case "$rc" in
+    0|130|137|143) return 0 ;;
+  esac
+  notify-send "${NOTIFY_ARGS[@]}" "$STREAMER — $SERVICE" "Unable to play the live stream. Try again."
+  return "$rc"
+}
+
 # --- Chatterino lifecycle ---------------------------------------------------
 # One window, one tab, tied to the life of the stream.
 
@@ -208,11 +226,12 @@ CHOICE_INDEX=$(
         sub(/ \(YouTube\)$/, "", label)
         sub(/ \(Rumble\)$/, "", label)
         sub(/ \(Kick\)$/, "", label)
+        if (NF >= 5 && $5 != "") label = label " " $5
         printf "%s\000icon\x1f%s\n", label, icon
       }' "$MENU_ORDERED" |
     fuzzel --dmenu --index \
       --font "Stream Launcher Icons,JetBrainsMono Nerd Font:size=14" \
-      --prompt "      " \
+      --prompt "        " \
       --line-height 35 \
       --width 50 \
       --lines 10
@@ -232,6 +251,10 @@ fi
 # Extract just the username
 STREAMER_USERNAME=$(echo "$CHOICE" | awk '{print $1}')
 STREAMER="$STREAMER_USERNAME"
+
+# Claim the selection before resolving it; a slower old request must not
+# replace a newer stream or display a stale failure notification.
+echo "$SESSION_ID" >"$SESSION_FILE"
 
 # Resolve non-Twitch broadcasts again on selection in case the cached live
 # entry has since ended. They do not use Twitch credentials or Chatterino.
@@ -266,11 +289,14 @@ PYICON
     [ -f "$IMG_PATH" ] && NOTIFY_ARGS+=(-i "$IMG_PATH")
     ERROR_FILE=$(mktemp)
     if ! LIVE=$(python3 "$LIVE_HELPER" "$CHANNEL_URL" 2>"$ERROR_FILE"); then
-      notify-send "${NOTIFY_ARGS[@]}" "$STREAMER — $SERVICE" "$(cat "$ERROR_FILE")"
+      if stream_session_current; then
+        notify-send "${NOTIFY_ARGS[@]}" "$STREAMER — $SERVICE" "$(cat "$ERROR_FILE")"
+      fi
       rm -f "$ERROR_FILE"
       exit 1
     fi
     rm -f "$ERROR_FILE"
+    stream_session_current || exit 0
     LIVE_URL=$(jq -er '.url' <<<"$LIVE") || exit 1
     LIVE_TITLE=$(jq -r '.title' <<<"$LIVE")
     PLAYER_ARGS=()
@@ -284,16 +310,17 @@ PYICON
     fi
     # Quality switching reads this JSON instead of evaluating stream titles.
     CONTEXT="$HOME/.cache/${SERVICE,,}-live-player.json"
-    jq --arg service "$SERVICE" '. + {service:$service, quality:"best"}' <<<"$LIVE" >"$CONTEXT.tmp"
+    jq --arg service "$SERVICE" --arg channel "$CHANNEL_URL" '. + {service:$service, channel:$channel, quality:"best"}' <<<"$LIVE" >"$CONTEXT.tmp"
     mv "$CONTEXT.tmp" "$CONTEXT"
-    echo "$SESSION_ID" >"$SESSION_FILE"
+    stream_session_current || exit 0
     pkill mpv
+    python3 "$HOME/scripts/media-chat.py" --close-youtube
     chat_stop
-    mpv --cache=yes --cache-secs=30 --demuxer-max-bytes=150MiB \
+    stream_session_current || exit 0
+    play_live_stream --cache=yes --cache-secs=30 --demuxer-max-bytes=150MiB \
       --demuxer-max-back-bytes=100MiB --hwdec=auto \
       --input-ipc-server="/tmp/mpv-${SERVICE,,}-live-ipc" \
-      "${PLAYER_ARGS[@]}" --force-media-title="$STREAMER — $LIVE_TITLE" "$LIVE_URL" ||
-      notify-send "${NOTIFY_ARGS[@]}" "$STREAMER — $SERVICE" "Unable to play the live stream. Try again."
+      "${PLAYER_ARGS[@]}" --force-media-title="$STREAMER — $LIVE_TITLE" "$LIVE_URL"
   ) &
   exit 0
 fi
@@ -319,7 +346,7 @@ awk -v user="$STREAMER_USERNAME" '
   # Claim this stream before killing the old mpv, so the previous instance's
   # cleanup knows it has been superseded. Chatterino is (re)started further
   # down, after the old mpv is gone.
-  echo "$SESSION_ID" >"$SESSION_FILE"
+  stream_session_current || exit 0
 
   IMG_PATH="$PIXMAPS/${STREAMER_USERNAME,,}.png"
   notify_loading "$IMG_PATH" "$STREAMER" &
@@ -358,6 +385,7 @@ awk -v user="$STREAMER_USERNAME" '
   LOW_URL=$(streamlink "${SL_COMMON[@]}" --stream-url "$URL" 480p,360p,worst 2>/dev/null)
 
   if [ -z "$LOW_URL" ]; then
+    stream_session_current || exit 0
     streamlink "${SL_COMMON[@]}" --player mpv "$URL" best,720p,480p
     STREAM_RC=$?
     chat_stop_if_current
@@ -368,6 +396,7 @@ awk -v user="$STREAMER_USERNAME" '
   # 30s of 1080p60 is roughly 25MB, so the previous 50MiB was marginal.
   # force-media-title so the window and the clip filenames say who is streaming
   # rather than showing the HLS playlist token.
+  stream_session_current || exit 0
   mpv \
     --cache=yes \
     --cache-secs=30 \
@@ -396,7 +425,7 @@ awk -v user="$STREAMER_USERNAME" '
     done
     [ ! -S "$MPV_SOCKET" ] && exit 1
     BEST_URL=$(streamlink "${SL_COMMON[@]}" --stream-url "$URL" best,1080p60,1080p,720p60,720p 2>/dev/null)
-    if [ -n "$BEST_URL" ]; then
+    if [ -n "$BEST_URL" ] && stream_session_current && kill -0 "$MPV_PID" 2>/dev/null; then
       IPC_CMD=$(jq -cn --arg url "$BEST_URL" '{"command": ["loadfile", $url, "replace"]}')
       echo "$IPC_CMD" | socat - "$MPV_SOCKET" >/dev/null 2>&1
       notify-send -i /usr/share/icons/Papirus/48x48/apps/gnome-twitch.svg "MPV" "Quality upgraded" -t 1500 -u low

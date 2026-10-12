@@ -15,7 +15,8 @@ class YouTubeLiveTests(unittest.TestCase):
                    {'id': 'bbbbbbbbbbb', 'live_status': 'is_upcoming'},
                    {'id': 'ccccccccccc', 'live_status': 'is_live', 'title': 'Live title'}]
         self.assertEqual(youtube.resolve({'entries': entries}), {
-            'url': 'https://www.youtube.com/watch?v=ccccccccccc', 'title': 'Live title'})
+            'url': 'https://www.youtube.com/watch?v=ccccccccccc', 'title': 'Live title',
+            'chat_url': 'https://www.youtube.com/live_chat?v=ccccccccccc&is_popout=1'})
 
     def test_offline_and_unknown_status_are_not_live(self):
         for status in ['was_live', 'post_live', 'not_live', 'is_upcoming', None]:

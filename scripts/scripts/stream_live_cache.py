@@ -40,6 +40,16 @@ def update_live_list(channels, cache, fetcher):
 
 
 
+def stream_details(item):
+    parts=[]
+    category=' '.join(str(item.get('category') or '').split())
+    if category:parts.append(category if len(category)<=14 else category[:13]+'…')
+    count=item.get('viewer_count')
+    if isinstance(count,(int,float)) and not isinstance(count,bool) and count>=0:
+        parts.append(f'{count/1000:.1f}k' if count>=1000 else str(int(count)))
+    return '— '+' · '.join(parts) if parts else ''
+
+
 def menu(cache, service):
     try:
         items = json.loads(cache.read_text())
@@ -47,4 +57,4 @@ def menu(cache, service):
         return
     for name, item in items.items():
         if time.time() - item.get('checked_at', 0) < 900:
-            print(f'00000\t{name.lower()} ({service.lower()})\t{name} ({service})\t{item.get("icon", "")}')
+            print(f'00000\t{name.lower()} ({service.lower()})\t{name} ({service})\t{item.get("icon", "")}\t{stream_details(item)}')
