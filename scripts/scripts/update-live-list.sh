@@ -18,12 +18,14 @@
 
 set -u
 
-# Poll Rumble on the same five-minute schedule, even if Twitch is unavailable.
+# Poll other services on the same five-minute schedule, even if Twitch is unavailable.
 python3 "$HOME/scripts/rumble-live.py" --update >>/tmp/rumble-live-check.log 2>&1 &
 RUMBLE_CHECK_PID=$!
 python3 "$HOME/scripts/youtube-live.py" --update >>/tmp/youtube-live-check.log 2>&1 &
 YOUTUBE_CHECK_PID=$!
-trap 'wait "$RUMBLE_CHECK_PID"; wait "$YOUTUBE_CHECK_PID"' EXIT
+python3 "$HOME/scripts/kick-live.py" --update >>/tmp/kick-live-check.log 2>&1 &
+KICK_CHECK_PID=$!
+trap 'wait "$RUMBLE_CHECK_PID"; wait "$YOUTUBE_CHECK_PID"; wait "$KICK_CHECK_PID"' EXIT
 
 MASTER_LIST="$HOME/scripts/twitch_master_list.txt"
 LIVE_LIST="$HOME/scripts/twitch_usernames.txt"

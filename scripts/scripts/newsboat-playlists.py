@@ -145,7 +145,9 @@ def prepare_view(directory, data):
 
 def show(kind, url):
     if url=='newsboat-playlists://empty':return 0
-    data=loading(kind,url)
+    # Reopening a creator or playlist is an explicit request for its current
+    # catalog. extract() still falls back to saved metadata when offline.
+    data=loading(kind,url,force=True)
     if data is None:return 0
     with tempfile.TemporaryDirectory(prefix='newsboat-playlists-') as directory:
         cmd,config=prepare_view(directory,data)

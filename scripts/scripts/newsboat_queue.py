@@ -309,6 +309,13 @@ def ensure_playing():
     return 0 if queue_player_running() else resume()
 
 
+def menu_rows():
+    from newsboat_resume import progress
+    watched = progress()
+    return [dict(row, percent=min(100,max(0,int(watched.get(identity(row['url']),(0,0))[0]*100))))
+            for row in entries()]
+
+
 def resume():
     from newsboat_resume import launch
     os.environ['NEWSBOAT_QUEUE_PLAYBACK']='1'
@@ -318,7 +325,8 @@ def resume():
 
 
 if __name__=='__main__':
-    if sys.argv[1]=='show':sys.exit(show())
+    if sys.argv[1]=='menu-json':print(json.dumps(menu_rows()))
+    elif sys.argv[1]=='show':sys.exit(show())
     elif sys.argv[1]=='resume':sys.exit(resume())
     elif sys.argv[1]=='ensure-playing':sys.exit(ensure_playing())
     else:change(*sys.argv[1:])

@@ -26,6 +26,31 @@ class PlaylistTests(unittest.TestCase):
         self.root=Path(self.temp.name)
         mock=patch.multiple(library,LIBRARY=self.root/'library',CACHE=self.root/'main.db')
         mock.start();self.addCleanup(mock.stop)
+    def test_every_open_requests_fresh_catalog(self):
+        for kind in ('show', 'playlist'):
+            with patch.object(ui, 'loading', return_value=None) as loading:
+                ui.show(kind, PLAYLIST)
+                ui.show(kind, PLAYLIST)
+                self.assertEqual(loading.call_args_list,
+                                 [unittest.mock.call(kind, PLAYLIST, force=True)] * 2)
+
+    def test_reopening_fetches_new_video_with_warm_cache_and_offline_fallback(self):
+        first = dict(title='Series', channel='Creator', entries=[
+            dict(id='abc123DEF45', title='Episode 1')])
+        second = dict(first, entries=first['entries'] + [
+            dict(id='abc123DEF47', title='Episode 2')])
+        def result(data):
+            return subprocess.CompletedProcess([], 0, json.dumps(data), '')
+        with patch.object(library.subprocess, 'run', side_effect=[result(first), result(second), OSError('offline')]) as run:
+            initial = ui.fetch('playlist', PLAYLIST, force=True)
+            reopened = ui.fetch('playlist', PLAYLIST, force=True)
+            offline = ui.fetch('playlist', PLAYLIST, force=True)
+        self.assertEqual(len(initial['rows']), 1)
+        self.assertEqual([r['title'] for r in reopened['rows']], ['Episode 1', 'Episode 2'])
+        self.assertEqual(offline['rows'], reopened['rows'])
+        self.assertEqual(run.call_count, 3)
+        self.assertEqual(json.loads(Path(reopened['context']).read_text())['rows'], reopened['rows'])
+
     def test_order_hidden_videos_and_metadata_without_import(self):
         data=dict(title='Series',channel='Creator',channel_id=CID,entries=[
             dict(id='abc123DEF45',title='Episode Z'),dict(id='abc123DEF46',title='[Private video]'),

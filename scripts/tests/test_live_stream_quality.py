@@ -29,3 +29,19 @@ https://example.com/better.m3u8
 
     def test_media_playlist_has_no_fake_quality_choices(self):
         self.assertEqual(quality.variants('#EXTM3U\n#EXTINF:2\nsegment.ts', 'https://example.com/live.m3u8'), {})
+
+    def test_kick_quality_reloads_same_player_with_kick_referrer(self):
+        import json
+        import tempfile
+        from unittest.mock import patch, MagicMock
+        manifest=b'#EXTM3U\n#EXT-X-STREAM-INF:RESOLUTION=1920x1080,BANDWIDTH=4000\nhigh.m3u8\n#EXT-X-STREAM-INF:RESOLUTION=1280x720,BANDWIDTH=2000\nlow.m3u8\n'
+        with tempfile.TemporaryDirectory() as folder:
+            context=Path(folder)/'player.json'
+            context.write_text(json.dumps(dict(url='https://example.com/master.m3u8',quality='best',title='Kick title')))
+            response=MagicMock();response.__enter__.return_value=response
+            response.read.return_value=manifest;response.url='https://example.com/master.m3u8'
+            with patch.object(quality,'urlopen',return_value=response) as fetch, patch.object(quality,'ipc',return_value=False) as ipc, patch.object(quality.subprocess,'run'):
+                quality.cycle('kick',Path('/tmp/test-kick-ipc'),context)
+                self.assertEqual(fetch.call_args.args[0].get_header('Referer'),'https://kick.com/')
+                self.assertEqual(ipc.call_args_list[1].args[1],['loadfile','https://example.com/low.m3u8','replace',0,{'pause':'no'}])
+                self.assertEqual(json.loads(context.read_text())['quality'],'720p')

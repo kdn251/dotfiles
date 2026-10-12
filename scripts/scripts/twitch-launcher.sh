@@ -183,6 +183,7 @@ awk -v stats="$STATS_FILE" '
 # Read the background live check without delaying the picker for a request.
 python3 "$HOME/scripts/rumble-live.py" --menu >>"$MENU_TMP"
 python3 "$HOME/scripts/youtube-live.py" --menu >>"$MENU_TMP"
+python3 "$HOME/scripts/kick-live.py" --menu >>"$MENU_TMP"
 
 TOP5=$(sort -t"$(printf '\t')" -k1,1nr -k2,2 "$MENU_TMP" | awk -F'\t' '$1 + 0 > 0' | head -n 5)
 
@@ -206,6 +207,7 @@ CHOICE_INDEX=$(
         label = $3
         sub(/ \(YouTube\)$/, "", label)
         sub(/ \(Rumble\)$/, "", label)
+        sub(/ \(Kick\)$/, "", label)
         printf "%s\000icon\x1f%s\n", label, icon
       }' "$MENU_ORDERED" |
     fuzzel --dmenu --index \
@@ -233,11 +235,15 @@ STREAMER="$STREAMER_USERNAME"
 
 # Resolve non-Twitch broadcasts again on selection in case the cached live
 # entry has since ended. They do not use Twitch credentials or Chatterino.
-if [[ "$CHOICE" == *"(Rumble)" || "$CHOICE" == *"(YouTube)" ]]; then
+if [[ "$CHOICE" == *"(Rumble)" || "$CHOICE" == *"(YouTube)" || "$CHOICE" == *"(Kick)" ]]; then
   if [[ "$CHOICE" == *"(YouTube)" ]]; then
     SERVICE=YouTube
     CHANNEL_LIST="$HOME/scripts/youtube_live_channels.tsv"
     LIVE_HELPER="$HOME/scripts/youtube-live.py"
+  elif [[ "$CHOICE" == *"(Kick)" ]]; then
+    SERVICE=Kick
+    CHANNEL_LIST="$HOME/scripts/kick_channels.tsv"
+    LIVE_HELPER="$HOME/scripts/kick-live.py"
   else
     SERVICE=Rumble
     CHANNEL_LIST="$RUMBLE_LIST"
@@ -274,7 +280,7 @@ PYICON
       PLAYER_ARGS=("--script-opts=ytdl_hook-ytdl_path=$YTDL"
         '--ytdl-format=bestvideo[height<=?1080]+bestaudio/best[height<=?1080]/best')
     else
-      PLAYER_ARGS=(--user-agent=Mozilla/5.0 --referrer=https://rumble.com/)
+      PLAYER_ARGS=(--user-agent=Mozilla/5.0 "--referrer=https://${SERVICE,,}.com/")
     fi
     # Quality switching reads this JSON instead of evaluating stream titles.
     CONTEXT="$HOME/.cache/${SERVICE,,}-live-player.json"

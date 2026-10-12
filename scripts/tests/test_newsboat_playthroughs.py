@@ -26,6 +26,25 @@ class PlaythroughTests(unittest.TestCase):
             dict(url=URL,title='Part one',source='Creator',position=1),dict(url=OTHER,title='Part two',source='Creator',position=2)])))
     def pending(self,url,status='downloading'):
         (media.STATE/(url[-11:]+'.json')).write_text(json.dumps(dict(url=url,status=status,files=[])))
+    def test_refresh_adds_episodes_without_enrolling_new_downloads(self):
+        library.record(URL,self.context)
+        data=json.loads(self.context.read_text())
+        data['rows'].append(dict(url='https://www.youtube.com/watch?v=abc123DEF47',title='New episode',source='Creator',position=3))
+        library.record_rows(data,selected=[])
+        group=next(library.read_groups())
+        self.assertEqual(len(group['rows']),3)
+        self.assertEqual(group['selected_urls'],[URL])
+        self.assertEqual(group['rows'][-1]['title'],'New episode')
+        library.record_rows(data,selected=[])
+        self.assertEqual(len(next(library.read_groups())['rows']),3)
+
+    def test_saved_playlist_open_refreshes_and_cancel_does_not_open(self):
+        library.record(URL,self.context)
+        with patch.object(ui.ui,'loading',return_value=None) as loading, patch.object(ui,'prepare_view') as prepare:
+            self.assertEqual(ui.show('PLseries'),0)
+            loading.assert_called_once_with('playlist','https://www.youtube.com/playlist?list=PLseries',force=True)
+            prepare.assert_not_called()
+
     def test_explicit_membership_order_duplicate_and_pending(self):
         library.record(OTHER,self.context);library.record(URL,self.context);library.record(URL,self.context)
         self.assertEqual(len(library.groups()),1)

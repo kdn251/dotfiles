@@ -27,6 +27,7 @@ class PlaylistPlaybackTests(unittest.TestCase):
                 out.setnchannels(1);out.setsampwidth(2);out.setframerate(8000);out.writeframes(b'\0'*160000)
             script = root/'newsboat-playlist-playback.lua'
             shutil.copyfile(SCRIPTS/script.name, script)
+            shutil.copyfile(SCRIPTS/"newsboat-queue-menu.lua", root/"newsboat-queue-menu.lua")
             messages=root/'messages'
             script.write_text('local original_osd=mp.osd_message\nmp.osd_message=function(text,duration) local f=io.open('+json.dumps(str(messages))+',"a");f:write(text .. "\\n");f:close();original_osd(text,duration) end\n'+script.read_text())
             (root/'newsboat-playback-started.py').write_text('pass\n')
@@ -53,6 +54,9 @@ class PlaylistPlaybackTests(unittest.TestCase):
                             next_queue_position=dict(number=index+2,total=3,token='token'+str(index+1)))
                 (root/'queue.tsv').write_text('initial')
                 (root/'newsboat_queue.py').write_text('import json,sys\nfrom pathlib import Path\np=Path(__file__).parent\nif sys.argv[1]=="finished":\n data=json.loads((p/"plan.json").read_text());data["queue_tokens"].remove(sys.argv[3]);data["queue_position"]=None;data["next_queue_position"]["number"]-=1;data["next_queue_position"]["total"]-=1;(p/"plan.json").write_text(json.dumps(data));(p/"queue.tsv").write_text("updated")\n')
+            if action == 'menu':
+                for i,row in enumerate(rows):row['queue_token']='token'+str(i)
+                (root/'newsboat_queue.py').write_text('import json\nprint('+repr(json.dumps(rows))+')\n')
             if action == 'random':
                 plan['next'] = rows[2]
             (root/'plan.json').write_text(json.dumps(plan))
@@ -101,6 +105,11 @@ class PlaylistPlaybackTests(unittest.TestCase):
                     time.sleep(1)
                     self.assertFalse(calls.exists(), 'Must display countdown before loading')
                     if action == 'cancel':command(['keypress','A'])
+                elif action == 'menu':
+                    command(['keypress','W'])
+                    time.sleep(.2)
+                    command(['keypress','j'])
+                    command(['keypress','ENTER'])
                 elif action == 'replace':command(['loadfile',str(source),'replace'])
                 elif action == 'stop':command(['stop'])
                 else:command(['keypress',action])
@@ -133,6 +142,9 @@ class PlaylistPlaybackTests(unittest.TestCase):
     def test_next_and_previous(self):
         self.run_player('>', expected=2)
         self.run_player('<', expected=0)
+
+    def test_queue_menu_switches_in_existing_player(self):
+        self.run_player('menu',expected=2)
 
     def test_natural_end_advances(self):
         self.run_player('eof', expected=2)

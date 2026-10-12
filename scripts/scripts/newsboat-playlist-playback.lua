@@ -185,7 +185,9 @@ local function prompt()
         'Up next in ' .. remaining .. 's: ' .. (next_label and next_label .. (thumbnail and '' or ' · ') or '') .. (thumbnail and '' or title) ..
         '\nShift+A: turn autoplay off    >: play now', 1.5)
 end
+local queue_menu
 local function countdown()
+    if queue_menu and queue_menu.is_open() then return end
     if check_snooze() then return end
     if not autoplay or not plan.next or moving or timer then return end
     remaining = 5
@@ -196,6 +198,17 @@ local function countdown()
     end)
     show_thumbnail()
 end
+mp.add_forced_key_binding('W', 'newsboat-queue-menu', function()
+    if not queue_menu then
+        queue_menu = dofile(directory .. 'newsboat-queue-menu.lua').new(directory,
+            function() return current end,
+            function(row) advance(row, true) end,
+            function() cancel(); hide_thumbnail() end,
+            function() if mp.get_property_native('eof-reached') then countdown() end end)
+    end
+    queue_menu.toggle()
+end)
+
 -- The queue can change while this player is open. Read a tiny local status
 -- file; only invoke Python when membership changes, never on every tick.
 local queue_path = os.getenv('NEWSBOAT_QUEUE_STATUS') or
@@ -319,6 +332,7 @@ mp.register_event('end-file', function(event)
     end
 end)
 mp.register_event('shutdown', function()
+    if queue_menu then queue_menu.close(true) end
     snooze_seen = snooze_deadline()
     clear_snooze()
     snooze_watcher:kill()

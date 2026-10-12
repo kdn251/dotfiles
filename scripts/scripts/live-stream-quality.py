@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Quality cycling for the launcher's YouTube and Rumble live players."""
+"""Quality cycling for the launcher's YouTube, Rumble and Kick live players."""
 import fcntl
 import json
 import re
@@ -57,7 +57,7 @@ def cycle(service, path, context_path):
         options['ytdl-format'] = f'bestvideo[height<={height}]+bestaudio/best[height<={height}]'
         target = url
     else:
-        with urlopen(Request(url, headers={'User-Agent': 'Mozilla/5.0', 'Referer': 'https://rumble.com/'}), timeout=15) as response:
+        with urlopen(Request(url, headers={'User-Agent': 'Mozilla/5.0', 'Referer': f'https://{service}.com/'}), timeout=15) as response:
             choices = variants(response.read(2 * 1024 * 1024).decode(), response.url)
         if not choices:
             raise ValueError('This stream does not offer switchable quality levels.')
@@ -79,7 +79,7 @@ def cycle(service, path, context_path):
 
 
 def main():
-    for service in ('youtube', 'rumble'):
+    for service in ('youtube', 'rumble', 'kick'):
         path = Path(f'/tmp/mpv-{service}-live-ipc')
         try:
             ipc(path, ['get_property', 'path'])

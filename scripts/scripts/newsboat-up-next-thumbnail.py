@@ -40,25 +40,26 @@ def header_card(image, title, avatar):
     return canvas
 
 
-def prepare(url, title='', creator=''):
+def prepare(url, title='', creator='', *, queue=False):
+    width, base_height = (384, 216) if queue else (WIDTH, HEIGHT)
     ident = video_key(url)
     if not ident:
         raise ValueError('No video thumbnail available')
     root = Path(os.environ.get('XDG_CACHE_HOME', Path.home()/'.cache'))/'newsboat/up-next'
     root.mkdir(parents=True, exist_ok=True)
-    path = root/(hashlib.sha256((ident+'\n'+title).encode()).hexdigest()+'.bgra')
-    height = HEIGHT+144 if title else HEIGHT
+    path = root/(hashlib.sha256((ident+'\n'+title+('\nqueue-384' if queue else '')).encode()).hexdigest()+'.bgra')
+    height = base_height+144 if title else base_height
     avatar = None
     if title:
         try: avatar = fetch_avatar(url+'\t'+creator+'\t')
         except Exception: pass
     signature_path = path.with_suffix('.source')
-    valid_cache = path.exists() and path.stat().st_size == WIDTH*height*4
+    valid_cache = path.exists() and path.stat().st_size == width*height*4
     try:
         source = fetch_png(ident, high_quality=True)
     except Exception:
         if valid_cache:
-            return dict(path=str(path), width=WIDTH, height=height)
+            return dict(path=str(path), width=width, height=height)
         raise
     signature = hashlib.sha256(source+(avatar or b"")+title.encode()).hexdigest()
     try:
@@ -69,7 +70,7 @@ def prepare(url, title='', creator=''):
     # Rebuild it when the shared high-quality thumbnail changes.
     if not valid_cache or previous != signature:
         with Image.open(io.BytesIO(source)) as image:
-            image = ImageOps.pad(image.convert('RGBA'), (WIDTH, HEIGHT), color=(30,30,46,255))
+            image = ImageOps.pad(image.convert('RGBA'), (width, base_height), color=(30,30,46,255))
             # mpv expects premultiplied BGRA; flatten the rounded source border.
             background = Image.new('RGBA', image.size, (30,30,46,255))
             background.alpha_composite(image)
@@ -81,12 +82,14 @@ def prepare(url, title='', creator=''):
         signature_temp = signature_path.with_suffix("."+str(os.getpid())+".tmp")
         signature_temp.write_text(signature)
         signature_temp.replace(signature_path)
-    return dict(path=str(path), width=WIDTH, height=height)
+    return dict(path=str(path), width=width, height=height)
 
 
 if __name__ == '__main__':
     try:
-        print(json.dumps(prepare(sys.argv[1], *(sys.argv[2:4]))))
+        args = sys.argv[2:]
+        queue = args == ['--queue']
+        print(json.dumps(prepare(sys.argv[1], *([] if queue else args[:2]), queue=queue)))
     except Exception:
         # The text countdown still works offline or when a thumbnail is missing.
         sys.exit(1)

@@ -19,7 +19,7 @@ class QueuePlaybackProgressTests(unittest.TestCase):
     def test_progress_follows_queue_navigation_and_records_held_eof(self):
         with tempfile.TemporaryDirectory() as folder:
             root=Path(folder);scripts=root/'scripts';scripts.mkdir()
-            for name in ('newsboat-watch-completion.lua','newsboat-playlist-playback.lua'):
+            for name in ('newsboat-watch-completion.lua','newsboat-playlist-playback.lua','newsboat-queue-menu.lua'):
                 shutil.copyfile(SCRIPTS/name,scripts/name)
             for i,seconds in enumerate((20,10)):
                 with wave.open(str(root/f'{i}.wav'),'wb') as out:

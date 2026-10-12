@@ -44,12 +44,12 @@ def record(url, context):
 
 def record_rows(data, selected=None):
     selected=data['rows'] if selected is None else selected
-    if not selected:return
     ident = playlist_id(data['url'])
     with media.library_lock():
         path = directory()/(ident+'.json')
+        if not selected and not path.exists():return
         group=next((g for g in read_groups() if g['id']==ident),dict(id=ident,url=data['url'],rows=[],selected_urls=[]))
-        group.update(name=data['name'],channel=data.get('channel') or selected[0]['source'])
+        group.update(name=data['name'],channel=data.get('channel') or group.get('channel') or (selected[0]['source'] if selected else ''))
         rows={r['url']:r for r in group['rows']}
         rows.update({row['url']:row for row in data['rows']})
         group['schema']=2

@@ -64,6 +64,15 @@ def prepare_view(directory, ident=None):
 
 
 def show(ident=None):
+    if ident:
+        group=next((g for g in library.read_groups() if g['id']==ident),None)
+        if group is not None:
+            try:
+                fresh=ui.loading('playlist',group['url'],force=True)
+            except (OSError,ValueError,subprocess.SubprocessError):
+                fresh=group  # Saved episodes remain usable without connectivity.
+            if fresh is None:return 0  # User cancelled the loading screen.
+            library.record_rows(fresh,selected=[])
     with tempfile.TemporaryDirectory(prefix='newsboat-playthroughs-') as directory:
         command,config,group=prepare_view(directory,ident)
         env=nested_view_environment(directory)

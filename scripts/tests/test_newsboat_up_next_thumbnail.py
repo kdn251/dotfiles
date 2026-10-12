@@ -27,6 +27,16 @@ class UpNextThumbnailTests(unittest.TestCase):
             fetch.side_effect = OSError("offline")
             self.assertEqual(thumbnail.prepare("https://youtu.be/abcdefghijk"),result)
 
+    def test_queue_previews_are_small_and_separate_from_countdown(self):
+        image=io.BytesIO();Image.new('RGB',(1280,720),'red').save(image,'PNG')
+        with tempfile.TemporaryDirectory() as folder,patch.dict(os.environ,XDG_CACHE_HOME=folder),patch.object(thumbnail,'fetch_png',return_value=image.getvalue()):
+            full=thumbnail.prepare('https://youtu.be/abcdefghijk')
+            small=thumbnail.prepare('https://youtu.be/abcdefghijk',queue=True)
+            self.assertNotEqual(full['path'],small['path'])
+            self.assertEqual((small['width'],small['height']),(384,216))
+            self.assertEqual(Path(small['path']).stat().st_size,384*216*4)
+            self.assertEqual(Path(full['path']).stat().st_size,1280*720*4)
+
     def test_replaces_old_upscaled_cache_and_tracks_better_source(self):
         with tempfile.TemporaryDirectory() as folder,patch.dict(os.environ,XDG_CACHE_HOME=folder):
             def png(color):
