@@ -22,6 +22,39 @@ PIP_FILTER='.class=="mpv" or (.title|test("^Picture[- ]in[- ]Picture$";"i"))'
 STATE="${XDG_RUNTIME_DIR:-/tmp}/pip-hidden-pinned"   # addresses to re-pin on restore
 HIDDEN_WS="special:mpvhidden"
 
+# A disabled video track destroys mpv's window when force-window=no. Restore
+# it over IPC before inspecting windows, and treat this press as an unhide.
+recovered=$(python3 - <<'PY'
+import json
+import socket
+
+try:
+    with socket.socket(socket.AF_UNIX) as client:
+        client.settimeout(2)
+        client.connect('/tmp/mpv-yt-ipc')
+        with client.makefile('r') as replies:
+            def command(*args):
+                client.sendall((json.dumps({'command': args, 'request_id': 1}) + '\n').encode())
+                while True:
+                    line = replies.readline()
+                    if not line:
+                        raise OSError('mpv disconnected')
+                    reply = json.loads(line)
+                    if reply.get('request_id') == 1:
+                        if reply.get('error') != 'success':
+                            raise OSError(reply.get('error'))
+                        return reply.get('data')
+
+            if command('get_property', 'vid') is False:
+                tracks = command('get_property', 'track-list')
+                if any(track.get('type') == 'video' for track in tracks):
+                    command('set_property', 'vid', 'auto')
+                    print('yes')
+except (OSError, ValueError):
+    pass  # No reachable mpv: retain the normal PiP window toggle.
+PY
+)
+
 # address \t workspace \t pinned  for every PiP window
 mapfile -t ROWS < <(hyprctl clients -j | jq -r "
   .[] | select($PIP_FILTER)
@@ -55,6 +88,9 @@ if [ "${#hidden[@]}" -gt 0 ]; then
   done
   rm -f "$STATE"
 else
+  # Re-enabling video was this press's restore action. Do not immediately
+  # hide the newly created window (or any other visible PiP windows).
+  [ "$recovered" = "yes" ] && exit 0
   # --- HIDE: unpin (if needed) then park on the special workspace ---
   printf '%s\n' "${visible_pinned[@]}" > "$STATE"
   for addr in "${visible_pinned[@]}"; do
