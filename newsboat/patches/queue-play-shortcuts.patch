@@ -1,0 +1,25 @@
+--- a/src/formaction.cpp
++++ b/src/formaction.cpp
+@@ -252,7 +252,21 @@
+ 			if (args.size() == 2) {
+ 				const std::string key = args.at(0);
+ 				const std::string value = args.at(1);
+-                if (key == "browser" && value == "newsboat-queue://show") {
++                if (key == "browser" && (value == "newsboat-queue://show" ||
++                    value == "newsboat-queue://play" || value == "newsboat-queue://play-show")) {
++                    if (value != "newsboat-queue://show") {
++                        const auto previous = cfg->get_configvalue("browser");
++                        cfg->set_configvalue("browser", value == "newsboat-queue://play-show" ?
++                            "python3 ~/scripts/newsboat_queue.py ensure-playing" :
++                            "python3 ~/scripts/newsboat_queue.py resume");
++                        const auto result = v.open_in_browser("", "", "", "", false);
++                        cfg->set_configvalue("browser", previous);
++                        if (!result || *result != 0) {
++                            v.get_statusline().show_error("Could not start Queue playback");
++                            return true;
++                        }
++                        if (value == "newsboat-queue://play") { return true; }
++                    }
+                     if (!std::getenv("NEWSBOAT_QUEUE_VIEW")) {
+                         const auto previous = cfg->get_configvalue("browser");
+                         cfg->set_configvalue("browser", "python3 ~/scripts/newsboat_queue.py show");

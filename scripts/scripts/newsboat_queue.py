@@ -282,6 +282,33 @@ def navigation(current):
         return following_manual,previous,following_manual
 
 
+def queue_player_running(proc=Path('/proc')):
+    """Recognize a live queue player, including its detached startup worker."""
+    for process in proc.iterdir():
+        if not process.name.isdigit():
+            continue
+        try:
+            if process.stat().st_uid != os.getuid():
+                continue
+            args = process.joinpath('cmdline').read_bytes().split(b'\0')
+            executable = Path(os.fsdecode(args[0])).name
+            player = executable == 'mpv'
+            starting = executable.startswith('python') and any(
+                arg.endswith(b'/newsboat-play-video.py') for arg in args) and b'--wait' in args
+            if not (player or starting):
+                continue
+            environment = process.joinpath('environ').read_bytes().split(b'\0')
+            if b'NEWSBOAT_QUEUE_PLAYBACK=1' in environment:
+                return True
+        except (OSError, IndexError):
+            continue  # Processes may exit while inspected.
+    return False
+
+
+def ensure_playing():
+    return 0 if queue_player_running() else resume()
+
+
 def resume():
     from newsboat_resume import launch
     os.environ['NEWSBOAT_QUEUE_PLAYBACK']='1'
@@ -293,4 +320,5 @@ def resume():
 if __name__=='__main__':
     if sys.argv[1]=='show':sys.exit(show())
     elif sys.argv[1]=='resume':sys.exit(resume())
+    elif sys.argv[1]=='ensure-playing':sys.exit(ensure_playing())
     else:change(*sys.argv[1:])
