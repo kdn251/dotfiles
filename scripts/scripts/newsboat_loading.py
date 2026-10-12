@@ -120,6 +120,31 @@ def ship_art(frame, inner, traveling=False, bob=True):
     return list(zip(colors, art))
 
 
+def refresh_png(frame, caption):
+    """Wide, short feed-refresh card; thumbnail/startup art is untouched."""
+    import io
+    from PIL import Image, ImageDraw, ImageFont
+    lines = caption.splitlines()
+    height = 210 + 30 * (len(lines) - 1)
+    canvas = Image.new('RGBA', (680, height), (0, 0, 0, 0))
+    draw = ImageDraw.Draw(canvas)
+    try:
+        font = ImageFont.truetype('/usr/share/fonts/TTF/JetBrainsMonoNerdFontMono-Regular.ttf', 20)
+    except OSError:
+        font = ImageFont.load_default(size=20)
+    draw.rounded_rectangle((2, 2, 677, height - 3), radius=20,
+                           fill='#1e1e2e', outline='#ffffff', width=4)
+    colors = {244: '#808080', 203: '#ff5f5f', 255: '#eeeeee', 38: '#00afd7'}
+    inner = int(648 / font.getlength(' '))
+    for row, (color, line) in enumerate(ship_art(frame, inner, traveling=True)):
+        draw.text((340, 12 + row * 22), line, font=font, fill=colors[color], anchor='mt')
+    for row, line in enumerate(lines):
+        draw.text((340, 167 + row * 30), line, font=font, fill='#cdd6f4', anchor='mt')
+    output = io.BytesIO()
+    canvas.save(output, format='PNG')
+    return output.getvalue()
+
+
 class Renderer:
     def __init__(self):
         launcher = Path(__file__).with_name("newsboat-launch.sh")
@@ -149,6 +174,9 @@ class Renderer:
         self.process.wait(timeout=2)
         self.process.stdout.close()
 
+    # Feed-refresh toast only; thumbnail and startup rendering retain their size.
+    REFRESH_WIDTH = 30
+    REFRESH_BOTTOM_GAP = 3
     OVERLAY_ID = 0x3ffffffe
 
     @staticmethod
@@ -157,24 +185,24 @@ class Renderer:
 
     @staticmethod
     def overlay(frame, caption, cols, rows, height, offset=0):
-        from newsboat_thumbnails import loading_png, transmit
+        from newsboat_thumbnails import transmit
         from PIL import Image
         import io
-        width=max(1,min(34,cols-2));visible=max(0,width-offset)
+        width=max(1,min(Renderer.REFRESH_WIDTH,cols-2));visible=max(0,width-offset)
         if not visible:return Renderer.clear_overlay()
-        data=loading_png(frame,caption=caption,traveling=True)
+        data=refresh_png(frame, caption)
         if visible < width:
             with Image.open(io.BytesIO(data)) as source:
                 clipped=source.crop((0,0,round(source.width*visible/width),source.height))
                 output=io.BytesIO();clipped.save(output,format='PNG');data=output.getvalue()
         return (transmit(Renderer.OVERLAY_ID,data)+
-                f'\x1b7\x1b[{min(2,rows)};{max(1,cols-width-1+offset)}H'
+                f'\x1b7\x1b[{max(1,rows-height-Renderer.REFRESH_BOTTOM_GAP+1)};{max(1,cols-width-1+offset)}H'
                 f'\x1b_Ga=p,i={Renderer.OVERLAY_ID},p=1,c={visible},r={height},z=2,q=2\x1b\\\x1b8'.encode())
 
     @staticmethod
     def compact(frame, caption, cols, rows, height, offset=0):
-        """Paint a small top-right toast, preserving Newsboat's cursor."""
-        width = max(1, min(34, cols - 2))
+        """Paint a small bottom-right refresh toast, preserving Newsboat's cursor."""
+        width = max(1, min(Renderer.REFRESH_WIDTH, cols - 2))
         if height == 1:
             lines = ['🚢  ' + caption.splitlines()[-1][:max(0, width-4)]]
         else:
@@ -198,7 +226,7 @@ class Renderer:
                 elif remaining:
                     clipped.append(part[:remaining])
                     remaining -= len(part[:remaining])
-            output.extend(f'\x1b[{min(2, rows)+index};{max(1, cols-width-1+offset)}H\x1b[0m\x1b[{visible}X'.encode())
+            output.extend(f'\x1b[{max(1, rows-height-Renderer.REFRESH_BOTTOM_GAP+1)+index};{max(1, cols-width-1+offset)}H\x1b[0m\x1b[{visible}X'.encode())
             output.extend(''.join(clipped).encode())
         output.extend(b'\x1b[0m\x1b8')
         return bytes(output)

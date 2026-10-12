@@ -67,21 +67,27 @@ class ProgressTests(unittest.TestCase):
         self.assertLessEqual(max(abs(a-b) for a,b in zip(entering, entering[1:])), 2)
 
     def test_graphics_toast_does_not_erase_underlying_rows(self):
-        for offset in (0,8,33):
+        for offset in (0,8,29):
             output=session.Renderer.overlay(0,'2/5 feeds refreshed',80,24,9,offset)
             self.assertIn(b'z=2,',output)
-            self.assertIn(f'c={34-offset},r=9'.encode(),output)
+            self.assertIn(f'\x1b[13;{49+offset}H'.encode(), output)
+            self.assertIn(f'c={30-offset},r=9'.encode(),output)
             self.assertNotIn(b'\x1b[0m',output)
-            self.assertNotIn(f'\x1b[{34-offset}X'.encode(),output)
-        self.assertEqual(session.Renderer.overlay(0,'done',80,24,9,34),session.Renderer.clear_overlay())
+            self.assertNotIn(f'\x1b[{30-offset}X'.encode(),output)
+        self.assertEqual(session.Renderer.overlay(0,'done',80,24,9,30),session.Renderer.clear_overlay())
+
+    def test_small_graphics_refresh_keeps_bottom_and_right_margins(self):
+        output = session.Renderer.overlay(0, "2/5 feeds refreshed", 80, 24, 5)
+        self.assertIn(b"c=30,r=5", output)
+        self.assertIn(b"\x1b[17;49H", output)
 
     def test_slide_clips_at_right_margin(self):
-        for offset in (0, 8, 20, 33):
+        for offset in (0, 8, 20, 29):
             output = session.Renderer.compact(0, '2/5 feeds refreshed', 80, 24, 9, offset)
             columns = re.findall(rb'\x1b\[\d+;(\d+)H', output)
-            self.assertEqual(set(columns), {str(45 + offset).encode()})
-            self.assertIn(f'\x1b[{34-offset}X'.encode(), output)
-        self.assertEqual(session.Renderer.compact(0, 'done', 80, 24, 9, 34), b'')
+            self.assertEqual(set(columns), {str(49 + offset).encode()})
+            self.assertIn(f'\x1b[{30-offset}X'.encode(), output)
+        self.assertEqual(session.Renderer.compact(0, 'done', 80, 24, 9, 30), b'')
 
     def test_summary_counts_new_items_and_distinct_sources(self):
         progress = session.Progress()
@@ -101,17 +107,17 @@ class ProgressTests(unittest.TestCase):
         progress.log(session.RELOAD_START + b' total feeds: 207')
         self.assertEqual(progress.caption(), '0/207 feeds refreshed')
 
-    def test_compact_renderer_stays_in_top_right_toast(self):
+    def test_compact_renderer_stays_in_bottom_right_toast(self):
         for frame in (0, 6, 22):
             output = session.Renderer.compact(frame, '2/5 feeds refreshed', 80, 24, 9)
-            self.assertEqual(re.findall(rb'\x1b\[(\d+);45H', output),
-                             [str(row).encode() for row in range(2, 11)])
+            self.assertEqual(re.findall(rb'\x1b\[(\d+);49H', output),
+                             [str(row).encode() for row in range(13, 22)])
             self.assertNotIn(b'\x1b[2J', output)
             self.assertIn(b'2/5 feeds refreshed', output)
             self.assertTrue(output.startswith(b'\x1b7'))
             self.assertTrue(output.endswith(b'\x1b8'))
             water = next(line for line in session.CSI.sub(b'', output).decode().split('│') if '~' in line)
-            self.assertEqual(len(water), 32)
+            self.assertEqual(len(water), 28)
 
     def test_counts_completions_not_starts_and_defers_queries(self):
         p = session.Progress()

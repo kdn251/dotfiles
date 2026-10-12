@@ -1,0 +1,164 @@
+--- a/include/feedlistformaction.h
++++ b/include/feedlistformaction.h
+@@ -28,6 +28,8 @@
+     std::string title_hover_request();
+ 	void prepare() override;
+     void go_home();
++    bool move_home_row(const std::string& action);
++    bool is_home() const;
+ 	void init() override;
+ 	void set_feedlist(std::vector<std::shared_ptr<RssFeed>>& feeds);
+ 	void update_visible_feeds(std::vector<std::shared_ptr<RssFeed>>& feeds);
+@@ -94,6 +96,9 @@
+ 
+ 	unsigned int displayed_unread_count(const std::shared_ptr<RssFeed>& feed) const;
+ 	bool all_sources = false;
++    std::string home_yank;
++    std::vector<std::string> home_order;
++    bool home_order_loaded = false;
+ 	std::string all_parent_filter;
+ 	std::string all_parent_title;
+ 	unsigned int all_parent_pos = 0;
+--- a/src/feedlistformaction.cpp
++++ b/src/feedlistformaction.cpp
+@@ -5,6 +5,7 @@
+ #include <cstdint>
+ #include <cstdlib>
+ #include <fstream>
++#include <filesystem>
+ #include <map>
+ #include <set>
+ #include <sys/stat.h>
+@@ -68,6 +69,75 @@
+ 	v.get_ctrl().get_reloader()->spawn_reloadthread();
+ }
+ 
++namespace {
++std::string home_key(const std::shared_ptr<RssFeed>& feed)
++{
++    const auto url = feed->rssurl();
++    if (url.find("query:") != 0) { return ""; }
++    auto name = url.substr(6, url.find(':', 6) - 6);
++    // Home names are stable across changes to their leading emoji or query.
++    const auto space = name.find_last_of(' ');
++    return space == std::string::npos ? name : name.substr(space + 1);
++}
++std::string home_order_path()
++{
++    if (const auto override = std::getenv("NEWSBOAT_HOME_ORDER")) { return override; }
++    if (const auto state = std::getenv("XDG_STATE_HOME")) {
++        if (*state) { return std::string(state) + "/newsboat/home-order"; }
++    }
++    const auto home = std::getenv("HOME");
++    return std::string(home ? home : ".") + "/.local/state/newsboat/home-order";
++}
++}
++
++bool FeedListFormAction::is_home() const
++{
++    return !all_sources && !std::getenv("NEWSBOAT_HOME_NESTED") &&
++        !visible_feeds.empty() && std::all_of(visible_feeds.begin(), visible_feeds.end(),
++            [](const auto& row) { return row.first->is_query_feed(); });
++}
++
++bool FeedListFormAction::move_home_row(const std::string& action)
++{
++    if (!is_home()) { return false; }
++    const auto target = home_key(visible_feeds.at(list.get_position()).first);
++    if (action == "yank") {
++        home_yank = target;
++        v.get_statusline().show_message("Home row picked up — p: move below, P: move above");
++        return true;
++    }
++    if (home_yank.empty()) {
++        v.get_statusline().show_error("Pick up a Home row with yy first"); return true;
++    }
++    if (home_yank == target) { return true; }
++    auto order = home_order;
++    order.erase(std::remove(order.begin(), order.end(), home_yank), order.end());
++    auto destination = std::find(order.begin(), order.end(), target);
++    if (destination == order.end()) { return true; }
++    if (action == "after") { ++destination; }
++    order.insert(destination, home_yank);
++    const auto path = home_order_path();
++    try {
++        std::filesystem::create_directories(std::filesystem::path(path).parent_path());
++        const auto temporary = path + ".tmp";
++        std::ofstream output(temporary);
++        for (const auto& key : order) { output << key << "\n"; }
++        output.close();
++        if (!output) { throw std::runtime_error("write failed"); }
++        std::filesystem::rename(temporary, path);
++    } catch (const std::exception&) {
++        v.get_statusline().show_error("Could not save homepage order"); return true;
++    }
++    home_order = order;
++    v.get_ctrl().update_feedlist();
++    for (unsigned int i = 0; i < visible_feeds.size(); ++i) {
++        if (home_key(visible_feeds[i].first) == home_yank) { list.set_position(i); break; }
++    }
++    do_redraw = true;
++    v.get_statusline().show_message("Homepage order saved");
++    return true;
++}
++
+ void FeedListFormAction::go_home()
+ {
+     tag.clear();
+@@ -168,6 +238,9 @@
+ 	bool quit = false;
+ REDO:
+ 	switch (op) {
++    case OP_UNDO_CHECKPOINT:
++        if (!args.empty() && args[0] == "home-yank") { move_home_row("yank"); }
++        break;
+ 	case OP_OPEN: {
+ 		if (f.get_focus() == "feeds") {
+ 			if (args.size() > 0) {
+@@ -762,6 +835,29 @@
+ 		}
+ 		i++;
+ 	}
++    if (!home_order_loaded) {
++        std::ifstream input(home_order_path());
++        std::string key;
++        while (std::getline(input, key)) {
++            if (!key.empty() && std::find(home_order.begin(), home_order.end(), key) == home_order.end()) {
++                home_order.push_back(key);
++            }
++        }
++        home_order_loaded = true;
++    }
++    if (is_home()) {
++        for (const auto& feed : feeds) {
++            const auto key = home_key(feed);
++            if (!key.empty() && std::find(home_order.begin(), home_order.end(), key) == home_order.end()) {
++                home_order.push_back(key);
++            }
++        }
++        std::stable_sort(visible_feeds.begin(), visible_feeds.end(), [&](const auto& a, const auto& b) {
++            return std::find(home_order.begin(), home_order.end(), home_key(a.first)) <
++                std::find(home_order.begin(), home_order.end(), home_key(b.first));
++        });
++    }
++
+ }
+ 
+ std::string FeedListFormAction::title_hover_request()
+--- a/src/view.cpp
++++ b/src/view.cpp
+@@ -294,6 +294,14 @@
+ 		LOG(Level::DEBUG, "View::run: event = %s", event);
+ 
+ 		const auto key_combination = KeyCombination::from_bindkey(event);
++        if (!have_macroprefix && key_sequence.empty() &&
++            (key_combination == KeyCombination("p") || key_combination == KeyCombination::from_bindkey("P"))) {
++            const auto home = std::dynamic_pointer_cast<FeedListFormAction>(fa);
++            if (home && home->move_home_row(key_combination == KeyCombination("p") ? "after" : "before")) {
++                continue;
++            }
++        }
++
+         if (key_combination == KeyCombination("ESC")) {
+             const auto items = std::dynamic_pointer_cast<ItemListFormAction>(fa);
+             if (items && items->has_visual_selection()) {

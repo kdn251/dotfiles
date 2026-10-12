@@ -197,3 +197,6 @@ macro W undo-checkpoint queue ; set browser "python3 ~/scripts/newsboat_queue.py
 
 macro z snooze-timer -- "Set timed snooze (30m, 1h, 1h30m)"
 macro Z snooze-cancel -- "Cancel timed snooze"
+
+# Home: yy picks up a list; p/P move it below/above, saving the order.
+bind yy feedlist undo-checkpoint home-yank -- "Home: pick up list; p moves below, P above (order saved)"

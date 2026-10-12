@@ -122,6 +122,7 @@ patch -p1 < "$repo/newsboat/patches/queue-title-hover.patch"
 patch -p1 < "$repo/newsboat/patches/home-column-alignment.patch"
 patch -p1 < "$repo/newsboat/patches/nonblocking-bulk-delete.patch"
 patch -p1 < "$repo/newsboat/patches/timed-snooze-row.patch"
+patch -p1 < "$repo/newsboat/patches/home-row-order.patch"
 make -j"${NEWSBOAT_BUILD_JOBS:-4}" WARNFLAGS="-Werror -Wall -Wextra -Wunreachable-code -Wno-error=unused-function" newsboat
 install -m 755 newsboat "$install_dir/newsboat.new"
 mv "$install_dir/newsboat.new" "$install_dir/newsboat"

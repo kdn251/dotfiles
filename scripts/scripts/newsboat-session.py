@@ -617,7 +617,7 @@ def run(args):
                         progress.finished = False
                         finish_at = None
                     cols, rows = os.get_terminal_size(1)
-                    wanted_toast = (9 + int(progress.finished) if cols >= 42 and rows >= 12 else 1) if progress.active and not startup and not thumbnail_active else 0
+                    wanted_toast = ((5 if graphics_toast else 9) + int(progress.finished) if cols >= 42 and rows >= 12 else 1) if progress.active and not startup and not thumbnail_active else 0
                     if wanted_toast != toast_rows:
                         if wanted_toast and not toast_rows:
                             toast_started = now
@@ -636,7 +636,7 @@ def run(args):
                         if startup:
                             write_all(1, renderer.draw(frame, label))
                         elif return_deadline is None and toast_rows:
-                            width = max(1, min(34, cols - 2))
+                            width = max(1, min(renderer.REFRESH_WIDTH, cols - 2))
                             previous_offset = toast_offset
                             if toast_rows == 1:
                                 toast_offset = 0
