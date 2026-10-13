@@ -96,7 +96,10 @@ local function prepare_thumbnail()
 end
 mp.observe_property('osd-dimensions', 'native', show_thumbnail)
 local function cancel()
-    if timer then timer:kill(); timer = nil end
+    if timer then
+        timer:kill(); timer = nil
+        mp.remove_key_binding('newsboat-up-next-play-now')
+    end
     hide_thumbnail()
 end
 local function configure()
@@ -185,7 +188,7 @@ local function prompt()
     local current_label = episode_label(false)
     mp.osd_message((current_label and 'Watching: ' .. current_label .. '\n' or '') ..
         'Up next in ' .. remaining .. 's: ' .. (next_label and next_label .. (thumbnail and '' or ' · ') or '') .. (thumbnail and '' or title) ..
-        '\nShift+A: turn autoplay off    >: play now', 1.5)
+        '\nShift+A: turn autoplay off    Enter / >: play now', 1.5)
 end
 local function countdown()
     if queue_menu and queue_menu.is_open() then return end
@@ -196,6 +199,9 @@ local function countdown()
     timer = mp.add_periodic_timer(1, function()
         remaining = remaining - 1
         if remaining <= 0 then advance(plan.next, true) else prompt() end
+    end)
+    mp.add_forced_key_binding('ENTER', 'newsboat-up-next-play-now', function()
+        if timer then advance(plan.next, true) end
     end)
     show_thumbnail()
 end

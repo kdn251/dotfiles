@@ -102,11 +102,12 @@ class PlaylistPlaybackTests(unittest.TestCase):
                     deadline=time.monotonic()+2
                     while (not title_file.exists() or f'{label} {index+1} of 3' not in title_file.read_text()) and time.monotonic()<deadline:time.sleep(.02)
                     self.assertIn(f'{label} {index+1} of 3',title_file.read_text())
-                if action in ('eof', 'queue_eof', 'random', 'cancel', 'off'):
+                if action in ('eof', 'queue_eof', 'random', 'cancel', 'off', 'enter'):
                     if action == 'off':command(['keypress','A'])
                     command(['set_property','pause',False])
                     time.sleep(1)
                     self.assertFalse(calls.exists(), 'Must display countdown before loading')
+                    if action == 'enter':command(['keypress','ENTER'])
                     if action == 'cancel':command(['keypress','A'])
                 elif action.startswith('menu'):
                     command(['keypress','W'])
@@ -139,7 +140,7 @@ class PlaylistPlaybackTests(unittest.TestCase):
                         text=messages.read_text()
                         self.assertIn('Watching: Queue video 2 of 3',text)
                         self.assertIn('Queue video 3 of 3 · Episode 2',text)
-                    if action in ('eof','queue_eof','random'):
+                    if action in ('eof','queue_eof','random','enter'):
                         deadline=time.monotonic()+3
                         while not playing.exists() and time.monotonic()<deadline:time.sleep(.02)
                         self.assertTrue(playing.exists(),'autoplay replacement must advance playback without a manual unpause')
@@ -157,6 +158,9 @@ class PlaylistPlaybackTests(unittest.TestCase):
     def test_queue_menu_closes_for_next_and_previous(self):
         self.run_player('menu-next',expected=2)
         self.run_player('menu-previous',expected=0)
+
+    def test_enter_plays_up_next_immediately(self):
+        self.run_player('enter',expected=2)
 
     def test_natural_end_advances(self):
         self.run_player('eof', expected=2)

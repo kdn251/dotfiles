@@ -94,6 +94,7 @@ mp={
  commandv=function(...) commands[#commands+1]={...} end,
  osd_message=function() end,
  add_forced_key_binding=function(key,_,callback) keys[key]=callback end,
+ remove_key_binding=function(name) if name=='newsboat-up-next-play-now' then keys.ENTER=nil end end,
  observe_property=function(key,_,callback) observers[key]=callback end,
  register_event=function(key,callback) events[key]=callback end,
  add_periodic_timer=function(_,callback) timer={kill=function() end,tick=callback};return timer end
@@ -102,6 +103,7 @@ dofile(arg[1])
 assert(requests==1,'prefetch once without waiting for EOF')
 image_callback(true,{status=0,stdout='image'})
 assert(#commands==0,'no picture during ordinary playback')
+assert(not keys.ENTER,'Enter is not overridden during ordinary playback')
 observers['eof-reached']('eof-reached',true)
 local draw=commands[#commands]
 assert(draw[1]=='overlay-add' and draw[2]==61)
@@ -110,14 +112,17 @@ assert(math.abs(draw[11]/draw[12]-1280/864)<.01, "preserve image proportions")
 assert(draw[3]+draw[11]<=800 and draw[4]+draw[12]<=600, "stay inside the window")
 observers['osd-dimensions']()
 assert(commands[#commands][1]=='overlay-add','redraw after resize')
+assert(keys.ENTER,'Enter is bound during countdown')
 keys.A()
+assert(not keys.ENTER,'cancelling countdown releases Enter')
 assert(commands[#commands][1]=='overlay-remove','toggle off removes thumbnail')
 local n=#commands
 image_callback(true,{status=0,stdout='image'})
 assert(#commands==n,'late fetch cannot resurrect a cancelled preview')
 keys.A()
 observers['eof-reached']('eof-reached',true)
-keys['>']()
+keys.ENTER()
+assert(not keys.ENTER,'playing now releases Enter')
 local removed=false
 for i=n+1,#commands do if commands[i][1]=='overlay-remove' then removed=true end end
 assert(removed,'manual advance clears the preview')
