@@ -32,8 +32,8 @@ class DateTests(unittest.TestCase):
             self.assertEqual(worker.cache['success']['date'],'2020-03-21')
 
     def test_display_matches_other_lists_and_handles_missing_dates(self):
-        self.assertEqual(dates.display_date('2026-10-12'),'Oct 12')
-        self.assertEqual(dates.display_date('2020-03-01'),'Mar 01')
+        self.assertEqual(dates.display_date('2026-10-12'),'Oct 12 2026')
+        self.assertEqual(dates.display_date('2020-03-01'),'Mar 01 2020')
         self.assertEqual(dates.display_date(''),'—')
         self.assertEqual(dates.display_date(None),'—')
 
@@ -47,9 +47,9 @@ class DateTests(unittest.TestCase):
                 self.assertTrue(ready.wait(1));worker.poll();self.assertEqual(worker.path.read_text(),'')
                 release.set();deadline=time.monotonic()+2
                 while worker.results.empty() and time.monotonic()<deadline:time.sleep(.01)
-                worker.poll();self.assertEqual(worker.path.read_text(),URL+'\tOct 12\n')
+                worker.poll();self.assertEqual(worker.path.read_text(),URL+'\tOct 12 2026\n')
                 cached=dates.Dates();cached.update('10;1;'+URL);cached.poll()
-                self.assertEqual(cached.path.read_text(),URL+'\tOct 12\n');lookup_mock.assert_called_once_with(URL)
+                self.assertEqual(cached.path.read_text(),URL+'\tOct 12 2026\n');lookup_mock.assert_called_once_with(URL)
     @unittest.skipUnless(pyte and BINARY.exists(),'requires native Newsboat and pyte')
     def test_native_date_updates_without_moving_cursor(self):
         with tempfile.TemporaryDirectory() as d:

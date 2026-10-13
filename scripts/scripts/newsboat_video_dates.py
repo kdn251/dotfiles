@@ -50,8 +50,8 @@ def date_from_page(page):
 
 
 def display_date(value):
-    """Match Newsboat's month/day display without inventing a publish time."""
-    try:return datetime.strptime(value, '%Y-%m-%d').strftime('%b %d')
+    """Include the year for older playlist videos without inventing a publish time."""
+    try:return datetime.strptime(value, '%Y-%m-%d').strftime('%b %d %Y')
     except (ValueError, TypeError):return '—'
 
 
