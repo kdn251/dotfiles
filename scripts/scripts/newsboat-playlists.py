@@ -121,7 +121,7 @@ def prepare_view(directory, data):
     lines += ['urls-source local','auto-reload no','show-read-feeds yes','show-read-articles yes',
               'confirm-exit no','article-sort-order guid-asc','articlelist-title-format " %T"',
               'searchresult-title-format " Search results"',
-              'articlelist-format '+json.dumps('%4i  %-9p %-20a │ %t' if is_playlist else '%4i  %p %t',ensure_ascii=False),
+              'articlelist-format '+json.dumps('%4i  %-9p %6J %-20a │ %t' if is_playlist else '%4i  %p %t',ensure_ascii=False),
               'browser '+json.dumps(action),
               'bind q articlelist hard-quit -- "Back"']
     for key in ('<ENTER>','o','O','l'):
@@ -168,7 +168,7 @@ def show(kind, url):
                 if supported(env):
                     # The creator is shared by the whole playlist; leave room
                     # for episode titles alongside the image pane.
-                    out.write('articlelist-format "%4i  %-9p %t"\n')
+                    out.write('articlelist-format "%4i  %-9p %6J %t"\n')
                     channel = data.get('channel') or next((r.get('source') for r in data['rows'] if r.get('source')), '')
                     title = ' Playlist · '+data['name']+(' — '+channel if channel else '')
                     out.write('articlelist-title-format '+json.dumps(title.replace('%','%%'),ensure_ascii=False)+'\n')

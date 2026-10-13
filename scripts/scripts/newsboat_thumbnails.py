@@ -337,6 +337,9 @@ def run(command, env):
     child_env['NEWSBOAT_QUEUE_HEADER'] = str(queue_header.path)
     from newsboat_video_duration import Durations
     durations = Durations()
+    from newsboat_video_dates import Dates
+    dates = Dates()
+    child_env['NEWSBOAT_VIDEO_DATES'] = str(dates.path)
     child_env['NEWSBOAT_VIDEO_DURATIONS'] = str(durations.path)
     pid, master = pty.fork()
     if pid == 0:
@@ -448,6 +451,7 @@ def run(command, env):
                     elif kind == 'avatars':
                         avatars.update(value)
                         durations.update(value)
+                        dates.update(value)
                     else:
                         selected = selection(value)
                         if selected != current:
@@ -486,6 +490,7 @@ def run(command, env):
                     last_placeholder = placeholder
                     repaint = True
             durations.poll()
+            dates.poll()
             queue_header.update()
             if repaint and current and display_png:
                 write(1, placement(image_id, current, size, display_png, loading=not bool(png), enlarged=enlarged))

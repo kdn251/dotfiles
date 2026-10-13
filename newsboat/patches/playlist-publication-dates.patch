@@ -1,0 +1,43 @@
+--- a/src/itemlistformaction.cpp
++++ b/src/itemlistformaction.cpp
+@@ -46,6 +46,7 @@
+ static std::set<std::string> commentary_urls;
+ static std::set<std::string> favorites_urls;
+ static std::map<std::string, std::string> video_durations;
++static std::map<std::string, std::string> video_dates;
+ static bool duration_video(const std::string& url)
+ {
+     static const std::regex video(R"(^https?://(?:(?:www\.|m\.)?youtube\.com/(?:watch\?|shorts/)|youtu\.be/|(?:www\.)?twitch\.tv/videos/|clips\.twitch\.tv/))");
+@@ -1758,6 +1759,23 @@
+ 
+ void ItemListFormAction::prepare()
+ {
++    if (const char* path = std::getenv("NEWSBOAT_VIDEO_DATES")) {
++        static std::string previous_dates;
++        std::ifstream input(path);
++        const std::string contents((std::istreambuf_iterator<char>(input)), std::istreambuf_iterator<char>());
++        if (contents != previous_dates) {
++            previous_dates = contents;
++            video_dates.clear();
++            std::istringstream lines(contents);
++            std::string line;
++            while (std::getline(lines, line)) {
++                const auto tab = line.find('\t');
++                if (tab != std::string::npos) { video_dates[line.substr(0, tab)] = line.substr(tab + 1); }
++            }
++            for (unsigned int i = 0; i < visible_items.size(); ++i) { invalidate(i); }
++        }
++    }
++
+     const auto selected_position = static_cast<int>(list.get_position());
+     if ((row_title_scrolling || selected_position != scrolling_row_position) && !visible_items.empty()) {
+         invalidate(list.get_position());
+@@ -1942,6 +1960,8 @@
+ 	fmt.register_fmt('d', item.first->deleted() ? "D" : " ");
+ 	fmt.register_fmt('F', item.first->flags());
+ 	fmt.register_fmt('e', item.first->enclosure_url());
++    const auto video_date = video_dates.find(item.first->link());
++    fmt.register_fmt('J', video_date != video_dates.end() ? video_date->second : "…");
+     const auto video_duration = video_durations.find(item.first->link());
+     fmt.register_fmt('v', video_duration != video_durations.end() ? video_duration->second :
+         duration_video(item.first->link()) ? "…" : "");
