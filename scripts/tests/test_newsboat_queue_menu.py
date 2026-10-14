@@ -23,6 +23,9 @@ p=Path(__file__).with_name('rows.json')
 rows=json.loads(p.read_text())
 if sys.argv[1]=='menu-json':
  print(json.dumps(rows))
+elif sys.argv[1]=='remove':
+ rows=[r for r in rows if r['url']!=sys.argv[2]]
+ p.write_text(json.dumps(rows))
 else:
  source=next(r for r in rows if r['url']==sys.argv[2])
  rows.remove(source)
@@ -56,10 +59,14 @@ else:
        time.sleep(.03)
       self.fail('Actual MPV keypresses did not reorder the queue')
      wait_order(['1','2','0']);time.sleep(.2)
-     key('k');key('P');wait_order(['1','0','2'])
+     key('k');key('P');wait_order(['1','0','2']);time.sleep(.2)
+     key('x');wait_order(['1','2']);time.sleep(.2)
+     key('x');wait_order(['1']);time.sleep(.2)
+     key('x');wait_order([]);time.sleep(.2)
+     key('x');wait_order([])
      key('ESC')
      bindings=command(['get_property','input-bindings'])
-     self.assertFalse(any(b.get('owner')=='driver' and b.get('key') in ('y','p','P') for b in bindings))
+     self.assertFalse(any(b.get('owner')=='driver' and b.get('key') in ('y','p','P','x') for b in bindings))
    finally:
     proc.terminate();proc.wait(timeout=5)
  def test_menu_navigation_refresh_and_close(self):

@@ -125,7 +125,7 @@ function M.new(directory, current, choose, opened, closed)
             if after then request_image(after.url) end
             if before then request_image(before.url) end
         end
-        text(x+22,top+height-27,15,'C2ADA6',feedback or 'j/k Browse   yy Pick up   p Below   P Above   Enter Play   Esc Close')
+        text(x+22,top+height-27,15,'C2ADA6',feedback or 'j/k Browse   yy Pick up   p Below   P Above   x Remove   Enter Play   Esc Close')
         for id in pairs(displayed) do
             if not needed[id] then mp.commandv('overlay-remove',id) end
         end
@@ -181,6 +181,36 @@ function M.new(directory, current, choose, opened, closed)
         end)
         draw()
     end
+    local function remove_selected()
+        pending_y=nil
+        local target=rows[selected]
+        if reordering or not target then return end
+        reordering=true;feedback='Removing from Queue…'
+        read_serial=read_serial+1
+        if job then mp.abort_async_command(job);job=nil end
+        local epoch=generation
+        mp.command_native_async({name='subprocess',playback_only=false,capture_stdout=true,capture_stderr=true,
+            args={'python3',directory..'newsboat_queue.py','remove',target.url}},function(ok,result)
+            reordering=false
+            if not visible then return end
+            if epoch~=generation then refresh();return end
+            if ok and result and result.status==0 then
+                local focused=rows[selected]
+                for i,row in ipairs(rows) do
+                    if row.queue_token==target.queue_token then table.remove(rows,i);break end
+                end
+                selected=math.min(selected,math.max(1,#rows))
+                if focused and focused.queue_token~=target.queue_token then
+                    for i,row in ipairs(rows) do if row.queue_token==focused.queue_token then selected=i;break end end
+                end
+                if copied and copied.queue_token==target.queue_token then copied=nil end
+                message='Your queue is empty';feedback=nil
+                refresh(rows[selected] and rows[selected].queue_token)
+            else feedback='Could not remove video from Queue';refresh() end
+            draw()
+        end)
+        draw()
+    end
     local function close(silent)
         if not visible then return end
         visible=false
@@ -223,6 +253,7 @@ function M.new(directory, current, choose, opened, closed)
             end
             draw()
         end)
+        bind('x','remove',remove_selected)
         bind('p','paste-after',function() paste(false) end)
         bind('P','paste-before',function() paste(true) end)
         bind('W','toggle',close)

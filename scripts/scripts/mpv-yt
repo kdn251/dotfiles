@@ -209,9 +209,11 @@ else
       mkdir -p "$cache"
       local_file="$cache/$vid.mp4"
       if ! python3 "$MEDIA_HELPER" find "$URL" >/dev/null 2>&1; then
-        "$YTDL" -q --no-warnings \
+        # Long videos can exceed 3 GB; allow their partial download to finish.
+        # Keep downloads and merging at low CPU/I/O priority.
+        nice -n 10 ionice -c 2 -n 7 "$YTDL" -q --no-warnings \
           -f "bestvideo[height<=?1080]+bestaudio/best[height<=?1080]/best" \
-          --merge-output-format mp4 --max-filesize 3G \
+          --merge-output-format mp4 \
           -o "$cache/$vid.%(ext)s" "$URL" >/dev/null 2>&1
       fi
       # Only swap if it actually landed AND mpv is still up: closing the window
@@ -240,7 +242,7 @@ else
       # Keep the cache under 6GB, oldest first.
       total=$(du -sm "$cache" 2>/dev/null | cut -f1)
       while [ "${total:-0}" -gt 6144 ]; do
-        oldest=$(find "$cache" -maxdepth 1 -type f -printf '%T@ %p\n' 2>/dev/null |
+        oldest=$(find "$cache" -maxdepth 1 -type f ! -name "$vid.*" -printf '%T@ %p\n' 2>/dev/null |
           sort -n | head -1 | cut -d' ' -f2-)
         [ -n "$oldest" ] || break
         rm -f "$oldest"

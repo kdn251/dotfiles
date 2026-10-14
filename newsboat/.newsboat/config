@@ -201,3 +201,6 @@ macro Z snooze-cancel -- "Cancel timed snooze"
 
 # Home: yy picks up a list; p/P move it below/above, saving the order.
 bind yy feedlist undo-checkpoint home-yank -- "Home: pick up list; p moves below, P above (order saved)"
+
+# Jump to the saved playlist library; Queue overrides p for paste.
+bind p everywhere set browser "newsboat-playthroughs://show" -- "Open Playthroughs"
