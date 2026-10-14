@@ -16,7 +16,10 @@ CHOICE=$(
     suffix=""
     [ "$p" = "$CURRENT" ] && suffix="  ✓"
     printf '%s%s\0icon\x1f%s/%s.svg\n' "${LABELS[$p]}" "$suffix" "$ICON_DIR" "$p"
-  done | fuzzel --dmenu --prompt="Power ❯ " --lines=3 --width=24 --line-height=40 --text-color=ffffffff
+  done | fuzzel --dmenu --prompt="Power ❯ " \
+    --lines=3 --width=21 --line-height=32 \
+    --horizontal-pad=14 --vertical-pad=6 --inner-pad=6 \
+    --text-color=ffffffff
 )
 
 case "$CHOICE" in
