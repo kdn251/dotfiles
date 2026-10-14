@@ -1,0 +1,50 @@
+--- a/include/itemlistformaction.h
++++ b/include/itemlistformaction.h
+@@ -110,6 +110,7 @@
+ 
+ 	Matcher matcher;
+ 	bool filter_active;
++	bool show_read_on_open = false;
+ 	void apply_filter(const std::string& filter_query);
+ 
+ private:
+--- a/src/itemlistformaction.cpp
++++ b/src/itemlistformaction.cpp
+@@ -1040,7 +1040,8 @@
+ 	case OP_TOGGLESHOWREAD:
+ 		LOG(Level::DEBUG,
+ 			"ItemListFormAction: toggling show-read-articles");
+-		if (cfg->get_configvalue_as_bool("show-read-articles")) {
++		if (show_read_on_open || cfg->get_configvalue_as_bool("show-read-articles")) {
++            show_read_on_open = false;
+ 			cfg->set_configvalue("show-read-articles", "no");
+ 		} else {
+ 			cfg->set_configvalue("show-read-articles", "yes");
+@@ -1464,7 +1465,7 @@
+ 
+ 	// Downloads are a library, and explicit search results should include
+ 	// matching read items even when ordinary feeds hide them.
+-	bool show_read = cfg->get_configvalue_as_bool("show-read-articles") ||
++	bool show_read = show_read_on_open || cfg->get_configvalue_as_bool("show-read-articles") ||
+ 		feed->is_search_feed() || feed->rssurl().find("query:🎬 VODs:") == 0 ||
+ 		feed->rssurl().find("query:📥 Downloads:") == 0;
+ 
+@@ -2459,6 +2460,7 @@
+ 	visual_active = false;
+ 	feed = fd;
+ 	feed->load();
++    show_read_on_open = !feed->is_query_feed() && !feed->is_search_feed() && feed->unread_item_count() == 0;
+     download_revision();
+     // A replacement query has a new item vector even when the configured
+     // sort strategy is unchanged. Sort before computing/restoring positions.
+--- a/src/view.cpp
++++ b/src/view.cpp
+@@ -662,7 +662,7 @@
+ 		return nullptr;
+ 	}
+ 
+-	if (feed->total_item_count() > 0) {
++	if (feed->total_item_count() > 0 || !feed->is_query_feed()) {
+ 		auto itemlist = std::make_shared<ItemListFormAction>(
+ 				*this, itemlist_str, rsscache, filters, cfg, rxman);
+ 		itemlist->set_feed(feed);
