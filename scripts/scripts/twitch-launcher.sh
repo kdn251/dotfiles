@@ -210,14 +210,14 @@ TOP5=$(sort -t"$(printf '\t')" -k1,1nr -k2,2 "$MENU_TMP" | awk -F'\t' '$1 + 0 > 
 if [ -n "${1:-}" ]; then
   CHOICE="$1"
 else
-# Keep the full service-tagged rows privately; fuzzel returns an index so
-# identical display names on different platforms still resolve correctly.
+# Display the friendly label, but return its hidden service-tagged identity.
+# Free text stays distinguishable from selected rows (which contain a tab).
 MENU_ORDERED=$(mktemp)
   {
     [ -n "$TOP5" ] && printf '%s\n' "$TOP5"
     sort -t"$(printf '\t')" -k2,2 "$MENU_TMP" | grep -vxF -f <(printf '%s\n' "$TOP5")
   } | awk -F'\t' 'NF >= 3' >"$MENU_ORDERED"
-CHOICE_INDEX=$(
+CHOICE_INPUT=$(
     awk -F'\t' -v p="$PIXMAPS" '
       NF >= 3 {
         split($3, w, " ")
@@ -227,9 +227,9 @@ CHOICE_INDEX=$(
         sub(/ \(Rumble\)$/, "", label)
         sub(/ \(Kick\)$/, "", label)
         if (NF >= 5 && $5 != "") label = label " " $5
-        printf "%s\000icon\x1f%s\n", label, icon
+        printf "%s\t%s\000icon\x1f%s\n", label, $3, icon
       }' "$MENU_ORDERED" |
-    fuzzel --dmenu --index \
+    fuzzel --dmenu --with-nth=1 \
       --font "Stream Launcher Icons,JetBrainsMono Nerd Font:size=14" \
       --prompt "        " \
       --line-height 35 \
@@ -237,8 +237,21 @@ CHOICE_INDEX=$(
       --lines 10
 )
 CHOICE=""
-if [[ "$CHOICE_INDEX" =~ ^[0-9]+$ ]]; then
-  CHOICE=$(awk -F'\t' -v row="$CHOICE_INDEX" 'NR == row + 1 {print $3; exit}' "$MENU_ORDERED")
+if [[ "$CHOICE_INPUT" == *$'\t'* ]]; then
+  CHOICE="${CHOICE_INPUT#*$'\t'}"
+else
+  # An unmatched username is an explicit Twitch request, not a saved-list edit.
+  custom="${CHOICE_INPUT#https://}"
+  custom="${custom#http://}"
+  custom="${custom#www.}"
+  custom="${custom#twitch.tv/}"
+  custom="${custom#@}"
+  custom="${custom%/}"
+  if [[ "$custom" =~ ^[a-zA-Z0-9_]{1,25}$ ]]; then
+    CHOICE="${custom,,}"
+  elif [ -n "$CHOICE_INPUT" ]; then
+    notify-send -a "Streams" -t 4000 "Invalid Twitch username" "Enter a username or a twitch.tv/channel link."
+  fi
 fi
 rm -f "$MENU_ORDERED"
 fi
