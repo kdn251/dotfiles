@@ -1,0 +1,169 @@
+--- /dev/null
++++ b/include/recentlibrary.h
+@@ -0,0 +1,57 @@
++#ifndef NEWSBOAT_RECENT_LIBRARY_H
++#define NEWSBOAT_RECENT_LIBRARY_H
++#include <cstdlib>
++#include <ctime>
++#include <fstream>
++#include <map>
++#include <string>
++namespace newsboat { namespace recent_library {
++inline int kind(const std::string& title, const std::string& url) {
++    if (title == "⭐ Starred" || url.find("query:⭐ Starred:") == 0) { return 1; }
++    if (title == "📥 Downloads" || url.find("query:📥 Downloads:") == 0) { return 2; }
++    return 0;
++}
++inline bool recent(int type, const std::string& url) {
++    const char* base = std::getenv(type == 1 ? "NEWSBOAT_STARRED_STATUS" : "NEWSBOAT_DOWNLOAD_STATUS");
++    if (!base) { return true; }
++    const auto now = std::time(nullptr);
++    struct Snapshot { std::time_t checked = 0; bool available = false; std::map<std::string,double> dates; std::map<std::string,bool> active; };
++    static std::map<std::string,Snapshot> snapshots;
++    auto& snapshot = snapshots[base];
++    if (snapshot.checked != now) {
++        snapshot.checked = now; snapshot.dates.clear(); snapshot.active.clear();
++        std::ifstream input(std::string(base) + ".saved");
++        snapshot.available = input.good();
++        std::string line;
++        while (std::getline(input,line)) {
++            const auto tab = line.find('\t');
++            if (tab != std::string::npos) {
++                snapshot.dates[line.substr(0,tab)] = std::strtod(line.c_str()+tab+1,nullptr);
++            }
++        }
++        if (type == 2) {
++            std::ifstream statuses(base);
++            while (std::getline(statuses,line)) {
++                const auto tab=line.find('\t');
++                if (tab != std::string::npos) {
++                    const auto status=line.substr(tab+1);
++                    if (status == "…" || status.find("↓") == 0) { snapshot.active[line.substr(0,tab)] = true; }
++                }
++            }
++        }
++    }
++    if (!snapshot.available || snapshot.active.count(url)) { return true; }
++    const auto found=snapshot.dates.find(url);
++    return found != snapshot.dates.end() && found->second >= now - 14*24*60*60;
++}
++inline unsigned int star_count(unsigned int fallback) {
++    const char* base=std::getenv("NEWSBOAT_STARRED_STATUS");
++    if (!base) { return fallback; }
++    std::ifstream input(base);
++    if (!input.good()) { return fallback; }
++    unsigned int count=0; std::string url;
++    while (std::getline(input,url)) { if (recent(1,url)) { ++count; } }
++    return count;
++}
++}}
++#endif
+--- a/include/itemlistformaction.h
++++ b/include/itemlistformaction.h
+@@ -111,6 +111,8 @@
+ 	Matcher matcher;
+ 	bool filter_active;
+ 	bool show_read_on_open = false;
++    bool show_older_saved = false;
++    std::time_t recent_library_tick = 0;
+ 	void apply_filter(const std::string& filter_query);
+ 
+ private:
+--- a/src/itemlistformaction.cpp
++++ b/src/itemlistformaction.cpp
+@@ -1,3 +1,4 @@
++#include "recentlibrary.h"
+ #include <itemlistformaction.h>
+ 
+ #include <cinttypes>
+@@ -1038,6 +1039,12 @@
+ 		break;
+ 	}
+ 	case OP_TOGGLESHOWREAD:
++        if (recent_library::kind(feed->title(), feed->rssurl())) {
++            show_older_saved = !show_older_saved;
++            store_selection(); invalidate_list();
++            v.get_statusline().show_message(show_older_saved ? "Showing all saved items" : "Showing items saved in the last 14 days (l: show older)");
++            break;
++        }
+ 		LOG(Level::DEBUG,
+ 			"ItemListFormAction: toggling show-read-articles");
+ 		if (show_read_on_open || cfg->get_configvalue_as_bool("show-read-articles")) {
+@@ -1474,6 +1481,7 @@
+ 		item->set_index(i + 1);
+ 		if ((!std::getenv("NEWSBOAT_QUEUE_VIEW") || queue_urls.count(item->link())) &&
+             (show_read || item->unread()) &&
++            (show_older_saved || !recent_library::kind(feed->title(),feed->rssurl()) || recent_library::recent(recent_library::kind(feed->title(),feed->rssurl()),item->link())) &&
+ 			(!filter_active || matcher.matches(item.get()))) {
+ 			new_visible_items.push_back(ItemPtrPosPair(item, i));
+ 		}
+@@ -1760,6 +1768,10 @@
+ 
+ void ItemListFormAction::prepare()
+ {
++    if (recent_library::kind(feed->title(),feed->rssurl()) && recent_library_tick != std::time(nullptr)) {
++        recent_library_tick = std::time(nullptr);
++        invalidate_list();
++    }
+     if (const char* path = std::getenv("NEWSBOAT_VIDEO_DATES")) {
+         static std::string previous_dates;
+         std::ifstream input(path);
+@@ -2114,7 +2126,7 @@
+ 	fmt.register_fmt('V', utils::program_version());
+ 
+ 	fmt.register_fmt('u', std::to_string(unread));
+-	fmt.register_fmt('t', std::to_string(total));
++	fmt.register_fmt('t', std::to_string(recent_library::kind(s,url) ? visible_items.size() : total));
+ 
+ 	auto feedtitle = s;
+     if (url.find("query:📬 New:") == 0 && unread == 0) {
+--- a/src/feedlistformaction.cpp
++++ b/src/feedlistformaction.cpp
+@@ -1,3 +1,4 @@
++#include "recentlibrary.h"
+ #include "feedlistformaction.h"
+ 
+ #include <algorithm>
+@@ -1480,7 +1481,11 @@
+         return total;
+     }
+     if (feed->rssurl().find("query:📥 Downloads:") == 0) {
+-        return static_cast<unsigned int>(feed->total_item_count());
++        unsigned int count=0;
++        for (const auto& item : feed->items()) {
++            if (!item->deleted() && recent_library::recent(2,item->link())) { ++count; }
++        }
++        return count;
+     }
+     if (feed->rssurl().find("query:⭐ Starred:") == 0) {
+         auto total = static_cast<unsigned int>(feed->total_item_count());
+@@ -1489,7 +1494,7 @@
+             unsigned int saved_count;
+             if (count_file >> saved_count) { total = saved_count; }
+         }
+-        return total;
++        return recent_library::star_count(total);
+     }
+     if (feed->rssurl().find("query:📬 New:") == 0 || feed->rssurl().find("query:🌎 All:") == 0) {
+         std::set<std::string> links;
+--- a/src/feedlistformaction.cpp
++++ b/src/feedlistformaction.cpp
+@@ -148,6 +148,18 @@
+ 
+ void FeedListFormAction::prepare()
+ {
++    static std::time_t recent_tick = 0;
++    static std::string previous_recent_counts;
++    if (recent_tick != std::time(nullptr)) {
++        recent_tick = std::time(nullptr);
++        std::string counts;
++        for (const auto& source : v.get_ctrl().get_feedcontainer()->get_all_feeds()) {
++            if (recent_library::kind(source->title(),source->rssurl())) {
++                counts += source->rssurl() + ":" + std::to_string(displayed_unread_count(source)) + "\n";
++            }
++        }
++        if (counts != previous_recent_counts) { previous_recent_counts = counts; do_redraw = true; }
++    }
+     const auto selected_position = static_cast<int>(list.get_position());
+     const bool selection_changed = selected_position != scrolling_row_position;
+     scrolling_row_position = selected_position;

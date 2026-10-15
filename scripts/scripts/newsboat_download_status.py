@@ -15,6 +15,7 @@ def publish(state):
         fcntl.flock(lock, fcntl.LOCK_EX)
         statuses = {}
         completed = {}
+        saved = {}
         urls = {}
         for path in state.glob('*.json'):
             try:
@@ -36,6 +37,7 @@ def publish(state):
                     completed[key] = max(completed.get(key, 0), float(job.get('updated', 0)))
                 else:
                     continue
+                saved[key] = max(saved.get(key, 0), float(job.get('created') or job.get('updated') or path.stat().st_ctime))
                 statuses[key] = value
                 urls[job['url']] = key
             except (OSError, ValueError, KeyError, TypeError):
@@ -48,7 +50,9 @@ def publish(state):
                     if key:
                         statuses.setdefault(key, '📥')
                         if key[0]=='youtube':urls.setdefault('https://www.youtube.com/watch?v='+key[1],key)
-                        completed.setdefault(key, record.get('downloaded_at', Path(path).stat().st_ctime))
+                        stamp = record.get('downloaded_at', Path(path).stat().st_ctime)
+                        completed.setdefault(key, stamp)
+                        saved.setdefault(key, stamp)
         except (OSError, ValueError):
             pass
         cache = Path(os.environ.get('NEWSBOAT_CACHE', Path.home()/'.newsboat/cache.db'))
@@ -86,6 +90,10 @@ def publish(state):
 
         order = ''.join(f'{url}\t{completed[key]}\n' for url, key in sorted(urls.items())
                         if key in completed and not any(c in url for c in '\t\r\n'))
+        saved_path = target.with_name(target.name + '.saved')
+        saved_text = ''.join(f'{url}\t{saved[key]}\n' for url,key in sorted(urls.items()) if key in saved and not any(c in url for c in '\t\r\n'))
+        if not saved_path.exists() or saved_path.read_text() != saved_text:
+            atomic_write(saved_path, saved_text)
         order_path = target.with_name(target.name + '.order')
         if not order_path.exists() or order_path.read_text() != order:
             atomic_write(order_path, order)

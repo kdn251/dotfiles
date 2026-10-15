@@ -32,6 +32,8 @@ def entries(client=None):
 
 
 def rebuild_query(rows):
+    from newsboat_saved_dates import sync
+    sync(STARRED_STATUS, rows)
     # This is a disposable display index, never a second saved-item collection.
     from newsboat_media import atomic_write
     STARRED_STATUS.parent.mkdir(parents=True,exist_ok=True)
@@ -95,6 +97,8 @@ def set_star(url, desired, client=None, mark_read=False):
         client.request('entries',{'entry_ids':sorted(ids),'starred':desired},method='PUT')
         if mark_read:
             client.request('entries',{'entry_ids':sorted(ids),'status':'read'},method='PUT')
+    from newsboat_saved_dates import record
+    record(STARRED_STATUS, url, desired)
     rebuild_query(client.starred())
 
 
@@ -158,6 +162,8 @@ def apply_queued_action(action):
         # A read mark does not change membership. Fetching/rebuilding Starred
         # here made rapid n presses wait behind multiple paginated API calls.
         if not read_only:
+            from newsboat_saved_dates import record
+            record(STARRED_STATUS, action['url'], action['desired'], restore=True)
             rebuild_query(client.starred())
 
 
@@ -275,6 +281,8 @@ def view_entries():
                 row['status'] = 'read'
     except sqlite3.Error:
         pass
+    from newsboat_saved_dates import sync
+    sync(STARRED_STATUS, rows)
     return rows
 
 
