@@ -32,6 +32,9 @@ def open_url(url):
     if url.startswith('newsboat-playthroughs://'):
         from newsboat_resume import playthrough
         return playthrough(url)
+    from newsboat_reddit_video import post_id, launch
+    if post_id(url):
+        return launch(url)
     launcher = Path(__file__).resolve().with_name(launcher_for(url))
     if launcher.name == 'newsboat-brave-app.sh':
         from newsboat_articles import find
