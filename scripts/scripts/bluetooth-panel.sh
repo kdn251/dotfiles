@@ -53,14 +53,22 @@ if [ "$powered" != "yes" ]; then
 fi
 
 # Paired devices -> parallel arrays of mac / name
+# bluetoothctl emits ANSI colors and unsolicited scan events even when piped.
+# Only accept actual device-list rows after removing terminal formatting.
+bluetooth_devices() {
+  bluetoothctl devices "$1" 2>/dev/null |
+    sed -E $'s/\033\\[[0-9;]*[[:alpha:]]//g' |
+    awk '$1 == "Device" && $2 ~ /^([[:xdigit:]]{2}:){5}[[:xdigit:]]{2}$/'
+}
+
 macs=() names=()
 while read -r _ mac name; do
   [ -n "$mac" ] || continue
   macs+=("$mac")
   names+=("$name")
-done < <(bluetoothctl devices Paired 2>/dev/null)
+done < <(bluetooth_devices Paired)
 
-connected=$(bluetoothctl devices Connected 2>/dev/null | awk '{print $2}')
+connected=$(bluetooth_devices Connected | awk '{print $2}')
 
 is_connected() { printf '%s\n' "$connected" | grep -qx "$1"; }
 
@@ -93,6 +101,8 @@ else
   done
 fi
 
+# Device names are text, not notification markup.
+active=$(printf '%s' "$active" | sed 's/\&/\&amp;/g; s/</\&lt;/g; s/>/\&gt;/g')
 body=$(printf '<tt>Adapter  <b>on</b>\nActive   %s</tt>' "$active")
 
 # One action per paired device, keyed by index so device names with odd
