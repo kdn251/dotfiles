@@ -16,6 +16,7 @@ PANEL_RUNTIME="${XDG_RUNTIME_DIR:-/tmp}"
 panel_guard() {
   local name="$1"
   PANEL_PIDFILE="$PANEL_RUNTIME/waybar-panel-$name.pid"
+  PANEL_NOTIFICATION_FILE="$PANEL_RUNTIME/waybar-panel-$name.notification"
   exec 9>"$PANEL_RUNTIME/waybar-panel-$name.lock"
   if ! flock -n 9; then
     # Another instance holds the lock, so a panel is already up: close it.
@@ -28,7 +29,7 @@ panel_guard() {
     timeout 2 swaync-client --close-latest >/dev/null 2>&1
     exit 0
   fi
-  trap 'rm -f "$PANEL_PIDFILE"' EXIT
+  trap 'rm -f "$PANEL_PIDFILE" "$PANEL_NOTIFICATION_FILE"' EXIT
   _panel_close_others "$name"
 }
 
@@ -79,10 +80,11 @@ fi
 panel_notify() {
   local out np
   out=$(mktemp)
-  notify-send "$@" >"$out" 2>/dev/null &
+  notify-send --id-fd=8 "$@" 8>"$PANEL_NOTIFICATION_FILE" >"$out" 2>/dev/null &
   np=$!
   printf '%s' "$np" >"$PANEL_PIDFILE"
   wait "$np" 2>/dev/null
+  rm -f "$PANEL_NOTIFICATION_FILE"
   cat "$out"
   rm -f "$out"
 }
