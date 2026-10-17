@@ -1,0 +1,13 @@
+[Unit]
+Description=Start and recover OpenDeck when the Stream Deck is connected
+After=graphical-session.target
+PartOf=graphical-session.target
+
+[Service]
+ExecStart=/usr/bin/python /home/knaught/scripts/opendeck-watchdog.py
+Restart=on-failure
+RestartSec=10
+Environment=PYTHONUNBUFFERED=1
+
+[Install]
+WantedBy=graphical-session.target

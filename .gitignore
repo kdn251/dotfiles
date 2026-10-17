@@ -58,3 +58,6 @@ agents/.pi/agent/*
 !agents/.pi/agent/extensions/
 !agents/.pi/agent/prompts/
 agents/.pi/agent/extensions/herdr-agent-state.ts
+
+# Rebuild the OBS display bridge locally against the installed libobs.
+scripts/scripts/obs-display-create.so

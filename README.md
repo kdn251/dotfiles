@@ -26,6 +26,118 @@
 3. reboot machine for configs to be updated - `sudo reboot`
 4. generate new ssh key - `ssh-keygen -t ed25519 -C "your_email@example.com"` and add it to github
 
+#### OBS recording and Stream Deck recovery
+
+The `scripts` and `systemd` Stow packages include the OBS/OpenDeck recovery setup
+added in October 2026. This setup is specific to Kevin's Arch Linux/Hyprland
+machine and `/home/knaught`; it is not a generic OBS installer.
+
+Tracked components:
+
+- `obs-camera-reconnect.lua` follows the Cam Link's permanent USB ID and updates
+  the existing Sony V4L2 source when its Linux device number changes.
+- `obs-display-follow.py` selects the focused, powered-on Hyprland display,
+  fits it behind the camera overlay in the three desktop scenes, and rebuilds
+  capture after display changes or a screen-sharing portal restart. It checks
+  portal responsiveness and restarts an unresponsive Hyprland portal.
+- `obs-display-bridge.lua` and `obs-display-create.c` create replacement PipeWire
+  sources on OBS's UI thread, where desktop-portal replies are processed.
+- `opendeck-watchdog.py` starts OpenDeck when the Stream Deck is connected and
+  checks device ownership, the local OpenDeck WebSocket server, and the OBS
+  plugin's connection. It allows startup/reconnect grace periods and limits
+  recovery restarts to avoid restart loops. `opendeck.service` also restarts
+  OpenDeck after it exits.
+
+Restore on this machine:
+
+1. Install OBS Studio, OpenDeck, Hyprland and its desktop portal, a C compiler,
+   and the Python packages `psutil`, `websocket-client`, and PyGObject (`gi`).
+   On Arch, the Python packages are `python-psutil`, `python-websocket-client`,
+   and `python-gobject`. OBS headers and `libobs` must be installed for the build.
+2. Reconcile existing files before linking the two Stow packages. From this
+   repository, run `stow --no-folding -t "$HOME" scripts systemd`. Do not use
+   `--adopt` to overwrite repository files with unrelated local versions.
+3. Build the native bridge locally. The compiled binary is deliberately ignored:
+
+   ```sh
+   cc -shared -fPIC -Wall -Wextra -Werror -I/usr/include/obs \
+     "$HOME/scripts/obs-display-create.c" \
+     -o "$HOME/scripts/obs-display-create.so" -lobs
+   mkdir -p "$HOME/.local/state/obs-display-follow"
+   ```
+
+   Rebuild the bridge after OBS ABI changes. Do not replace the loaded library
+   while OBS is running; close OBS before rebuilding it.
+4. In OBS, add `~/scripts/obs-camera-reconnect.lua` and
+   `~/scripts/obs-display-bridge.lua` through **Tools → Scripts**. Keep the
+   existing `obs-waybar-recording.lua` script if recording status is wanted.
+   Enable OBS's WebSocket server with authentication. Its password remains in
+   OBS's local config; the display helper reads it there.
+5. Restore the recording choices in the current OBS profile:
+
+   | Setting | Value |
+   | --- | --- |
+   | Output mode | Advanced |
+   | Recording type | Standard |
+   | Recording format | Hybrid MOV (`hybrid_mov`) |
+   | Video encoder | QuickSync HEVC (`obs_qsv11_hevc`) |
+   | Rate control / quality | CQP / 20 |
+   | Keyframe interval | 2 seconds |
+   | Audio encoder | FFmpeg PCM, 24-bit (`ffmpeg_pcm_s24le`) |
+   | Sample rate / channels | 48 kHz / stereo |
+   | Audio track | 1 |
+
+   For the Sony V4L2 camera source, enable automatic reset on timeout and set
+   the timeout to 120 frames. The saved device path is
+   `/dev/v4l/by-id/usb-Elgato_Cam_Link_4K_A29YB53135TO7F-video-index0`.
+   These are recording settings; streaming settings are separate.
+6. In OpenDeck's Multi OBS Controller plugin, enter OBS's local WebSocket port
+   and password. Leave OpenDeck's own autolaunch disabled because the watchdog
+   manages startup. Restore button profiles from a separate private backup.
+7. Activate the recovery services:
+
+   ```sh
+   systemctl --user daemon-reload
+   systemctl --user enable --now obs-display-follow.service opendeck-watchdog.service
+   ```
+
+   Do not separately enable `opendeck.service`: the watchdog starts it when the
+   deck appears. Once started, OpenDeck remains available in the background.
+
+Machine-specific references to review after replacing hardware or recreating
+OBS sources:
+
+- The camera script targets source UUID `d2add3c9-9810-4a7b-9040-a95da43468af`
+  (`sony cam (new)`) and the Cam Link ID above.
+- The display helper targets `screen with cam`, `screen with cam with greenscreen`,
+  and `laptop no monitor`. Its source is named `monitor (automatic)`; it replaces
+  the old `monitor` source after a successful capture and disables the obsolete
+  V4L2 `screen` item. Screen-sharing selections are stored locally through the
+  desktop portal; tokens are never committed here.
+- The deck watchdog recognizes USB vendor/product `0fd9:006d` and reads the
+  selected profile for device `sd-AL28K2C85916`. Update these constants if the
+  deck changes. It checks the local Multi OBS Controller connection only when
+  the selected profile uses that plugin and OBS is listening.
+
+Runtime OBS scene collections, OpenDeck profiles, WebSocket passwords, portal
+tokens, and private rollback snapshots are **not** included in this Git backup.
+The restore steps preserve the configuration choices without publishing those
+files. A complete scene layout/button-profile restore still needs a private
+backup of those application files.
+
+Diagnostics:
+
+```sh
+journalctl --user -u obs-display-follow.service -u opendeck-watchdog.service -u opendeck.service
+```
+
+To disable the automation, run
+`systemctl --user disable --now obs-display-follow.service opendeck-watchdog.service`,
+then `systemctl --user stop opendeck.service`. Remove the two OBS recovery scripts
+from Tools → Scripts if desired. Local pre-change snapshots are in
+`~/.local/state/obs-display-follow/`, `~/.local/state/opendeck-recovery/`, and the
+timestamped `before-*` files alongside the OBS profile and scene collection.
+
 #### shared AI skills and commands
 
 The `agents` Stow package shares personal workflows across Pi, Codex, OpenCode,

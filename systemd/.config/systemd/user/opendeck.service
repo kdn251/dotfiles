@@ -1,0 +1,14 @@
+[Unit]
+Description=OpenDeck Stream Deck controller
+After=graphical-session.target
+PartOf=graphical-session.target
+StartLimitIntervalSec=120
+StartLimitBurst=5
+
+[Service]
+ExecStart=/usr/bin/opendeck --hide
+Restart=always
+RestartSec=5
+TimeoutStopSec=10
+KillMode=control-group
+

@@ -1,0 +1,14 @@
+[Unit]
+Description=Follow the active Hyprland display in OBS and recover screen sharing
+After=graphical-session.target
+PartOf=graphical-session.target
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/python /home/knaught/scripts/obs-display-follow.py
+Restart=on-failure
+RestartSec=10
+Environment=PYTHONUNBUFFERED=1
+
+[Install]
+WantedBy=graphical-session.target
