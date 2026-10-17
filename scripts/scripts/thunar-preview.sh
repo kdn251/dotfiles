@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Quick Look-style preview for Thunar. Bound to Space via uca.xml + accels.scm.
 # Space toggles: closes if previewing the same file, switches if a different one.
-# Arrow keys inside the preview step through the folder's other previewable files.
+# J/K and arrow keys inside the preview step through the folder's other previewable files.
 set -u
 
 STATE=/tmp/thunar-preview-file
@@ -48,7 +48,14 @@ if [[ -z $idx ]]; then
     idx=1
 fi
 
+# Bind to the originating file view; accessibility keeps mpv focused.
+SCRIPT_DIR=$(dirname "$(readlink -f "$0")")
+export THUNAR_PREVIEW_HELPER="$SCRIPT_DIR/thunar-preview-selection.py"
+export THUNAR_PREVIEW_SELECTION
+THUNAR_PREVIEW_SELECTION=$(python3 "$THUNAR_PREVIEW_HELPER" --bind "$FILE") || true
+
 exec mpv --no-config \
+    --script="$SCRIPT_DIR/thunar-preview-selection.lua" \
     --vo=gpu --gpu-api=opengl \
     --wayland-app-id=thunar-preview \
     --title='Preview: ${filename}' \
