@@ -45,7 +45,10 @@ machine and `/home/knaught`; it is not a generic OBS installer.
 Tracked components:
 
 - `obs-camera-reconnect.lua` follows the Cam Link's permanent USB ID and updates
-  the existing Sony V4L2 source when its Linux device number changes.
+  the existing Sony V4L2 source when its Linux device number changes. It enforces
+  1920 × 1080 capture on its two-second check, including after startup or
+  reconnect, and restores that resolution if it changes. An unchanged feed
+  is left running.
 - `obs-display-follow.py` selects the focused, powered-on Hyprland display,
   fits it behind the camera overlay in the three desktop scenes, and rebuilds
   capture after display changes or a screen-sharing portal restart. It checks

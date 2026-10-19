@@ -5,6 +5,8 @@ ffi.cdef[[char *realpath(const char *path, char *resolved_path);]]
 
 local DEVICE = "/dev/v4l/by-id/usb-Elgato_Cam_Link_4K_A29YB53135TO7F-video-index0"
 local SOURCE_UUID = "d2add3c9-9810-4a7b-9040-a95da43468af"
+-- V4L2 stores width in the high 32 bits and height in the low 32 bits.
+local RESOLUTION = 1920 * 4294967296 + 1080
 local buffer = ffi.new("char[4096]")
 
 local function check_camera()
@@ -17,10 +19,13 @@ local function check_camera()
     if source == nil then return end
     if obs.obs_source_get_unversioned_id(source) == "v4l2_input" then
         local settings = obs.obs_source_get_settings(source)
-        if obs.obs_data_get_string(settings, "device_id") ~= device then
+        local device_changed = obs.obs_data_get_string(settings, "device_id") ~= device
+        local resolution_changed = obs.obs_data_get_int(settings, "resolution") ~= RESOLUTION
+        if device_changed or resolution_changed then
             obs.obs_data_set_string(settings, "device_id", device)
+            obs.obs_data_set_int(settings, "resolution", RESOLUTION)
             obs.obs_source_update(source, settings)
-            obs.script_log(obs.LOG_INFO, "Cam Link reconnect: " .. device)
+            obs.script_log(obs.LOG_INFO, "Cam Link: " .. device .. " (locked to 1920x1080)")
         end
         obs.obs_data_release(settings)
     end
@@ -28,7 +33,7 @@ local function check_camera()
 end
 
 function script_description()
-    return "Reconnects Kevin's Sony camera through its Cam Link when USB appears or changes device number. Checks every two seconds without restarting a connected feed."
+    return "Reconnects Kevin's Sony camera through its Cam Link when USB appears or changes device number. Locks capture to 1920x1080 at startup and restores it if changed. Checks every two seconds without restarting an unchanged feed."
 end
 
 function script_load(settings)
