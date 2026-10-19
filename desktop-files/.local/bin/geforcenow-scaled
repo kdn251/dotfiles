@@ -1,0 +1,53 @@
+#!/usr/bin/env python3
+"""Keep the native GeForce NOW library UI at 200% zoom."""
+
+import json
+import math
+import os
+from pathlib import Path
+import subprocess
+import sys
+import tempfile
+
+APP_ID = "com.nvidia.geforcenow"
+
+
+def set_zoom(preferences):
+    preferences.parent.mkdir(parents=True, exist_ok=True)
+    data = json.loads(preferences.read_text()) if preferences.exists() else {}
+    data.setdefault("partition", {}).setdefault("default_zoom_level", {})["x"] = (
+        math.log(2) / math.log(1.2)
+    )
+    # Replace atomically; never commit the user's private CEF profile to git.
+    fd, temporary = tempfile.mkstemp(dir=preferences.parent, prefix=".zoom-")
+    try:
+        with os.fdopen(fd, "w") as output:
+            json.dump(data, output, separators=(",", ":"))
+        os.replace(temporary, preferences)
+    finally:
+        if os.path.exists(temporary):
+            os.unlink(temporary)
+
+
+def main():
+    running = subprocess.check_output(
+        ["flatpak", "ps", "--columns=application"], text=True
+    ).splitlines()
+    if APP_ID not in running:
+        preferences = Path.home() / (
+            ".var/app/com.nvidia.geforcenow/.local/state/NVIDIA/GeForceNOW/"
+            "CefCache/Default/Preferences"
+        )
+        try:
+            set_zoom(preferences)
+        except (OSError, ValueError, TypeError, AttributeError) as error:
+            print(f"Could not set GeForce NOW UI zoom: {error}", file=sys.stderr)
+    # Keep NVIDIA's update/relaunch handling when its launcher is installed.
+    launcher = Path.home() / ".local/share/applications/NVIDIA GeForce NOW"
+    if launcher.is_file() and os.access(launcher, os.X_OK):
+        os.execv(str(launcher), [str(launcher)])
+    os.execvp("flatpak", ["flatpak", "run", APP_ID])
+
+
+if __name__ == "__main__":
+    main()

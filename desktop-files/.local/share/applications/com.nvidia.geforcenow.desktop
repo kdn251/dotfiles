@@ -1,0 +1,10 @@
+[Desktop Entry]
+Version=1.0
+Name=NVIDIA GeForce NOW
+GenericName=NVIDIA GeForce NOW
+Comment=Cloud gaming with 200% interface zoom
+Exec=sh -c "exec \"\\$HOME/.local/bin/geforcenow-scaled\""
+Icon=com.nvidia.geforcenow
+Terminal=false
+Type=Application
+Categories=Network;Game;
