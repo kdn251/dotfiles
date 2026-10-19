@@ -9,9 +9,9 @@ case "${1:-}" in
     *) exit 2 ;;
 esac
 status=$(wpctl get-volume @DEFAULT_AUDIO_SINK@)
-read -r progress percent < <(awk '{v=$2; printf "%.4f %.0f\n", (v>1?1:v), v*100}' <<< "$status")
+progress=$(awk '{v=$2; printf "%.4f\n", (v>1?1:v)}' <<< "$status")
 icon=audio-volume-high-symbolic
-label="${percent}%"
+label=""
 if [[ "$status" == *MUTED* ]]; then
     icon=audio-volume-muted-symbolic
     label="Muted"
