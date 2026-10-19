@@ -26,6 +26,16 @@
 3. reboot machine for configs to be updated - `sudo reboot`
 4. generate new ssh key - `ssh-keygen -t ed25519 -C "your_email@example.com"` and add it to github
 
+#### File manager columns
+
+To restore Name, Size, Type, and Date Modified in list view, close Thunar
+and run `bash ~/dotfiles/scripts/scripts/restore-file-manager-columns.sh`
+from your desktop session. This requires `xfconf-query` and `gsettings`.
+The script saves fixed Thunar 4.20 column widths and a 1100×750 opening
+window so the columns fit together. It also enables the same four columns
+in Nautilus when installed. These desktop settings live outside Stow;
+run the script once after a reinstall, not at every login.
+
 #### OBS recording and Stream Deck recovery
 
 The `scripts` and `systemd` Stow packages include the OBS/OpenDeck recovery setup
