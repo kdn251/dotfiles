@@ -24,13 +24,13 @@ if [ -e "$GUARD" ]; then
   rm -f "$GUARD"
 fi
 
-read -r ADDR MEMBERS < <(hyprctl activewindow -j 2>/dev/null | python3 -c '
+read -r ADDR MEMBERS CLASS < <(hyprctl activewindow -j 2>/dev/null | python3 -c '
 import json, sys
 try:
     w = json.load(sys.stdin)
 except Exception:
     print("none 0"); raise SystemExit
-print(w.get("address") or "none", len(w.get("grouped") or []))
+print(w.get("address") or "none", len(w.get("grouped") or []), w.get("class") or "unknown")
 ')
 
 # A group of one is still a group (windowrule group set always makes one per
@@ -45,7 +45,18 @@ fi
 # explicitly, so the combo the app receives does not depend on which keys are
 # still physically held down.
 MOD=CTRL
+KEY=Tab
 [ "$DIR" = b ] && MOD="CTRL SHIFT"
+# Brave exposes sequential tab selection separately from Ctrl+Tab cycling.
+# Avoid forwarding Shift+Tab while the physical modifiers are held: use the
+# dedicated previous/next-tab shortcuts for ordinary Brave windows instead.
+case "$CLASS" in
+  brave|brave-browser|Brave-browser)
+    MOD=CTRL
+    KEY=Page_Down
+    [ "$DIR" = b ] && KEY=Page_Up
+    ;;
+esac
 touch "$GUARD"
 trap 'rm -f "$GUARD"' EXIT
-hyprctl dispatch sendshortcut "$MOD,Tab,address:$ADDR" >/dev/null
+hyprctl dispatch sendshortcut "$MOD,$KEY,address:$ADDR" >/dev/null
