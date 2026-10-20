@@ -1,0 +1,13 @@
+[Unit]
+Description=Automatic monitor profiles with crash recovery
+PartOf=hyprland-session.target
+After=graphical-session.target
+StartLimitIntervalSec=0
+
+[Service]
+ExecStart=/usr/bin/kanshi
+Restart=always
+RestartSec=2
+
+[Install]
+WantedBy=hyprland-session.target

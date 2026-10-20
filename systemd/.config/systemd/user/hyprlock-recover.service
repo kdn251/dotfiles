@@ -1,0 +1,11 @@
+[Unit]
+Description=Session lock with protocol-error and crash recovery
+PartOf=hyprland-session.target
+After=graphical-session.target
+StartLimitIntervalSec=0
+
+[Service]
+ExecStart=%h/scripts/hyprlock-supervisor.py
+Restart=on-failure
+RestartSec=2
+TimeoutStopSec=3

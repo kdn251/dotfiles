@@ -19,6 +19,11 @@
 # touches eDP-1 when the kernel reports no external DisplayPort connected.
 
 set -u
+# Serialize resume and keyboard recovery; never leave a hung hyprctl blocking it.
+exec 9>"${XDG_RUNTIME_DIR:?}/display-lock-recover.lock"
+flock -n 9 || exit 0
+hyprctl() { timeout 5s /usr/bin/hyprctl "$@"; }
+systemctl --user start kanshi.service
 
 force=0
 settle=3          # let Thunderbolt and kanshi finish reacting to the resume
@@ -35,7 +40,7 @@ hyprctl dispatch dpms on >/dev/null 2>&1
 # --- displays --------------------------------------------------------------
 # Ask the kernel, not Hyprland: a phantom head outlives its connector.
 external=0
-for status in /sys/class/drm/card*-DP-*/status; do
+for status in /sys/class/drm/card*-DP-*/status /sys/class/drm/card*-HDMI-A-*/status; do
   [ -r "$status" ] || continue
   [ "$(cat "$status")" = connected ] && external=1
 done
@@ -76,13 +81,13 @@ fi
 locked=$(loginctl show-session "$session" -p LockedHint --value 2>/dev/null)
 
 if [ "$locked" = yes ]; then
-  if [ "$force" -eq 1 ] && pidof -q hyprlock; then
-    log "forced: replacing the running hyprlock"
-    pkill -x hyprlock
-    sleep 1
-  fi
-  if ! pidof -q hyprlock; then
-    log "session is locked with no hyprlock (lockdead); relaunching under the watchdog"
-    setsid "$HOME/scripts/hyprlock-watchdog.sh" --restore >/dev/null 2>&1 &
+  if [ "$force" -eq 1 ]; then
+    log "forced: restarting the supervised lock client (session remains locked)"
+    systemctl --user restart --no-block hyprlock-recover.service
+  elif ! pidof -q hyprlock; then
+    log "session is locked with no hyprlock; starting supervised recovery"
+    systemctl --user start --no-block hyprlock-recover.service
   fi
 fi
+# Re-evaluate profiles after the dock settles, including a previously dead daemon.
+timeout 5s kanshictl reload >/dev/null 2>&1 || true

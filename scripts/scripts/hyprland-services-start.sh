@@ -1,0 +1,7 @@
+#!/usr/bin/env bash
+set -e
+# Import this session before any Wayland service is started.
+dbus-update-activation-environment --systemd WAYLAND_DISPLAY XDG_CURRENT_DESKTOP HYPRLAND_INSTANCE_SIGNATURE XDG_SESSION_ID
+systemctl --user start hyprland-session.target
+systemctl --user restart kanshi.service hypridle.service
+systemctl --user start waybar.service

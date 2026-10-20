@@ -20,7 +20,6 @@ reachable() { timeout 2 bash -c "exec 3<>/dev/tcp/$HOST/$PORT" 2>/dev/null; }
 # Use mountinfo rather than mountpoint(1)/stat — those can block on a dead sshfs.
 mounted()   { awk -v mp="$MP" '$5 == mp {f=1} END {exit !f}' /proc/self/mountinfo; }
 
-mkdir -p "$MP"
 
 # Keep the compatibility symlink in place (survives a fresh install / stow run).
 # -h avoids following it into the mount, which would block while sshfs is wedged.
@@ -37,6 +36,9 @@ if mounted; then
     fi
 else
     if reachable; then
+        # Only touch the mountpoint once mountinfo proves it is not mounted.
+        # mkdir -p on a stale FUSE mount can block suspend in uninterruptible I/O.
+        mkdir -p "$MP" || exit 1
         echo "host $HOST reachable, mounting $MP"
         systemctl start "$UNIT"
     fi
