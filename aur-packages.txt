@@ -21,3 +21,4 @@ voxtype-bin
 wallust
 wayland-boomer-git
 yay
+zoom

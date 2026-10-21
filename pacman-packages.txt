@@ -99,7 +99,6 @@ lf
 lib32-vulkan-intel
 libdvdcss
 libfprint
-libnotify
 libreoffice-still
 libva-utils
 libvirt
