@@ -52,6 +52,10 @@ wallpapers/pictures/screenshots/
 __pycache__/
 *.pyc
 
+# Moonlight's live file contains private pairing credentials. Track only the
+# preferences-only JSON in the moonlight Stow package.
+Moonlight.conf
+
 # Only portable Pi code/prompts belong in Git. Runtime JSON, auth, sessions,
 # caches, npm installs, and machine-specific generated hooks stay local.
 agents/.pi/agent/*

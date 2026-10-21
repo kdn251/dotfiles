@@ -1,0 +1,10 @@
+{
+  "pc_address": "100.117.97.60",
+  "apollo_port": 47989,
+  "relay_address": "100.74.35.69",
+  "relay_host_alias": "turing",
+  "relay_user": "knaught",
+  "relay_lan_address": "192.168.1.12",
+  "broadcast_address": "192.168.1.255",
+  "pc_mac": "f0:2f:74:1f:81:ae"
+}

@@ -99,6 +99,7 @@ lf
 lib32-vulkan-intel
 libdvdcss
 libfprint
+libnotify
 libreoffice-still
 libva-utils
 libvirt
@@ -114,6 +115,7 @@ man-db
 man-pages
 mediainfo
 modemmanager
+moonlight-qt
 mpv-mpris
 mtools
 mtr

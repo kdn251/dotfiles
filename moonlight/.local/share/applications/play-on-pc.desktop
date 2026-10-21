@@ -1,0 +1,10 @@
+[Desktop Entry]
+Type=Application
+Name=Play on PC
+Comment=Wake the gaming PC through Turing and open Moonlight
+Exec=/bin/sh -c "exec ~/.local/bin/play-on-pc"
+Icon=moonlight
+Terminal=false
+Categories=Game;
+Keywords=Moonlight;Apollo;Wake;Gaming;Turing;
+StartupNotify=false

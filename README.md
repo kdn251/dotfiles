@@ -26,6 +26,14 @@
 3. reboot machine for configs to be updated - `sudo reboot`
 4. generate new ssh key - `ssh-keygen -t ed25519 -C "your_email@example.com"` and add it to github
 
+#### Moonlight game streaming
+
+The [Moonlight Stow package](moonlight/README.md) restores the **Play on PC**
+launcher, Turing wake relay settings, and a preferences-only Moonlight profile.
+Moonlight is included in `pacman-packages.txt`. Each new client still needs its
+own Tailscale login, SSH authorization, and Apollo pairing; private pairing keys
+are never stored in the repository. The guide also records the Apollo shutdown tile.
+
 #### File manager columns
 
 To restore Name, Size, Type, and Date Modified in list view, close Thunar

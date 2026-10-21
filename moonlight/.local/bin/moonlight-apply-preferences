@@ -1,0 +1,56 @@
+#!/usr/bin/env python3
+"""Apply the saved Moonlight profile without replacing local pairing data."""
+import json
+import os
+from pathlib import Path
+import shutil
+import subprocess
+import tempfile
+import time
+
+def merge(text, preferences):
+    lines = text.splitlines()
+    start = next((i for i, line in enumerate(lines) if line == '[General]'), None)
+    if start is None:
+        return '[General]\n' + ''.join(f'{k}={v}\n' for k, v in preferences.items()) + '\n' + text
+    end = next((i for i in range(start + 1, len(lines)) if lines[i].startswith('[')), len(lines))
+    remaining = dict(preferences)
+    general = []
+    for line in lines[start + 1:end]:
+        key = line.split('=', 1)[0]
+        if key in remaining:
+            general.append(f'{key}={remaining.pop(key)}')
+        else:
+            general.append(line)
+    general.extend(f'{key}={value}' for key, value in remaining.items())
+    return '\n'.join(lines[:start + 1] + general + lines[end:]) + '\n'
+
+def main():
+    if subprocess.run(['pgrep', '-u', str(os.getuid()), '-x', 'moonlight'],
+                      stdout=subprocess.DEVNULL).returncode == 0:
+        raise SystemExit('Close Moonlight first so it cannot overwrite the preferences.')
+    config = Path(os.environ.get('XDG_CONFIG_HOME', str(Path.home() / '.config')))
+    preferences = json.loads((config / 'play-on-pc/moonlight-preferences.json').read_text())
+    allowed = set('abstouchmode audiocfg backgroundgamepad bitrate capturesyskeys connwarnings defaultver detectnetblocking fps framepacing gameopts gamepadmouse hdr height hostaudio keepawake language mdns mouseacceleration multicontroller muteonfocusloss packetsize quitAppAfter reversescroll richpresence showperfoverlay swapfacebuttons swapmousebuttons uidisplaymode unlockbitrate videocfg videodec vsync width windowmode yuv444'.split())
+    if not set(preferences) <= allowed or any('\n' in str(v) or '\r' in str(v) for v in preferences.values()):
+        raise SystemExit('Profile contains unsupported preference keys or values.')
+    target = config / 'Moonlight Game Streaming Project/Moonlight.conf'
+    target.parent.mkdir(parents=True, exist_ok=True)
+    text = target.read_text() if target.exists() else ''
+    if target.exists():
+        backup = target.with_name(f'Moonlight.conf.backup-{time.time_ns()}')
+        shutil.copy2(target, backup)
+        backup.chmod(0o600)
+        print(f'Local backup: {backup}')
+    fd, temporary = tempfile.mkstemp(dir=target.parent)
+    try:
+        with os.fdopen(fd, 'w') as output:
+            output.write(merge(text, preferences))
+        os.replace(temporary, target)
+    finally:
+        if os.path.exists(temporary):
+            os.unlink(temporary)
+    print('Applied preferences; existing pairing data preserved. Adjust resolution/FPS for this display.')
+
+if __name__ == '__main__':
+    main()
