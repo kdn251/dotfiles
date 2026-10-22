@@ -51,10 +51,10 @@ notification only. Saved-machine UI connections without `--remote` are not cover
 
 On a new machine, configure SSH access to boole first, or set the endpoint's
 `enabled` to false. Each endpoint has `host`, `remote_socket`, and `enabled`.
-Restart the service after changing remote endpoints. Current verification:
-remote observer connected, exact-pane focus API tested and original tab restored;
-real remote Claude completion + game interruption still requires the user test.
-Local Claude completion + pause + focus was confirmed by the user.
+Restart the service after changing remote endpoints. Verified end to end on October 22, 2026: the user confirmed that a real Claude
+completion inside Herdr on boole paused Moonlight, displayed the notification,
+and selected the correct remote Claude tab. Local Claude and local Codex
+completion + pause + focus were also verified.
 
 ## Controls and profiles
 
