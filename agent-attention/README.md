@@ -255,3 +255,9 @@ Completion uses lifecycle markers with a startup baseline, so opening/restarting
 the monitor does not celebrate old tasks. To preview the completion pose for
 15 seconds without changing any real status, run:
 `python3 ~/.config/waybar/scripts/agent-status.py --preview-complete`.
+
+The compact agent popup sits 4px below Waybar, uses the same slate/teal palette as
+the other status popups, and closes on an outside click or Escape. Rows use bright
+status markers (filled green for working, amber exclamation for attention, hollow
+for idle). The Claude logo SVG comes from Simple Icons (CC0):
+https://github.com/simple-icons/simple-icons/blob/develop/icons/claude.svg
