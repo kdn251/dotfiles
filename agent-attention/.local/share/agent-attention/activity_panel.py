@@ -108,7 +108,7 @@ def panel():
             self.backdrop.add(outside);self.backdrop.show_all()
             self.window=Gtk.ApplicationWindow(application=self);self.window.set_title('Agent activity')
             self.window.set_visual(self.window.get_screen().get_rgba_visual())
-            self.window.set_default_size(320,-1);self.window.set_resizable(False)
+            self.window.set_resizable(False)
             GtkLayerShell.init_for_window(self.window);GtkLayerShell.set_namespace(self.window,'agent-activity-panel')
             GtkLayerShell.set_layer(self.window,GtkLayerShell.Layer.OVERLAY)
             for edge in (GtkLayerShell.Edge.TOP,GtkLayerShell.Edge.RIGHT):GtkLayerShell.set_anchor(self.window,edge,True)
@@ -117,7 +117,7 @@ def panel():
             self.window.connect('key-press-event',lambda w,e:self.window.destroy() if e.keyval==Gdk.KEY_Escape else False)
             self.window.connect('destroy',self.closed)
             box=Gtk.Box(orientation=Gtk.Orientation.VERTICAL,spacing=3);box.set_border_width(7);self.window.add(box)
-            scroll=Gtk.ScrolledWindow();scroll.set_policy(Gtk.PolicyType.NEVER,Gtk.PolicyType.AUTOMATIC);scroll.set_max_content_height(300);scroll.set_propagate_natural_height(True)
+            scroll=Gtk.ScrolledWindow();scroll.set_policy(Gtk.PolicyType.NEVER,Gtk.PolicyType.AUTOMATIC);scroll.set_max_content_height(300);scroll.set_propagate_natural_height(True);scroll.set_propagate_natural_width(True)
             box.pack_start(scroll,True,True,0);self.rows=Gtk.Box(orientation=Gtk.Orientation.VERTICAL,spacing=2);scroll.add(self.rows)
             self.refresh();self.window.show_all();self.timer=GLib.timeout_add_seconds(2,self.refresh)
         def closed(self,*args):
@@ -149,7 +149,7 @@ def panel():
                 image=AgentIcon(row['agent'],row['state']=='working') if row['agent'] in ('Codex','Claude') else Gtk.Label(label='◆')
                 if row['state']!='working':image.set_opacity(.6)
                 image.set_tooltip_text(row['agent']);line.pack_start(image,False,False,0)
-                name=Gtk.Label(label=row.get('name') or 'Untitled chat',xalign=0);name.get_style_context().add_class('name');name.set_ellipsize(Pango.EllipsizeMode.END);name.set_width_chars(30);name.set_max_width_chars(30)
+                name=Gtk.Label(label=row.get('name') or 'Untitled chat',xalign=0);name.get_style_context().add_class('name');name.set_ellipsize(Pango.EllipsizeMode.END);name.set_max_width_chars(30)
                 line.pack_start(name,True,True,0)
                 status={'working':'Working','attention':'Needs attention','unknown':'Status unknown','idle':'Idle'}.get(row['state'],'Unknown')
                 tip=f"{row['agent']} · {row.get('model') or 'model not reported'}\n{row['host']} · {status}"
