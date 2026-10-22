@@ -9,7 +9,7 @@ Runs entirely on the Linux client; no gaming-PC installation is required.
 From a checkout of this repository, inside your logged-in graphical session:
 
 ```sh
-sudo pacman -S --needed python python-pillow python-websocket-client grim wtype libnotify
+sudo pacman -S --needed python python-pillow python-websocket-client python-gobject python-cairo gtk3 gtk-layer-shell grim wtype libnotify waybar stow
 python3 ~/dotfiles/agent-attention/.local/share/agent-attention/install.py
 ```
 
@@ -236,13 +236,12 @@ Restore the `waybar` Stow package as well as `agent-attention`, run the local
 installer and the remote restore commands above, then restart both user services:
 `systemctl --user restart agent-attention waybar`.
 
-Click Sisyphus for a compact chat list: harness icon, task/chat name, and a small
-state dot. Click a row to focus that exact session where routing is available.
-Hover for Codex/Claude, reported model, host, and background-job details. Unknown
+Click Sisyphus for a compact chat list: animated harness icon and task/chat name.
+Working rows animate; inactive rows are dimmed. Hover a long title to scroll it. Click a row to focus that exact session where routing is available.
+Hover the logo for Codex/Claude, reported model, host, and background-job details. Unknown
 models are explicitly labeled, never inferred from a preferred/default model.
 Idle sessions with no matching tab are omitted; active background jobs remain
-visible with disabled navigation. Close with Escape, the close button, or another
-click on Sisyphus. The popup uses Python GObject, GTK 3 and GtkLayerShell.
+visible with disabled navigation. Close with Escape or a click outside the popup. The popup uses Python GObject, GTK 3 and GtkLayerShell.
 
 Navigation re-reads the live snapshot and revalidates process start times, SSH
 connections, and Herdr pane/session IDs at click time. If Moonlight is active,
@@ -278,3 +277,8 @@ Agent attention notifications, pausing, and automatic focus occur only while a
 Moonlight stream is focused. Other desktop apps and the Moonlight launcher stay
 silent; Herder audio and Waybar monitoring are unchanged. Long chat titles scroll
 on row hover and reset on pointer exit; hover the logo for session details.
+
+The repository includes original animation assets and pre-rendered frame strips;
+new machines do not need Drive access, FFmpeg, or Lottie rendering dependencies
+for normal use. Install the packages above, restore the `waybar` Stow package,
+and run the installer. Game pause detection still needs a check on a new display.
