@@ -82,6 +82,7 @@ def panel():
             for edge in (GtkLayerShell.Edge.TOP,GtkLayerShell.Edge.BOTTOM,GtkLayerShell.Edge.LEFT,GtkLayerShell.Edge.RIGHT):
                 GtkLayerShell.set_anchor(self.backdrop,edge,True)
             outside=Gtk.EventBox();outside.set_visible_window(False)
+            outside.add_events(Gdk.EventMask.BUTTON_PRESS_MASK)
             outside.connect('button-press-event',lambda *args:self.window.destroy() if self.window else None)
             self.backdrop.add(outside);self.backdrop.show_all()
             self.window=Gtk.ApplicationWindow(application=self);self.window.set_title('Agent activity')
