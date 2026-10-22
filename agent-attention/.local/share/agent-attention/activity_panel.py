@@ -54,22 +54,23 @@ def panel():
     gi.require_version('Gtk','3.0');gi.require_version('GtkLayerShell','0.1')
     from gi.repository import Gtk,Gdk,GLib,GtkLayerShell,Pango,GdkPixbuf
     class AgentIcon(Gtk.DrawingArea):
-        frames=None
+        frames={}
         def __init__(self,agent,working):
             super().__init__()
-            self.agent=agent;self.working=working and agent=='Codex'
+            self.agent=agent;self.working=working
             asset='codex.png' if agent=='Codex' else 'claude.svg'
             self.pixbuf=GdkPixbuf.Pixbuf.new_from_file_at_scale(str(attention.BASE/asset),48,48,True)
-            if self.working and AgentIcon.frames is None:
-                sheet=GdkPixbuf.Pixbuf.new_from_file(str(attention.BASE/'codex-working.png'))
-                AgentIcon.frames=[sheet.new_subpixbuf(0,y,48,48) for y in range(0,sheet.get_height(),48)]
+            if self.working and agent not in AgentIcon.frames:
+                sheet=GdkPixbuf.Pixbuf.new_from_file(str(attention.BASE/(agent.lower()+'-working.png')))
+                AgentIcon.frames[agent]=[sheet.new_subpixbuf(0,y,48,48) for y in range(0,sheet.get_height(),48)]
             self.set_size_request(24,24)
             self.connect('draw',self.draw_icon)
             self.tick=self.add_tick_callback(self.animate) if self.working else None
         def animate(self,*args):
             self.queue_draw();return True
         def draw_icon(self,widget,cr):
-            pixbuf=AgentIcon.frames[int(time.monotonic()*30)%len(AgentIcon.frames)] if self.working else self.pixbuf
+            frames=AgentIcon.frames.get(self.agent,[])
+            pixbuf=frames[int(time.monotonic()*30)%len(frames)] if self.working else self.pixbuf
             cr.translate(self.get_allocated_width()/2,self.get_allocated_height()/2)
             cr.scale(20/pixbuf.get_width(),20/pixbuf.get_height())
             Gdk.cairo_set_source_pixbuf(cr,pixbuf,-pixbuf.get_width()/2,-pixbuf.get_height()/2)
