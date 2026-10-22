@@ -1,10 +1,27 @@
-import json,pathlib,tempfile,unittest
+import json,os,pathlib,subprocess,tempfile,unittest
 from unittest.mock import patch
 from ssh_remote import build_event
 from ssh_attention import address,command
 from install_ssh_remote import install
 
 class SSHAttentionTests(unittest.TestCase):
+    def test_ssh_shell_default_and_excluded_sessions(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root=pathlib.Path(tmp);install(root)
+            bashrc=(root/'.bashrc').read_text();install(root)
+            self.assertEqual(bashrc,(root/'.bashrc').read_text())
+            binary=root/'bin';binary.mkdir();codex=binary/'codex'
+            codex.write_text('#!/bin/sh\nprintf "%s\\n" --no-daemon\n');codex.chmod(0o700)
+            env={k:v for k,v in os.environ.items() if k not in ('SSH_TTY','HERDR_ENV','HERDR_PANE_ID','TMUX','STY')}
+            env.update(HOME=str(root),PATH=str(binary)+':/usr/bin',SSH_TTY='/dev/pts/1')
+            def check(extra):
+                return subprocess.run(['bash','--noprofile','--norc','-c','source "$HOME/.local/share/agent-attention-ssh/codex-ssh.bash"; alias codex'],env={**env,**extra},capture_output=True,text=True)
+            self.assertIn('codex --no-daemon',check({}).stdout)
+            for excluded in ({'SSH_TTY':''},{'HERDR_ENV':'1'},{'HERDR_PANE_ID':'p1'},{'TMUX':'session'},{'STY':'session'}):
+                self.assertNotEqual(check(excluded).returncode,0)
+            codex.write_text('#!/bin/sh\necho legacy-cli\n')
+            self.assertNotEqual(check({}).returncode,0)
+
     def env(self):return {'SSH_CONNECTION':'100.1.1.1 12345 100.2.2.2 22','SSH_TTY':'/dev/pts/3'}
     def test_herdr_and_multiplexers_excluded(self):
         for key,value in [('HERDR_ENV','1'),('HERDR_PANE_ID','w1:p1'),('TMUX','x'),('STY','x')]:

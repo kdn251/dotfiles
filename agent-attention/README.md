@@ -66,6 +66,16 @@ ControlMaster multiplexing, tmux/screen, jump hosts/NAT that change the observed
 connection tuple, and other ambiguous routes are not supported for automatic
 focus. Herdr sessions are excluded here and keep their separate integration.
 
+On boole, Codex is installed as the yay-managed `openai-codex-bin` package.
+The remote installer adds a guarded Bash alias: plain `codex` automatically uses
+`--no-daemon` in standalone interactive SSH sessions when the CLI supports it.
+The shared daemon retains its original SSH environment after reconnecting, which
+otherwise makes completion events point at an expired connection. Session-local
+mode keeps the backend with this terminal; it does not provide shared-daemon
+background persistence after the terminal closes. Herdr, tmux/screen, non-SSH
+shells, and older CLIs are excluded. Existing shells need to reconnect or source
+`~/.local/share/agent-attention-ssh/codex-ssh.bash` once before restarting Codex.
+
 The remote sender is a small Python standard-library script. Claude hooks cover
 completion, permission requests, questions, and selected attention notifications.
 Codex's documented `notify` callback covers `agent-turn-complete` only; standalone
@@ -96,7 +106,8 @@ independent authenticated SSH connection; reconnects never replay a backlog.
 To disable this flow, set its `ssh_remotes` entry's `enabled` to false and restart
 the local service. To remove remote callbacks, remove only handlers containing
 `agent-attention-ssh/ssh_remote.py` from Claude settings and that sender's root
-`notify` entry from Codex config, then remove `~/.local/share/agent-attention-ssh`.
+`notify` entry from Codex config and the source line for `codex-ssh.bash` in
+`~/.bashrc`, then remove `~/.local/share/agent-attention-ssh`.
 Do not overwrite other agent settings with an old backup.
 
 Verification: automated behavior/restore tests pass. A live temporary interactive

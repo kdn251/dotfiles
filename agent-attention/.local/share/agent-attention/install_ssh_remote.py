@@ -28,5 +28,17 @@ def install(home):
         if matcher:entry['matcher']=matcher
         hooks[event]=groups+[entry]
     write(claude,json.dumps(data,indent=2)+'\n')
+    # A shared Codex daemon retains the SSH environment of its first launcher.
+    # Keep standalone interactive sessions attached to their own SSH connection.
+    write(root/'codex-ssh.bash', '''# Managed by agent-attention-ssh/install_ssh_remote.py.
+if [[ -n ${SSH_TTY-} && -z ${HERDR_ENV-}${HERDR_PANE_ID-}${TMUX-}${STY-} ]]; then
+    if [[ $(command codex --help 2>/dev/null) == *"--no-daemon"* ]]; then
+        alias codex='codex --no-daemon'
+    fi
+fi
+''')
+    bashrc=home/'.bashrc';original=bashrc.read_text() if bashrc.exists() else ''
+    line='[[ -r "$HOME/.local/share/agent-attention-ssh/codex-ssh.bash" ]] && source "$HOME/.local/share/agent-attention-ssh/codex-ssh.bash"'
+    if line not in original:write(bashrc,original.rstrip()+'\n\n# Keep standalone Codex attention events tied to this SSH terminal.\n'+line+'\n')
     print('Standalone SSH attention sender installed; start fresh Claude/Codex sessions to load callbacks.')
 if __name__=='__main__':install(pathlib.Path.home())
