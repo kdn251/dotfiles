@@ -182,6 +182,7 @@
     "tooltip": true
   },
   "custom/recording": {
+    "exec-if": "test -s /tmp/recording.txt",
     "format": "{}",
     "exec": "cat /tmp/recording.txt",
     "interval": 5,
@@ -213,6 +214,7 @@
     "tooltip": true
   },
   "custom/miniflux_download": {
+    "exec-if": "grep -q '[^[:space:]]' /tmp/miniflux_download_status.txt 2>/dev/null",
     // Click opens the shared yt-dlp panel (both this and custom/yt-download
     // are yt-dlp), listing what is downloading with a cancel button each.
     "on-click": "~/scripts/yt-dl-panel.sh",
@@ -232,6 +234,7 @@
     "tooltip": true
   },
   "custom/yt-download": {
+    "hide-empty-text": true,
     "on-click": "~/scripts/yt-dl-panel.sh",
     "cursor": true,
     "exec": "~/scripts/waybar-yt-download.sh",
