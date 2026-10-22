@@ -1,11 +1,17 @@
 #!/usr/bin/env python3
-"""Render the original IconKing Lottie asset; requires rlottie-python and Pillow."""
+"""Resample the existing Claude thinking GIF to a transparent 30fps strip."""
 from pathlib import Path
-from PIL import Image
-from rlottie_python import LottieAnimation
+from PIL import Image,ImageSequence
 BASE=Path(__file__).resolve().parent
-animation=LottieAnimation.from_file(str(BASE/'claude-animated.json'))
-sheet=Image.new('RGBA',(48,48*85))
-for i in range(85):
-    sheet.paste(animation.render_pillow_frame(i*2,width=48,height=48),(0,i*48))
+source=Image.open(BASE/'claude-thinking.gif')
+frames=[];ends=[];total=0
+for frame in ImageSequence.Iterator(source):
+    frames.append(frame.convert('RGBA').copy())
+    total+=frame.info.get('duration',100);ends.append(total)
+count=round(total*30/1000)
+sheet=Image.new('RGBA',(48,count*48))
+for i in range(count):
+    ms=i*total/count
+    index=next(j for j,end in enumerate(ends) if ms<end)
+    sheet.paste(frames[index].resize((48,48),Image.Resampling.LANCZOS),(0,i*48))
 sheet.save(BASE/'claude-working.png')

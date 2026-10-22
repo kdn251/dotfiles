@@ -263,13 +263,14 @@ for idle). The Claude logo SVG comes from Simple Icons (CC0):
 https://github.com/simple-icons/simple-icons/blob/develop/icons/claude.svg
 
 Working Codex rows loop the user's `codex-animated.mp4` asset (3 seconds, 90 frames),
-using a 48px transparent frame strip. Working Claude rows loop the existing IconKing logo animation (85 frames at 30 fps). Idle, waiting, and unknown rows keep still logos. The GTK frame clock
+using a 48px transparent frame strip. Working Claude rows loop an existing Claude thinking GIF, preserving its timing at 30 fps. Idle, waiting, and unknown rows keep still logos. The GTK frame clock
 runs only while the popup is visible. Rebuild the strip with
 `python3 ~/.local/share/agent-attention/build-codex-frames.py` (requires FFmpeg/Pillow).
 Source: https://drive.google.com/file/d/1KusszYKkyRO_Cs-zIeihihe2_w19BE67/view
 
-Claude animation source: https://www.iconking.net/free-animation/claude-logo-animation-lottie-json-29752
-Creator: IconKing. The source page labels the asset free for personal and commercial use.
-Original Lottie JSON is retained as `claude-animated.json`; rebuild its transparent
-48px frame strip with `build-claude-frames.py` (rlottie-python and Pillow).
-The animation reveals/fills the logo and returns to an outline. Status dots stay visible.
+Claude thinking animation source (uploaded by adithya1):
+https://tenor.com/view/claude-claude-code-thinking-gif-6554436885102008506
+Original GIF retained as `claude-thinking.gif`; rebuild the transparent frame strip
+with `build-claude-frames.py` (Pillow). It expands and contracts the orange star.
+This is a community-uploaded asset, not a verified official Anthropic download.
+Status dots remain visible.
