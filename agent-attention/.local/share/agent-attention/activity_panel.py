@@ -72,7 +72,8 @@ def panel():
             frames=AgentIcon.frames.get(self.agent,[])
             pixbuf=frames[int(time.monotonic()*30)%len(frames)] if self.working else self.pixbuf
             cr.translate(self.get_allocated_width()/2,self.get_allocated_height()/2)
-            cr.scale(20/pixbuf.get_width(),20/pixbuf.get_height())
+            size=24 if self.agent=='Codex' else 20
+            cr.scale(size/pixbuf.get_width(),size/pixbuf.get_height())
             Gdk.cairo_set_source_pixbuf(cr,pixbuf,-pixbuf.get_width()/2,-pixbuf.get_height()/2)
             cr.paint()
     class App(Gtk.Application):
