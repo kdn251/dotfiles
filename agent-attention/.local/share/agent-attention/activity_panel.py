@@ -87,10 +87,7 @@ def panel():
             .heading { font-size: 12px; color: #aeb8ca; }
             button { background: transparent; border: none; border-radius: 6px; padding: 7px 9px; color: #e5e9f0; box-shadow: none; }
             button:hover { background: rgba(109,143,157,.22); } button:disabled { color: #8c96a7; }
-            .name { font-size: 12px; } .claude { color: #d99a7c; font-size: 22px; }
-            .status { font-size: 17px; font-weight: bold; }
-            .working { color: #a6ef83; } .attention { color: #ffda75; }
-            .unknown { color: #ffba77; } .idle { color: #c1ced6; }
+            .name { font-size: 12px; }
             """)
             Gtk.StyleContext.add_provider_for_screen(Gdk.Screen.get_default(),css,Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION)
             # A transparent input surface dismisses the panel on any outside click.
@@ -150,7 +147,6 @@ def panel():
                 image.set_tooltip_text(row['agent']);line.pack_start(image,False,False,0)
                 name=Gtk.Label(label=row.get('name') or 'Untitled chat',xalign=0);name.get_style_context().add_class('name');name.set_ellipsize(Pango.EllipsizeMode.END);name.set_width_chars(30);name.set_max_width_chars(30)
                 line.pack_start(name,True,True,0)
-                dot=Gtk.Label(label={'working':'●','attention':'!','idle':'○'}.get(row['state'],'?'));dot.get_style_context().add_class('status');dot.get_style_context().add_class(row['state']);line.pack_end(dot,False,False,0)
                 status={'working':'Working','attention':'Needs attention','unknown':'Status unknown','idle':'Idle'}.get(row['state'],'Unknown')
                 tip=f"{row['agent']} · {row.get('model') or 'model not reported'}\n{row['host']} · {status}"
                 if row.get('background'):tip+='\nBackground job · no terminal'

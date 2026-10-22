@@ -257,9 +257,8 @@ the monitor does not celebrate old tasks. To preview the completion pose for
 `python3 ~/.config/waybar/scripts/agent-status.py --preview-complete`.
 
 The compact agent popup sits 4px below Waybar, uses the same slate/teal palette as
-the other status popups, and closes on an outside click or Escape. Rows use bright
-status markers (filled green for working, amber exclamation for attention, hollow
-for idle). The Claude logo SVG comes from Simple Icons (CC0):
+the other status popups, and closes on an outside click or Escape. Rows show animated logos while working and still logos otherwise; hover for the
+exact status. The Claude logo SVG comes from Simple Icons (CC0):
 https://github.com/simple-icons/simple-icons/blob/develop/icons/claude.svg
 
 Working Codex rows loop the user's `codex-animated.mp4` asset (3 seconds, 90 frames),
@@ -273,4 +272,4 @@ https://tenor.com/view/claude-claude-code-thinking-gif-6554436885102008506
 Original GIF retained as `claude-thinking.gif`; rebuild the transparent frame strip
 with `build-claude-frames.py` (Pillow). It expands and contracts the orange star.
 This is a community-uploaded asset, not a verified official Anthropic download.
-Status dots remain visible.
+Status circles are omitted. The idle Claude logo uses the animation’s orange (#d97757).
