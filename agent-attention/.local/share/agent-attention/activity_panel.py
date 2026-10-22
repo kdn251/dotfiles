@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Live agent list and explicit, identity-checked terminal navigation."""
-import argparse,json,math,pathlib,subprocess,sys,time
+import argparse,json,pathlib,subprocess,sys,time
 import attention
 from activity import PATH
 from activity_probe import process_identity
@@ -54,26 +54,25 @@ def panel():
     gi.require_version('Gtk','3.0');gi.require_version('GtkLayerShell','0.1')
     from gi.repository import Gtk,Gdk,GLib,GtkLayerShell,Pango,GdkPixbuf
     class AgentIcon(Gtk.DrawingArea):
+        frames=None
         def __init__(self,agent,working):
             super().__init__()
-            self.agent=agent;self.working=working
+            self.agent=agent;self.working=working and agent=='Codex'
             asset='codex.png' if agent=='Codex' else 'claude.svg'
             self.pixbuf=GdkPixbuf.Pixbuf.new_from_file_at_scale(str(attention.BASE/asset),48,48,True)
+            if self.working and AgentIcon.frames is None:
+                sheet=GdkPixbuf.Pixbuf.new_from_file(str(attention.BASE/'codex-working.png'))
+                AgentIcon.frames=[sheet.new_subpixbuf(0,y,48,48) for y in range(0,sheet.get_height(),48)]
             self.set_size_request(24,24)
             self.connect('draw',self.draw_icon)
-            self.tick=self.add_tick_callback(self.animate) if working else None
+            self.tick=self.add_tick_callback(self.animate) if self.working else None
         def animate(self,*args):
             self.queue_draw();return True
         def draw_icon(self,widget,cr):
-            phase=time.monotonic()*math.tau/4
+            pixbuf=AgentIcon.frames[int(time.monotonic()*30)%len(AgentIcon.frames)] if self.working else self.pixbuf
             cr.translate(self.get_allocated_width()/2,self.get_allocated_height()/2)
-            if self.working:
-                if self.agent=='Claude':cr.rotate(phase)
-                else:
-                    cr.translate(0,math.sin(phase)*1.5)
-                    pulse=1+.08*math.sin(phase);cr.scale(pulse,pulse)
-            cr.scale(20/self.pixbuf.get_width(),20/self.pixbuf.get_height())
-            Gdk.cairo_set_source_pixbuf(cr,self.pixbuf,-self.pixbuf.get_width()/2,-self.pixbuf.get_height()/2)
+            cr.scale(20/pixbuf.get_width(),20/pixbuf.get_height())
+            Gdk.cairo_set_source_pixbuf(cr,pixbuf,-pixbuf.get_width()/2,-pixbuf.get_height()/2)
             cr.paint()
     class App(Gtk.Application):
         def __init__(self):

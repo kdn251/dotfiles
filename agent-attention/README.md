@@ -262,7 +262,9 @@ status markers (filled green for working, amber exclamation for attention, hollo
 for idle). The Claude logo SVG comes from Simple Icons (CC0):
 https://github.com/simple-icons/simple-icons/blob/develop/icons/claude.svg
 
-While a row is working, its Claude logo rotates and its Codex logo gently floats
-and pulses. Idle, waiting, and unknown sessions keep still logos. Animation uses
-the GTK frame clock only while the popup is visible, without polling agents more
-frequently. Icons render at double resolution for sharp HiDPI display.
+Working Codex rows loop the user's `codex-animated.mp4` asset (3 seconds, 90 frames),
+using a 48px transparent frame strip. Claude stays static until an animated asset
+is supplied. Idle, waiting, and unknown rows keep still logos. The GTK frame clock
+runs only while the popup is visible. Rebuild the strip with
+`python3 ~/.local/share/agent-attention/build-codex-frames.py` (requires FFmpeg/Pillow).
+Source: https://drive.google.com/file/d/1KusszYKkyRO_Cs-zIeihihe2_w19BE67/view
