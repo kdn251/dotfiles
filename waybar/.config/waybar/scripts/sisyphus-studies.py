@@ -4,7 +4,7 @@ import json,math,pathlib,sys,time
 ROOT=pathlib.Path(__file__).resolve().parent.parent
 ASSETS=ROOT/'assets/sisyphus-studies'
 N=96
-NAMES={'a':'Two hands · quarter-cycle stagger','b':'Two hands · wider stagger','c':'Two hands · alternating presses'}
+NAMES={'a':'Winning A · curved grip','b':'Two hands · wider stagger','c':'Two hands · alternating presses'}
 
 import importlib.util
 _spec=importlib.util.spec_from_file_location('figures',pathlib.Path(__file__).with_name('sisyphus-figures.py'))
@@ -17,7 +17,8 @@ def build():
     for style in NAMES:
         for i in range(N):
             (ASSETS/f'{style}-{i}.svg').write_text(frame(style,i))
-            asset=f'stride-v8/{style}/frame-{i:03}.png'
+            version='stride-v9' if style=='a' else 'stride-v8'
+            asset=f'{version}/{style}/frame-{i:03}.png'
             css.append(f'#custom-sisyphus_study_{style}.f{i} {{ background-image:url("assets/sisyphus-studies/{asset}"); }}')
     (ROOT/'sisyphus-studies.css').write_text('\n'.join(css)+'\n')
 
