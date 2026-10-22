@@ -4,7 +4,7 @@ import json,math,pathlib,sys,time
 ROOT=pathlib.Path(__file__).resolve().parent.parent
 ASSETS=ROOT/'assets/sisyphus-studies'
 N=96
-NAMES={'a':'Painted anatomy · new draft','b':'Bronze · stronger push','c':'Bronze · flowing linen'}
+NAMES={'a':'Approved painted draft · preserved','b':'Painted rolling loop · new','c':'Bronze · flowing linen'}
 
 import importlib.util
 _spec=importlib.util.spec_from_file_location('figures',pathlib.Path(__file__).with_name('sisyphus-figures.py'))
@@ -17,7 +17,7 @@ def build():
     for style in NAMES:
         for i in range(N):
             (ASSETS/f'{style}-{i}.svg').write_text(frame(style,i))
-            asset=f'painted/frame-{(i//4)%8}.png' if style=='a' else f'{style}-{i}.svg'
+            asset=f'painted/frame-{(i//4)%8}.png' if style=='a' else f'rolling-v2/frame-{i:03}.png' if style=='b' else f'{style}-{i}.svg'
             css.append(f'#custom-sisyphus_study_{style}.f{i} {{ background-image:url("assets/sisyphus-studies/{asset}"); }}')
     (ROOT/'sisyphus-studies.css').write_text('\n'.join(css)+'\n')
 
