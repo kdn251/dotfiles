@@ -102,7 +102,11 @@ Do not overwrite other agent settings with an old backup.
 Verification: automated behavior/restore tests pass. A live temporary interactive
 SSH session emitted a transport probe, and the local service resolved the exact
 Kitty window and PTY among the other SSH connections. This probe does not pause
-or change focus. Real standalone Claude/Codex completions are pending user tests.
+or change focus. A real standalone Claude completion paused the game; its first
+focus attempt was blocked by a windowed-menu detection mismatch. The detector now
+searches a small position/scale range for Resume, with the captured frame covered
+by a regression test. Focus-only verification selected the correct standalone
+Claude terminal. A full completion retest and standalone Codex test remain.
 
 ## Controls and profiles
 

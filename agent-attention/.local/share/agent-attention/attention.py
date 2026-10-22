@@ -104,10 +104,22 @@ def pause_score(im):
     return sum(x*y for x,y in zip(a,b))/denom if denom else 0
 
 def menu_score(im):
-    a = vector(im.crop((99,64,141,82)))
-    b = vector(Image.open(BASE / 'expedition33-resume.png').convert('L'))
-    denom = math.sqrt(sum(x*x for x in a)*sum(x*x for x in b))
-    return sum(x*y for x,y in zip(a,b))/denom if denom else 0
+    # Windowed streaming changes the letterboxing and text scale slightly.
+    # Match Resume only near its known menu position, across a small scale range.
+    reference = Image.open(BASE / 'expedition33-resume.png').convert('L')
+    best = 0
+    for width in (42,46,44,40,48,38,50,36):
+        height = round(width * reference.height / reference.width)
+        b = vector(reference.resize((width,height)))
+        norm = sum(x*x for x in b)
+        for y in range(54,80):
+            for x in range(89,120):
+                a = vector(im.crop((x,y,x+width,y+height)))
+                denom = math.sqrt(sum(x*x for x in a)*norm)
+                score = sum(x*y for x,y in zip(a,b))/denom if denom else 0
+                best = max(best,score)
+                if best > .85: return best
+    return best
 
 def detector_score(detector, im):
     return {'expedition33-pause': pause_score, 'expedition33-menu': menu_score}[detector](im)
@@ -162,6 +174,7 @@ class Router:
         title = f"{e['source']} needs attention"
         body = f"{e.get('name') or e.get('session','')}: {e.get('event','finished')}"
         logging.info('Attention %s %s %s', e['source'],e.get('session'),e.get('event'))
+        logging.info('Attention target: %s',target or 'UNRESOLVED')
         if 'moonlight' not in active.get('class','').lower():
             if not target or target['address'] != active.get('address'): notify(title,body)
             return

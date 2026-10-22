@@ -1,9 +1,22 @@
-import unittest
+import pathlib, unittest
 from unittest.mock import patch
 from PIL import Image
 import attention as a
 
 class AttentionTests(unittest.TestCase):
+    def test_windowed_pause_menu_is_recognized_before_input(self):
+        im=Image.new('L',(720,480))
+        fixture=pathlib.Path(__file__).parent/'testdata/expedition33-windowed-menu.png'
+        im.paste(Image.open(fixture),(0,0))
+        profile={'mode':'auto-expedition33','modes':{'gameplay':{'enabled':True,'key':'Escape','detector':'expedition33-menu'},'cutscene':{'enabled':True,'key':'f','detector':'expedition33-pause'}}}
+        with patch.object(a,'screen',return_value=im),patch.object(a,'run') as run,patch.object(a,'dispatch') as dispatch:
+            ok,detail=a.pause_game(profile,{})
+            self.assertTrue(ok);self.assertEqual(detail,'gameplay already paused')
+            run.assert_not_called();dispatch.assert_not_called()
+
+    def test_blank_screen_is_not_pause_menu(self):
+        self.assertLess(a.menu_score(Image.new('L',(720,480))),.60)
+
     def test_status_transitions(self):
         self.assertEqual(a.reason({'type':'active'}, {'type':'idle'}),'finished')
         self.assertIsNone(a.reason(None,{'type':'idle'}))
