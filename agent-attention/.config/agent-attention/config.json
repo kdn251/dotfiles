@@ -24,5 +24,12 @@
         }
       }
     }
-  }
+  },
+  "herdr_remotes": [
+    {
+      "host": "boole",
+      "remote_socket": "~/.config/herdr/herdr.sock",
+      "enabled": true
+    }
+  ]
 }

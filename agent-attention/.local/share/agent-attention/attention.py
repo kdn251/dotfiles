@@ -48,6 +48,9 @@ def process_target(pid, kitty_id=None):
     return {}
 
 def resolve_target(event, clients):
+    if event.get('remote'):
+        from herdr_attention import resolve
+        return resolve(event['remote'],clients,process_target,config().get('herdr_remotes',[]))
     target = event.get('target') or {}
     # Require both live window address and PID, preventing stale/recycled addresses.
     if any(w['address'] == target.get('address') and w['pid'] == target.get('pid') for w in clients): return target
@@ -57,6 +60,12 @@ def resolve_target(event, clients):
     return None
 
 def focus(target):
+    if target.get('remote'):
+        from herdr_attention import focus_remote
+        before = hypr('activewindow').get('address')
+        focus_remote(target['remote'],config().get('herdr_remotes',[]))
+        if hypr('activewindow').get('address') != before:
+            raise RuntimeError('Desktop focus changed while selecting the remote pane')
     if target.get('kitty_id') and target.get('tty'):
         message = {'cmd':'focus-window','version':[0,40,0], 'no_response':True,
                    'payload':{'match':f"id:{target['kitty_id']}"}}
@@ -159,7 +168,11 @@ class Router:
             notify(title,body+' — '+detail+'; staying in Moonlight'); return
         # User may have switched while we were checking; never steal focus then.
         if hypr('activewindow').get('address') == active['address']:
-            focus(target); logging.info('Focused %s',target['address'])
+            try:
+                focus(target); logging.info('Focused %s%s',target['address'],(' remote '+target['remote']['pane']) if target.get('remote') else '')
+            except Exception as exc:
+                logging.warning('Focus failed: %s',exc)
+                notify(title,body+' — game paused; could not select the agent window');return
         notify(title,body)
 
 def reason(previous, current):
@@ -246,6 +259,9 @@ def main():
     if a.command=='daemon':
         logging.basicConfig(level=logging.INFO,format='%(asctime)s %(levelname)s %(message)s',handlers=[logging.StreamHandler(),logging.handlers.RotatingFileHandler(STATE/'events.log', maxBytes=1000000, backupCount=2)])
         threading.Thread(target=receive,daemon=True).start();threading.Thread(target=codex_watch,daemon=True).start()
+        from herdr_attention import watch
+        for endpoint in config().get('herdr_remotes',[]):
+            if endpoint.get('enabled',True):threading.Thread(target=watch,args=(endpoint,EVENTS),daemon=True).start()
         router=Router()
         while True:
             e=EVENTS.get()

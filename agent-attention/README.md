@@ -28,6 +28,34 @@ It does not cover browser chats or standalone Codex app-server instances.
 Claude Code hooks cover Stop, PermissionRequest, selected Notification events,
 AskUserQuestion, and Elicitation. Start a fresh Claude session after restoring.
 
+## Claude in Herdr over SSH
+
+`herdr_remotes` in the profile config enables an observer for SSH alias `boole`.
+It launches a small transient Python helper through authenticated, non-interactive
+SSH and reads Herdr's public `agent.list` API every two seconds. No remote files,
+hooks, credentials, or open network listeners are installed. The helper exits
+when its SSH connection closes. Existing SSH forwards are disabled for this
+connection. Python 3 and a running, compatible Herdr server are required remotely.
+
+A completion or blocked status must remain stable for two samples before alerting.
+New sessions and reconnects establish a baseline rather than replay old work.
+The observer reports only Claude; the separate Pi popup integration is unchanged.
+Herdr's Claude status is screen-detected, so detection accuracy depends on Herdr.
+
+Routing finds the unique local `herdr --remote boole` process and its Kitty window.
+After pausing, it verifies the remote pane, terminal, and Claude session identities,
+uses `agent.focus` to select that exact remote pane/tab, then focuses the local
+window. Public focus commands can update other clients attached to the same Herdr
+session too. Multiple matching local Herdr clients are ambiguous and result in a
+notification only. Saved-machine UI connections without `--remote` are not covered.
+
+On a new machine, configure SSH access to boole first, or set the endpoint's
+`enabled` to false. Each endpoint has `host`, `remote_socket`, and `enabled`.
+Restart the service after changing remote endpoints. Current verification:
+remote observer connected, exact-pane focus API tested and original tab restored;
+real remote Claude completion + game interruption still requires the user test.
+Local Claude completion + pause + focus was confirmed by the user.
+
 ## Controls and profiles
 
 ```sh
