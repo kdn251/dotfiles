@@ -76,6 +76,12 @@ background persistence after the terminal closes. Herdr, tmux/screen, non-SSH
 shells, and older CLIs are excluded. Existing shells need to reconnect or source
 `~/.local/share/agent-attention-ssh/codex-ssh.bash` once before restarting Codex.
 
+Kevin's persistent Codex defaults on boole are `approval_policy = "never"` and
+`sandbox_mode = "danger-full-access"`. The restore command below explicitly
+recreates these defaults; omit `--codex-full-access` to preserve another machine's
+permission settings. Install Codex with `yay -S openai-codex-bin` on a fresh Arch
+host and verify `type -a codex` in an interactive shell has no npm/fnm shadow copy.
+
 The remote sender is a small Python standard-library script. Claude hooks cover
 completion, permission requests, questions, and selected attention notifications.
 Codex's documented `notify` callback covers `agent-turn-complete` only; standalone
@@ -85,7 +91,7 @@ not trigger the interruption. Only lifecycle metadata is used, never message tex
 Missing or unrecognized session records suppress the callback rather than guess.
 Standalone
 Codex approval prompts are **not** covered by this older CLI integration. No
-agent upgrades or permission-setting changes are made. Fresh agent sessions load
+agent upgrades are made by the sender installer. Fresh agent sessions load
 the callbacks; an existing session may not reload them.
 
 To restore the remote sender after installing the local package:
@@ -96,7 +102,7 @@ scp -o ClearAllForwardings=yes \
   ~/dotfiles/agent-attention/.local/share/agent-attention/{ssh_remote,install_ssh_remote}.py \
   boole:.local/share/agent-attention-ssh/
 ssh -o ClearAllForwardings=yes boole \
-  'python3 ~/.local/share/agent-attention-ssh/install_ssh_remote.py'
+  'python3 ~/.local/share/agent-attention-ssh/install_ssh_remote.py --codex-full-access'
 systemctl --user restart agent-attention
 ```
 
@@ -122,7 +128,9 @@ or change focus. A real standalone Claude completion paused the game; its first
 focus attempt was blocked by a windowed-menu detection mismatch. The detector now
 searches a small position/scale range for Resume, with the captured frame covered
 by a regression test. Focus-only verification selected the correct standalone
-Claude terminal. A full completion retest and standalone Codex test remain.
+Claude terminal. Kevin confirmed the full standalone Claude and Codex flows work
+on 2026-10-22 after the menu, internal-thread filtering, and persistent permission
+fixes. No further live retest is pending for these flows.
 
 ## Controls and profiles
 

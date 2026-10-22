@@ -5,6 +5,22 @@ from ssh_attention import address,command
 from install_ssh_remote import install
 
 class SSHAttentionTests(unittest.TestCase):
+    def test_full_access_restore_is_explicit_and_repeatable(self):
+        import tomllib
+        with tempfile.TemporaryDirectory() as tmp:
+            root=pathlib.Path(tmp);(root/'.codex').mkdir()
+            config=root/'.codex/config.toml'
+            config.write_text('approval_policy = "on-request"\nsandbox_mode = "workspace-write"\nmodel = "existing"\n')
+            install(root)
+            self.assertEqual(tomllib.loads(config.read_text())['approval_policy'],'on-request')
+            install(root,codex_full_access=True);before=config.read_text()
+            data=tomllib.loads(before)
+            self.assertEqual(data['approval_policy'],'never')
+            self.assertEqual(data['sandbox_mode'],'danger-full-access')
+            self.assertEqual(data['model'],'existing')
+            install(root,codex_full_access=True)
+            self.assertEqual(before,config.read_text())
+
     def test_codex_only_notifies_completed_user_turns(self):
         sid='01a1644b-3172-7c92-8c77-f251651f9c74'
         with tempfile.TemporaryDirectory() as tmp:

@@ -1,7 +1,7 @@
 """Install the stdlib-only sender on the SSH host; preserve unrelated agent settings."""
-import datetime,json,pathlib,shutil,sys,tomllib
+import argparse,datetime,json,pathlib,re,shutil,sys,tomllib
 
-def install(home):
+def install(home,codex_full_access=False):
     home=pathlib.Path(home);root=home/'.local/share/agent-attention-ssh';root.mkdir(parents=True,exist_ok=True)
     source=pathlib.Path(__file__).resolve().with_name('ssh_remote.py');destination=root/'ssh_remote.py'
     if source!=destination:shutil.copy2(source,destination)
@@ -16,7 +16,18 @@ def install(home):
     codex=home/'.codex/config.toml';original=codex.read_text() if codex.exists() else '';data=tomllib.loads(original)
     expected=['python3',str(destination),'codex-notify'];existing=data.get('notify')
     if existing is not None and existing!=expected:raise RuntimeError('Existing Codex notify command must be explicitly composed before installation')
-    if existing is None:write(codex,'notify = '+json.dumps(expected)+'\n'+original)
+    updated=original
+    if existing is None:updated='notify = '+json.dumps(expected)+'\n'+updated
+    if codex_full_access:
+        # Explicit restore option for Kevin's chosen boole defaults.
+        if isinstance(data.get('approval_policy'),dict):raise RuntimeError('Merge granular approval policy explicitly before enabling full access')
+        for key,value in [('approval_policy','never'),('sandbox_mode','danger-full-access')]:
+            if key in data:
+                updated,count=re.subn(r'^'+key+r'\s*=.*$',key+' = '+json.dumps(value),updated,count=1,flags=re.M)
+                if not count:raise RuntimeError('Cannot safely update '+key)
+            else:updated=key+' = '+json.dumps(value)+'\n'+updated
+    tomllib.loads(updated)
+    write(codex,updated)
     claude=home/'.claude/settings.json';data=json.loads(claude.read_text()) if claude.exists() else {};hooks=data.setdefault('hooks',{})
     command='python3 "$HOME/.local/share/agent-attention-ssh/ssh_remote.py" claude-hook'
     for event,matcher in [('Stop',None),('PermissionRequest',None),('Notification','permission_prompt|idle_prompt|elicitation_dialog'),('PreToolUse','AskUserQuestion'),('Elicitation',None)]:
@@ -41,4 +52,7 @@ fi
     line='[[ -r "$HOME/.local/share/agent-attention-ssh/codex-ssh.bash" ]] && source "$HOME/.local/share/agent-attention-ssh/codex-ssh.bash"'
     if line not in original:write(bashrc,original.rstrip()+'\n\n# Keep standalone Codex attention events tied to this SSH terminal.\n'+line+'\n')
     print('Standalone SSH attention sender installed; start fresh Claude/Codex sessions to load callbacks.')
-if __name__=='__main__':install(pathlib.Path.home())
+if __name__=='__main__':
+    parser=argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('--codex-full-access',action='store_true',help='Persist full filesystem/network access and no command approval prompts for Codex')
+    args=parser.parse_args();install(pathlib.Path.home(),args.codex_full_access)
