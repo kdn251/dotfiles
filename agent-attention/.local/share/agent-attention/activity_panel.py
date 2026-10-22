@@ -89,6 +89,7 @@ def panel():
             button { background: transparent; border: none; border-radius: 6px; padding: 7px 9px; color: #e5e9f0; box-shadow: none; }
             button:hover { background: rgba(109,143,157,.22); } button:disabled { color: #8c96a7; }
             .name { font-size: 12px; }
+            button.inactive .name { color: #aab5bd; }
             """)
             Gtk.StyleContext.add_provider_for_screen(Gdk.Screen.get_default(),css,Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION)
             # A transparent input surface dismisses the panel on any outside click.
@@ -143,8 +144,10 @@ def panel():
             order={'attention':0,'working':1,'unknown':2,'idle':3}
             for row,available in sorted(shown,key=lambda item:(order.get(item[0]['state'],2),item[0]['host'],item[0].get('name') or '')):
                 button=Gtk.Button();button.set_sensitive(available)
+                if row['state']!='working':button.get_style_context().add_class('inactive')
                 line=Gtk.Box(spacing=9);button.add(line)
                 image=AgentIcon(row['agent'],row['state']=='working') if row['agent'] in ('Codex','Claude') else Gtk.Label(label='◆')
+                if row['state']!='working':image.set_opacity(.6)
                 image.set_tooltip_text(row['agent']);line.pack_start(image,False,False,0)
                 name=Gtk.Label(label=row.get('name') or 'Untitled chat',xalign=0);name.get_style_context().add_class('name');name.set_ellipsize(Pango.EllipsizeMode.END);name.set_width_chars(30);name.set_max_width_chars(30)
                 line.pack_start(name,True,True,0)
