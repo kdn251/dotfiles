@@ -31,5 +31,11 @@
       "remote_socket": "~/.config/herdr/herdr.sock",
       "enabled": true
     }
+  ],
+  "ssh_remotes": [
+    {
+      "host": "boole",
+      "enabled": true
+    }
   ]
 }

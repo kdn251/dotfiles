@@ -38,8 +38,13 @@ def process_target(pid, kitty_id=None):
     for parent in ancestors(pid):
         if not target.get('tty'):
             try:
-                tty = os.readlink(f'/proc/{parent}/fd/1')
-                if re.fullmatch(r'/dev/pts/\d+', tty): target['tty'] = tty
+                # OpenSSH may duplicate its PTY onto a non-standard descriptor.
+                descriptors = list(pathlib.Path(f'/proc/{parent}/fd').iterdir())
+                for descriptor in sorted(descriptors, key=lambda p: int(p.name)):
+                    try: tty = os.readlink(descriptor)
+                    except OSError: continue
+                    if re.fullmatch(r'/dev/pts/\d+', tty):
+                        target['tty'] = tty; break
             except OSError: pass
         for w in clients:
             if w['pid'] == parent:
@@ -48,6 +53,9 @@ def process_target(pid, kitty_id=None):
     return {}
 
 def resolve_target(event, clients):
+    if event.get('ssh_route'):
+        from ssh_attention import resolve
+        return resolve(event['ssh_route'],process_target,config().get('ssh_remotes',[]))
     if event.get('remote'):
         from herdr_attention import resolve
         return resolve(event['remote'],clients,process_target,config().get('herdr_remotes',[]))
@@ -142,6 +150,9 @@ class Router:
     def __init__(self): self.seen = {}; self.last_interrupt = 0
     def handle(self, e):
         c = config()
+        if e.get('probe'):
+            target = resolve_target(e,hypr('clients'))
+            logging.info('SSH route probe: %s',target or 'UNRESOLVED'); return
         if not c.get('enabled'): return
         now = time.monotonic(); identity = (e.get('source'),e.get('session'),e.get('event'))
         if now-self.seen.get(identity,-1000) < c.get('dedupe_seconds',15): return
@@ -262,6 +273,9 @@ def main():
         from herdr_attention import watch
         for endpoint in config().get('herdr_remotes',[]):
             if endpoint.get('enabled',True):threading.Thread(target=watch,args=(endpoint,EVENTS),daemon=True).start()
+        from ssh_attention import watch as ssh_watch
+        for endpoint in config().get('ssh_remotes',[]):
+            if endpoint.get('enabled',True):threading.Thread(target=ssh_watch,args=(endpoint,EVENTS),daemon=True).start()
         router=Router()
         while True:
             e=EVENTS.get()

@@ -56,6 +56,54 @@ completion inside Herdr on boole paused Moonlight, displayed the notification,
 and selected the correct remote Claude tab. Local Claude and local Codex
 completion + pause + focus were also verified.
 
+## Standalone Claude or Codex over plain SSH
+
+`ssh_remotes` enables standalone sessions on SSH alias `boole`. Use an ordinary
+interactive `ssh boole` connection and start a fresh `claude` or `codex` process.
+The local observer matches the remote `SSH_CONNECTION` TCP tuple to the local
+SSH process and Kitty window/tab. It never guesses from window titles. SSH
+ControlMaster multiplexing, tmux/screen, jump hosts/NAT that change the observed
+connection tuple, and other ambiguous routes are not supported for automatic
+focus. Herdr sessions are excluded here and keep their separate integration.
+
+The remote sender is a small Python standard-library script. Claude hooks cover
+completion, permission requests, questions, and selected attention notifications.
+Codex's documented `notify` callback covers `agent-turn-complete` only; standalone
+Codex approval prompts are **not** covered by this older CLI integration. No
+agent upgrades or permission-setting changes are made. Fresh agent sessions load
+the callbacks; an existing session may not reload them.
+
+To restore the remote sender after installing the local package:
+
+```sh
+ssh -o ClearAllForwardings=yes boole 'mkdir -p ~/.local/share/agent-attention-ssh'
+scp -o ClearAllForwardings=yes \
+  ~/dotfiles/agent-attention/.local/share/agent-attention/{ssh_remote,install_ssh_remote}.py \
+  boole:.local/share/agent-attention-ssh/
+ssh -o ClearAllForwardings=yes boole \
+  'python3 ~/.local/share/agent-attention-ssh/install_ssh_remote.py'
+systemctl --user restart agent-attention
+```
+
+The remote installer backs up settings, preserves existing Herdr hooks and other
+Claude preferences, and refuses to overwrite an unrelated Codex notify command.
+No remote service or listening network port is added. Small private event files
+contain only source, reason, session ID, project basename, and SSH routing metadata;
+conversation text and tool arguments are discarded. Files older than a day are
+pruned on subsequent events. The local observer streams new events over an
+independent authenticated SSH connection; reconnects never replay a backlog.
+
+To disable this flow, set its `ssh_remotes` entry's `enabled` to false and restart
+the local service. To remove remote callbacks, remove only handlers containing
+`agent-attention-ssh/ssh_remote.py` from Claude settings and that sender's root
+`notify` entry from Codex config, then remove `~/.local/share/agent-attention-ssh`.
+Do not overwrite other agent settings with an old backup.
+
+Verification: automated behavior/restore tests pass. A live temporary interactive
+SSH session emitted a transport probe, and the local service resolved the exact
+Kitty window and PTY among the other SSH connections. This probe does not pause
+or change focus. Real standalone Claude/Codex completions are pending user tests.
+
 ## Controls and profiles
 
 ```sh
