@@ -56,6 +56,8 @@ def emit(event):
     temporary.replace(final)
 
 def watch():
+    from activity_probe import Probe
+    activity=Probe()
     ROOT.mkdir(parents=True,exist_ok=True,mode=0o700)
     # Start at the live edge: no old completions on startup or SSH reconnect.
     seen={p.name for p in ROOT.glob('*.json')}
@@ -69,7 +71,7 @@ def watch():
                 if time.time()-event['time']<30:print(json.dumps({'event':event}),flush=True)
             except (OSError,ValueError,KeyError):pass
         seen={p.name for p in live}
-        print(json.dumps({'heartbeat':True}),flush=True);time.sleep(1)
+        print(json.dumps({'heartbeat':True,'activity':activity.snapshot()}),flush=True);time.sleep(1)
 
 def main():
     mode=sys.argv[1]

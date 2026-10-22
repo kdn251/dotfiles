@@ -41,6 +41,8 @@ def install(home, start):
         entry = {'hooks':[{'type':'command','command':command,'timeout':5}]}
         if matcher: entry['matcher'] = matcher
         hooks[event] = remaining + [entry]
+    from activity_probe import install_hooks
+    install_hooks(data,'python3 "$HOME/.local/share/agent-attention/activity_probe.py" claude-hook')
     updated = json.dumps(data, indent=2)+'\n'
     if updated != original:
         if original is not None: preserve(settings)

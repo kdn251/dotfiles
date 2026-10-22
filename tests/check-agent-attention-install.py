@@ -11,7 +11,8 @@ with tempfile.TemporaryDirectory(prefix='agent-attention-install-') as tmp:
     data=json.loads(first);assert data['theme']=='dark'
     handlers=[h for g in data['hooks']['Stop'] for h in g['hooks']]
     assert any(h['command']=='echo existing' for h in handlers)
-    assert sum('agent-attention' in h['command'] for h in handlers)==1
+    assert sum('/.local/bin/agent-attention' in h['command'] for h in handlers)==1
+    assert sum('activity_probe.py' in h['command'] for h in handlers)==1
     assert (home/'.local/bin/agent-attention').is_symlink()
     service=(home/'.config/systemd/user/agent-attention.service').read_text()
     assert '%h/.local/bin/agent-attention' in service and '/home/knaught' not in service

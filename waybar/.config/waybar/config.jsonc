@@ -2,7 +2,7 @@
   "margin-top": 5,
   "margin-left": 10,
   "margin-right": 10,
-  "height": 15,
+  "height": 32,
   "modules-left": [
     "hyprland/workspaces"
   ],
@@ -10,6 +10,7 @@
     "clock"
   ],
   "modules-right": [
+    "custom/agent_sisyphus",
     "custom/miniflux_download",
     "custom/twitch_dl",
     // Superseded by custom/twitch_dl, which shows the same state as an
@@ -33,6 +34,15 @@
     "network",
     "battery"
   ],
+  "custom/agent_sisyphus": {
+    "exec": "python3 ~/.config/waybar/scripts/agent-status.py",
+    "return-type": "json",
+    "restart-interval": 2,
+    "exec-on-event": false,
+    "hide-empty-text": true,
+    "format": "{}",
+    "tooltip": true
+  },
   "hyprland/window": {
     "format": "{}",
     "max-length": 35,

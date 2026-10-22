@@ -99,7 +99,7 @@ To restore the remote sender after installing the local package:
 ```sh
 ssh -o ClearAllForwardings=yes boole 'mkdir -p ~/.local/share/agent-attention-ssh'
 scp -o ClearAllForwardings=yes \
-  ~/dotfiles/agent-attention/.local/share/agent-attention/{ssh_remote,install_ssh_remote}.py \
+  ~/dotfiles/agent-attention/.local/share/agent-attention/{ssh_remote,activity_probe,install_ssh_remote}.py \
   boole:.local/share/agent-attention-ssh/
 ssh -o ClearAllForwardings=yes boole \
   'python3 ~/.local/share/agent-attention-ssh/install_ssh_remote.py --codex-full-access'
@@ -197,3 +197,38 @@ To remove: disable the service with `systemctl --user disable --now
 agent-attention`, remove only hook handlers containing `agent-attention` from
 Claude settings, and unstow/remove the package links. Do not blindly restore an
 old Claude settings backup over newer preferences.
+
+## Live Sisyphus activity indicator
+
+Waybar's first right-side module is `custom/agent_sisyphus`. It consumes the
+attention service's private `~/.local/state/agent-attention/activity.json` snapshot.
+Calcifer and the preview selector are not enabled in the bar.
+
+- Pushing with a count: at least one monitored agent has an active turn.
+- Raised hand and `!`: an agent is waiting for attention. If others are still
+  working, the pushing animation remains and the count also gets an `!`.
+- Dim, stationary sprite and `?`: a monitor is stale or a session is unclassified.
+- Hidden: all monitored sessions are idle. The bar keeps a fixed 32px height.
+
+The tooltip identifies hosts and agent types, waiting states, unavailable
+monitors, and last lifecycle activity where available. Active does not prove
+useful progress: long commands or stalled requests can remain active. No CPU
+heuristic or arbitrary timeout pretends that a task completed.
+
+Local Codex uses its read-only status API, supplemented by lifecycle records for
+other local Codex backends. Live Codex backends on boole are discovered by their
+open rollout descriptors; only user-thread lifecycle metadata is exported.
+Closed processes and internal/subagent threads are excluded. Claude uses
+UserPromptSubmit/tool/permission/stop/session-end hooks tied to a live process
+identity, while remote Herdr supplies its pane states. Start fresh standalone
+Claude sessions after installing the hooks. An older open Claude session without
+hook state is unknown until it supplies a lifecycle event.
+
+The existing SSH stream carries the boole snapshot; there is no new network port
+or remote service. Missing heartbeat data expires after eight seconds, and stale
+Waybar snapshots cannot animate as working. This display does not send inputs,
+approve commands, or change the existing pause-and-focus behavior.
+
+Restore the `waybar` Stow package as well as `agent-attention`, run the local
+installer and the remote restore commands above, then restart both user services:
+`systemctl --user restart agent-attention waybar`.

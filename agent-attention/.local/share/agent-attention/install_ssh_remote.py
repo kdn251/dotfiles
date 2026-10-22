@@ -5,6 +5,8 @@ def install(home,codex_full_access=False):
     home=pathlib.Path(home);root=home/'.local/share/agent-attention-ssh';root.mkdir(parents=True,exist_ok=True)
     source=pathlib.Path(__file__).resolve().with_name('ssh_remote.py');destination=root/'ssh_remote.py'
     if source!=destination:shutil.copy2(source,destination)
+    activity_source=source.with_name('activity_probe.py');activity_destination=root/'activity_probe.py'
+    if activity_source!=activity_destination:shutil.copy2(activity_source,activity_destination)
     backup=home/'.local/state/agent-attention-ssh/backups'/datetime.datetime.now().strftime('%Y%m%d-%H%M%S-%f')
     def write(path,text):
         old=path.read_text() if path.exists() else None
@@ -38,6 +40,8 @@ def install(home,codex_full_access=False):
         entry={'hooks':[{'type':'command','command':command,'timeout':5}]}
         if matcher:entry['matcher']=matcher
         hooks[event]=groups+[entry]
+    from activity_probe import install_hooks
+    install_hooks(data,'python3 "$HOME/.local/share/agent-attention-ssh/activity_probe.py" claude-hook')
     write(claude,json.dumps(data,indent=2)+'\n')
     # A shared Codex daemon retains the SSH environment of its first launcher.
     # Keep standalone interactive sessions attached to their own SSH connection.

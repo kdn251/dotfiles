@@ -22,6 +22,9 @@ def watch(endpoint,inbox):
                 while b'\n' in buf:
                     line,buf=buf.split(b'\n',1);item=json.loads(line);last=time.monotonic()
                     if item.get('ready'):logging.info('Standalone SSH observer connected: %s',host)
+                    if 'activity' in item:
+                        from activity import update
+                        update('ssh:'+host,host,item['activity'])
                     event=item.get('event')
                     if not event:continue
                     if event.get('source') not in ('Claude','Codex'):continue

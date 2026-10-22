@@ -229,7 +229,7 @@ def codex_watch():
             ws.send('{"method":"initialized"}')
             previous={}; logging.info('Codex observer connected')
             while True:
-                ids=[]; cursor=None
+                ids=[]; cursor=None; activity_items=[]
                 while True:
                     page=request('thread/loaded/list',{'cursor':cursor,'limit':100})
                     ids.extend(page['data']);cursor=page.get('nextCursor')
@@ -238,9 +238,14 @@ def codex_watch():
                     thread=request('thread/read',{'threadId':sid,'includeTurns':False})['thread']
                     if isinstance(thread.get('source'),dict): continue # background subagents
                     status=thread.get('status',{}); event=reason(previous.get(sid),status)
+                    flags=status.get('activeFlags',[])
+                    activity_state='attention' if any(f in flags for f in ('waitingOnApproval','waitingOnUserInput')) else 'working' if status.get('type')=='active' else 'idle' if status.get('type')=='idle' else 'unknown'
+                    activity_items.append({'id':sid,'agent':'Codex','state':activity_state,'activity':None})
                     previous[sid]=status
                     if event: EVENTS.put({'source':'Codex','session':sid,'name':thread.get('name'),'event':event})
                 previous={k:v for k,v in previous.items() if k in ids}
+                from activity import update
+                update('local-codex','local',activity_items)
                 time.sleep(2)
         except Exception as exc: logging.warning('Codex observer reconnecting: %s',exc); time.sleep(5)
         finally:
@@ -283,6 +288,8 @@ def main():
     if a.command=='daemon':
         logging.basicConfig(level=logging.INFO,format='%(asctime)s %(levelname)s %(message)s',handlers=[logging.StreamHandler(),logging.handlers.RotatingFileHandler(STATE/'events.log', maxBytes=1000000, backupCount=2)])
         threading.Thread(target=receive,daemon=True).start();threading.Thread(target=codex_watch,daemon=True).start()
+        from activity import watch as activity_watch
+        threading.Thread(target=activity_watch,args=(config(),),daemon=True).start()
         from herdr_attention import watch
         for endpoint in config().get('herdr_remotes',[]):
             if endpoint.get('enabled',True):threading.Thread(target=watch,args=(endpoint,EVENTS),daemon=True).start()

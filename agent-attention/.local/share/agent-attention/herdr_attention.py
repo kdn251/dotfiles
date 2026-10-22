@@ -45,6 +45,8 @@ def watch(endpoint,inbox):
                 if len(buf)>4*1024*1024:raise RuntimeError('Oversized Herdr response')
                 while b'\n' in buf:
                     line,buf=buf.split(b'\n',1);snapshot=json.loads(line);last=time.monotonic()
+                    from activity import herdr_snapshot
+                    herdr_snapshot(host,snapshot.get('activity',snapshot['agents']))
                     if first:logging.info('Herdr observer connected: %s (%d Claude panes)',host,len(snapshot['agents']));first=False
                     for agent,reason in tracker.update(snapshot['agents']):
                         identity={'host':host,'pane':agent['pane_id'],'terminal':agent['terminal_id'],'session':agent['agent_session']['value']}

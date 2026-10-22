@@ -4,6 +4,7 @@
    the @fg / @bar_bg / @bar_border / @ws_persistent / @ws_active_fg /
    @ws_active_bg / @tooltip_bg / @tooltip_border / @tooltip_fg vars. */
 /* @import "colors-waybar.css"; */
+@import "agent-mascots.css";
 
 * {
     font-family: "JetBrainsMono Nerd Font", Roboto, Helvetica, Arial, sans-serif;
@@ -314,3 +315,18 @@ tooltip {
 tooltip label {
   color: #ffffff;
 }
+
+/* Shaded mascot sprites get enough room to retain their silhouette. */
+#custom-agent_sisyphus {
+  background-repeat: no-repeat;
+  background-position: left center;
+  background-size: 64px 32px;
+  padding: 0 5px 0 64px;
+  margin: 0 2px;
+  min-height: 32px;
+  font-size: 11px;
+  letter-spacing: 0.5px;
+  color: #a6adbb;
+}
+#custom-agent_sisyphus.attention { color: #ffe7a6; }
+#custom-agent_sisyphus.unknown { opacity: 0.45; }
