@@ -79,11 +79,11 @@ def panel():
             overflow=width-available
             if overflow<=0:return False
             # Pause at each end, smoothly pan, then return to the beginning.
-            travel=overflow/32;phase=(time.monotonic()-self.hover_started)%(2*travel+2)
-            if phase<.7:offset=0
-            elif phase<.7+travel:offset=(phase-.7)*32
-            elif phase<1.7+travel:offset=overflow
-            elif phase<1.7+2*travel:offset=overflow-(phase-1.7-travel)*32
+            travel=overflow/64;phase=(time.monotonic()-self.hover_started)%(2*travel+1.3)
+            if phase<.3:offset=0
+            elif phase<.3+travel:offset=(phase-.3)*64
+            elif phase<1+travel:offset=overflow
+            elif phase<1+2*travel:offset=overflow-(phase-1-travel)*64
             else:offset=0
             cr.save();cr.rectangle(0,0,available,self.get_allocated_height());cr.clip()
             color=self.get_style_context().get_color(self.get_state_flags())
