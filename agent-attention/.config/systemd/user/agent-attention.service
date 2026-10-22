@@ -1,0 +1,15 @@
+[Unit]
+Description=Pause Moonlight and focus agents when they need attention
+After=graphical-session.target
+PartOf=graphical-session.target
+
+[Service]
+Type=simple
+ExecStart=%h/.local/bin/agent-attention daemon
+Restart=on-failure
+RestartSec=3
+Environment=PATH=/usr/local/bin:/usr/bin:/bin
+UMask=0077
+
+[Install]
+WantedBy=graphical-session.target

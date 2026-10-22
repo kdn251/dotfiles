@@ -1,0 +1,28 @@
+{
+  "enabled": true,
+  "active_game": "expedition-33",
+  "dedupe_seconds": 15,
+  "cooldown_seconds": 15,
+  "games": {
+    "expedition-33": {
+      "name": "Clair Obscur: Expedition 33",
+      "mode": "auto-expedition33",
+      "modes": {
+        "cutscene": {
+          "key": "f",
+          "enabled": true,
+          "detector": "expedition33-pause",
+          "settle_ms": 700
+        },
+        "gameplay": {
+          "key": "Escape",
+          "hold_ms": 150,
+          "enabled": true,
+          "detector": "expedition33-menu",
+          "settle_ms": 700,
+          "note": "Verified in battle and exploration, 2026-10-22. Holds Escape for 150 ms via wtype; Resume menu detector confirmed in both modes."
+        }
+      }
+    }
+  }
+}

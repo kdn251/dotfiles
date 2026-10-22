@@ -34,6 +34,14 @@ Moonlight is included in `pacman-packages.txt`. Each new client still needs its
 own Tailscale login, SSH authorization, and Apollo pairing; private pairing keys
 are never stored in the repository. The guide also records the Apollo shutdown tile.
 
+#### Agent attention while gaming
+
+The [Agent Attention package](agent-attention/README.md) pauses Moonlight games,
+shows agent notifications, and focuses the relevant terminal. It includes the
+verified Expedition 33 cutscene, battle, and exploration profiles, plus a restore
+script that installs the service and merges Claude Code hooks. See its guide for
+new-machine display calibration and supported agent interfaces.
+
 #### File manager columns
 
 To restore Name, Size, Type, and Date Modified in list view, close Thunar
