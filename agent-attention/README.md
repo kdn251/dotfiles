@@ -208,7 +208,10 @@ Calcifer and the preview selector are not enabled in the bar.
 - Raised hand and `!`: an agent is waiting for attention. If others are still
   working, the pushing animation remains and the count also gets an `!`.
 - Dim, stationary sprite and `?`: a monitor is stale or a session is unclassified.
-- Hidden: all monitored sessions are idle. The bar keeps a fixed 32px height.
+- Green check and raised hand: a verified completion, shown for six seconds.
+  If other agents are working, the count gets a brief check instead.
+- Dim resting sprite: all monitored sessions are idle; it remains clickable.
+  The bar keeps a fixed 32px height.
 
 The tooltip identifies hosts and agent types, waiting states, unavailable
 monitors, and last lifecycle activity where available. Active does not prove
@@ -232,3 +235,23 @@ approve commands, or change the existing pause-and-focus behavior.
 Restore the `waybar` Stow package as well as `agent-attention`, run the local
 installer and the remote restore commands above, then restart both user services:
 `systemctl --user restart agent-attention waybar`.
+
+Click Sisyphus for a compact chat list: harness icon, task/chat name, and a small
+state dot. Click a row to focus that exact session where routing is available.
+Hover for Codex/Claude, reported model, host, and background-job details. Unknown
+models are explicitly labeled, never inferred from a preferred/default model.
+Idle sessions with no matching tab are omitted; active background jobs remain
+visible with disabled navigation. Close with Escape, the close button, or another
+click on Sisyphus. The popup uses Python GObject, GTK 3 and GtkLayerShell.
+
+Navigation re-reads the live snapshot and revalidates process start times, SSH
+connections, and Herdr pane/session IDs at click time. If Moonlight is active,
+it confirms the configured pause before focusing the selected terminal. Missing
+or ambiguous tabs fail visibly instead of selecting another conversation.
+
+Quiet long-running work is not flagged amber. Only missing/unknown monitoring
+does that; an explicit waiting-for-input state has its separate attention marker.
+Completion uses lifecycle markers with a startup baseline, so opening/restarting
+the monitor does not celebrate old tasks. To preview the completion pose for
+15 seconds without changing any real status, run:
+`python3 ~/.config/waybar/scripts/agent-status.py --preview-complete`.

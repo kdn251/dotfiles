@@ -1,8 +1,24 @@
 import json,pathlib,tempfile,unittest
-from activity import summarize
+from activity import summarize,Completions
 from activity_probe import Probe,claude_state,install_hooks
 
 class ActivityTests(unittest.TestCase):
+    def test_completion_baseline_race_and_expiry(self):
+        tracker=Completions()
+        row={'host':'local','agent':'Codex','id':'a','name':'Task','state':'working','completed':10}
+        def snap(now):return tracker.apply({'state':row['state'],'agents':[dict(row)]},now)
+        self.assertNotIn('completion',snap(100))
+        row['completed']=101
+        self.assertNotIn('completion',snap(101))
+        row['state']='idle'
+        self.assertEqual(snap(102)['state'],'complete')
+        self.assertIn('completion',snap(107))
+        self.assertNotIn('completion',snap(109))
+
+    def test_long_running_work_is_not_unknown(self):
+        sources={'local':{'host':'local','updated':10000,'items':[{'id':'a','agent':'Codex','state':'working','activity':1}]}}
+        self.assertEqual(summarize(sources,10001)['state'],'working')
+
     def test_aggregate_hosts_waiting_and_stale_monitors(self):
         sources={'local':{'host':'local','updated':100,'items':[{'id':'a','agent':'Codex','state':'working'}]},
                  'ssh:boole':{'host':'boole','updated':100,'items':[{'id':'b','agent':'Claude','state':'attention'}]}}

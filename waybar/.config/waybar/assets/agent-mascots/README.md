@@ -2,7 +2,8 @@
 
 Sisyphus is the live agent-status indicator at the start of Waybar's right group.
 It pushes while a monitored agent is working, signals attention with a raised
-hand, freezes and dims for unknown status, and hides when all sessions are idle.
+hand, freezes and dims for unknown status, and rests when all sessions are idle.
+Completion briefly raises a green check. Click the sprite for the compact chat list.
 Hover for counts, hosts, and activity age. The number beside the sprite is the
 working count; an exclamation mark indicates waiting agents.
 
@@ -11,7 +12,7 @@ The activity service implementation and restore instructions are documented in
 Calcifer or preview toggles. Those source assets remain available for future use.
 
 The shaded SVG sprites run at 12 fps and use 32 logical pixels of height. Rebuild
-all 96 frames and CSS with:
+all 120 frames and CSS with:
 
 ```sh
 python3 ~/.config/waybar/scripts/build-agent-mascots.py

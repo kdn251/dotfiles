@@ -35,6 +35,8 @@
     "battery"
   ],
   "custom/agent_sisyphus": {
+    "on-click": "python3 ~/.local/share/agent-attention/activity_panel.py",
+    "cursor": true,
     "exec": "python3 ~/.config/waybar/scripts/agent-status.py",
     "return-type": "json",
     "restart-interval": 2,

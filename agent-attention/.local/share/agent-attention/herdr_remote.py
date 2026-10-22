@@ -10,7 +10,7 @@ def request(path, method, params):
         return reply['result']
 
 def matches(agent, expected):
-    return (agent.get('agent')=='claude' and agent.get('pane_id')==expected['pane']
+    return (agent.get('agent')==expected.get('agent','claude') and agent.get('pane_id')==expected['pane']
             and agent.get('terminal_id')==expected['terminal']
             and agent.get('agent_session',{}).get('value')==expected['session'])
 
@@ -28,7 +28,13 @@ def main(path, mode, expected=None):
         for a in agents:
             if a.get('agent')!='claude':continue
             clean.append({k:a.get(k) for k in ['agent','agent_status','agent_session','pane_id','terminal_id','tab_id','workspace_id','completion_seq','terminal_title_stripped','cwd']})
-        activity=[{k:a.get(k) for k in ('agent','agent_status','agent_session','pane_id','terminal_title_stripped','cwd')} for a in agents]
+        activity=[{k:a.get(k) for k in ('agent','agent_status','agent_session','pane_id','terminal_id','terminal_title_stripped','cwd','completion_seq')} for a in agents]
+        sys.path.insert(0,os.path.expanduser('~/.local/share/agent-attention-ssh'))
+        try:
+            from activity_probe import claude_model
+            for a in activity:
+                if a.get('agent')=='claude':a['model']=claude_model((a.get('agent_session') or {}).get('value'))
+        except ImportError:pass
         print(json.dumps({'agents':clean,'activity':activity}),flush=True);time.sleep(2)
 
 if __name__=='__main__':main(sys.argv[1],sys.argv[2],json.loads(sys.argv[3]) if len(sys.argv)>3 else None)

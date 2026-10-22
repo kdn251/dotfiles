@@ -330,3 +330,6 @@ tooltip label {
 }
 #custom-agent_sisyphus.attention { color: #ffe7a6; }
 #custom-agent_sisyphus.unknown { opacity: 0.45; }
+#custom-agent_sisyphus.uncertain { color: #f0b976; }
+#custom-agent_sisyphus.resting { opacity: 0.45; }
+#custom-agent_sisyphus.complete { color: #a6e3a1; }
