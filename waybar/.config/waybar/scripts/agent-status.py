@@ -16,7 +16,9 @@ def render(data,now):
     for a in data.get('agents',[]):
         if a['state']=='idle':continue
         age='' if not a.get('activity') else f" · last activity {max(0,int(now-a['activity']))}s ago"
-        lines.append(html.escape(f"{a['host']} · {a['agent']} · {a['state']}{age}"))
+        name=a.get('name') or a.get('id','')[:8]
+        background=' (background)' if a.get('background') else ''
+        lines.append(html.escape(f"{a['host']} · {a['agent']} · {name}{background}\n  {a['state']}{age}"))
     if data.get('unavailable'):lines.append('Unavailable monitors: '+html.escape(', '.join(data['unavailable'])))
     lines.append('Working reflects an active turn, not a guarantee of progress.')
     return {'text':text,'class':classes,'tooltip':'\n'.join(lines)}

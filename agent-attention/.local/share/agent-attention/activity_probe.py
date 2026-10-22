@@ -73,7 +73,7 @@ class Probe:
                 if kind=='session_meta':
                     if isinstance(data.get('source'),dict) or data.get('thread_source','user')!='user':
                         cache['excluded']=True;return None
-                    cache['item']={'id':data.get('id'),'agent':'Codex','state':'idle','activity':stamp(record.get('timestamp'))}
+                    cache['item']={'id':data.get('id'),'agent':'Codex','name':pathlib.Path(data.get('cwd') or '').name,'state':'idle','activity':stamp(record.get('timestamp'))}
                 item=cache['item']
                 if not item:continue
                 if kind=='event_msg':
@@ -114,7 +114,11 @@ class Probe:
             try:
                 item=json.loads(path.read_text());pid=item['pid']
                 if claudes.get(pid)!=item['start']:continue
-                covered.add(pid);items.append({k:item[k] for k in ('id','agent','state','activity')})
+                row={k:item[k] for k in ('id','agent','state','activity')}
+                proc=pathlib.Path('/proc')/str(pid)
+                row['name']=pathlib.Path(os.readlink(proc/'cwd')).name
+                row['background']=os.readlink(proc/'fd/0')=='/dev/null'
+                covered.add(pid);items.append(row)
             except (OSError,ValueError,KeyError):continue
         for pid in claudes.keys()-covered:
             items.append({'id':f'pid:{pid}','agent':'Claude','state':'unknown','activity':None})

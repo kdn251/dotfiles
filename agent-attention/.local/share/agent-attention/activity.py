@@ -33,7 +33,7 @@ def herdr_snapshot(host,agents):
     items=[]
     for a in agents:
         state={'busy':'working','running':'working','working':'working','active':'working','blocked':'attention','idle':'idle','done':'idle'}.get(a.get('agent_status'),'unknown')
-        items.append({'id':(a.get('agent_session') or {}).get('value') or a['pane_id'],'agent':str(a.get('agent','Agent')).capitalize(),'state':state,'activity':None})
+        items.append({'id':(a.get('agent_session') or {}).get('value') or a['pane_id'],'agent':str(a.get('agent','Agent')).capitalize(),'name':a.get('terminal_title_stripped') or pathlib.Path(a.get('cwd') or '').name,'state':state,'activity':None})
     update('herdr:'+host,host,items)
 
 def watch(config):

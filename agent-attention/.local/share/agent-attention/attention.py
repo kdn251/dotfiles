@@ -240,7 +240,7 @@ def codex_watch():
                     status=thread.get('status',{}); event=reason(previous.get(sid),status)
                     flags=status.get('activeFlags',[])
                     activity_state='attention' if any(f in flags for f in ('waitingOnApproval','waitingOnUserInput')) else 'working' if status.get('type')=='active' else 'idle' if status.get('type')=='idle' else 'unknown'
-                    activity_items.append({'id':sid,'agent':'Codex','state':activity_state,'activity':None})
+                    activity_items.append({'id':sid,'agent':'Codex','name':thread.get('name') or pathlib.Path(thread.get('cwd') or '').name,'state':activity_state,'activity':None})
                     previous[sid]=status
                     if event: EVENTS.put({'source':'Codex','session':sid,'name':thread.get('name'),'event':event})
                 previous={k:v for k,v in previous.items() if k in ids}

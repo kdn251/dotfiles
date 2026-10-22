@@ -28,7 +28,7 @@ def main(path, mode, expected=None):
         for a in agents:
             if a.get('agent')!='claude':continue
             clean.append({k:a.get(k) for k in ['agent','agent_status','agent_session','pane_id','terminal_id','tab_id','workspace_id','completion_seq','terminal_title_stripped','cwd']})
-        activity=[{k:a.get(k) for k in ('agent','agent_status','agent_session','pane_id')} for a in agents]
+        activity=[{k:a.get(k) for k in ('agent','agent_status','agent_session','pane_id','terminal_title_stripped','cwd')} for a in agents]
         print(json.dumps({'agents':clean,'activity':activity}),flush=True);time.sleep(2)
 
 if __name__=='__main__':main(sys.argv[1],sys.argv[2],json.loads(sys.argv[3]) if len(sys.argv)>3 else None)
