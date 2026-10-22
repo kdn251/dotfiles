@@ -10,7 +10,7 @@ def render(data,now):
     state=data.get('state','unknown')
     if state=='idle':return {'text':'·','class':['resting','working','f0'],'tooltip':'All monitored agents are idle. Click to view sessions.'}
     working=data.get('working',0);waiting=data.get('waiting',0)
-    text=str(working)+(' !' if waiting else ' ✓' if data.get('completion') else '') if state=='working' else '!' if state=='attention' else '✓' if state=='complete' else '?'
+    text=str(working)+(' !' if waiting else ' ·' if data.get('completion') else '') if state=='working' else '!' if state=='attention' else '·' if state=='complete' else '?'
     classes=[state,'f'+str(int(now*12)%24 if state in ('working','attention','complete') else 0)]
     if data.get('unavailable') or data.get('unknown'):classes.append('uncertain');text+=' ?' if text!='?' else ''
     if state=='unknown':classes.append('working')
@@ -36,7 +36,7 @@ def main():
             result=render(data,time.time())
             try:
                 if json.loads(PREVIEW.read_text())['until']>time.time():
-                    result={'text':'✓','class':['complete','f'+str(int(time.time()*12)%24)],'tooltip':'Completion animation preview (15 seconds). Real monitoring continues.'}
+                    result={'text':'·','class':['complete','f'+str(int(time.time()*12)%24)],'tooltip':'Completion animation preview (15 seconds). Real monitoring continues.'}
             except (OSError,ValueError,KeyError):pass
             print(json.dumps(result),flush=True)
             time.sleep(1/12)

@@ -208,8 +208,8 @@ Calcifer and the preview selector are not enabled in the bar.
 - Raised hand and `!`: an agent is waiting for attention. If others are still
   working, the pushing animation remains and the count also gets an `!`.
 - Dim, stationary sprite and `?`: a monitor is stale or a session is unclassified.
-- Green check and raised hand: a verified completion, shown for six seconds.
-  If other agents are working, the count gets a brief check instead.
+- Seated Sisyphus with a green check on the boulder: a verified completion, shown for six seconds.
+  If other agents are working, the count gets a brief dot instead.
 - Dim resting sprite: all monitored sessions are idle; it remains clickable.
   The bar keeps a fixed 32px height.
 

@@ -3,7 +3,7 @@
 Sisyphus is the live agent-status indicator at the start of Waybar's right group.
 It pushes while a monitored agent is working, signals attention with a raised
 hand, freezes and dims for unknown status, and rests when all sessions are idle.
-Completion briefly raises a green check. Click the sprite for the compact chat list.
+On completion, Sisyphus sits beside the parked boulder with a green check on its face. Click the sprite for the compact chat list.
 Hover for counts, hosts, and activity age. The number beside the sprite is the
 working count; an exclamation mark indicates waiting agents.
 
