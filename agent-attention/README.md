@@ -261,3 +261,8 @@ the other status popups, and closes on an outside click or Escape. Rows use brig
 status markers (filled green for working, amber exclamation for attention, hollow
 for idle). The Claude logo SVG comes from Simple Icons (CC0):
 https://github.com/simple-icons/simple-icons/blob/develop/icons/claude.svg
+
+While a row is working, its Claude logo rotates and its Codex logo gently floats
+and pulses. Idle, waiting, and unknown sessions keep still logos. Animation uses
+the GTK frame clock only while the popup is visible, without polling agents more
+frequently. Icons render at double resolution for sharp HiDPI display.

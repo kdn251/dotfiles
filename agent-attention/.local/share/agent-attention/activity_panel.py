@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Live agent list and explicit, identity-checked terminal navigation."""
-import argparse,json,pathlib,subprocess,sys,time
+import argparse,json,math,pathlib,subprocess,sys,time
 import attention
 from activity import PATH
 from activity_probe import process_identity
@@ -53,6 +53,28 @@ def panel():
     import gi
     gi.require_version('Gtk','3.0');gi.require_version('GtkLayerShell','0.1')
     from gi.repository import Gtk,Gdk,GLib,GtkLayerShell,Pango,GdkPixbuf
+    class AgentIcon(Gtk.DrawingArea):
+        def __init__(self,agent,working):
+            super().__init__()
+            self.agent=agent;self.working=working
+            asset='codex.png' if agent=='Codex' else 'claude.svg'
+            self.pixbuf=GdkPixbuf.Pixbuf.new_from_file_at_scale(str(attention.BASE/asset),48,48,True)
+            self.set_size_request(24,24)
+            self.connect('draw',self.draw_icon)
+            self.tick=self.add_tick_callback(self.animate) if working else None
+        def animate(self,*args):
+            self.queue_draw();return True
+        def draw_icon(self,widget,cr):
+            phase=time.monotonic()*math.tau/4
+            cr.translate(self.get_allocated_width()/2,self.get_allocated_height()/2)
+            if self.working:
+                if self.agent=='Claude':cr.rotate(phase)
+                else:
+                    cr.translate(0,math.sin(phase)*1.5)
+                    pulse=1+.08*math.sin(phase);cr.scale(pulse,pulse)
+            cr.scale(20/self.pixbuf.get_width(),20/self.pixbuf.get_height())
+            Gdk.cairo_set_source_pixbuf(cr,self.pixbuf,-self.pixbuf.get_width()/2,-self.pixbuf.get_height()/2)
+            cr.paint()
     class App(Gtk.Application):
         def __init__(self):
             super().__init__(application_id='local.agentattention.Panel')
@@ -60,7 +82,7 @@ def panel():
         def do_activate(self):
             if self.window:self.window.destroy();return
             css=Gtk.CssProvider();css.load_from_data(b"""
-            window { background: rgba(48,61,72,.98); color: #e6edf2; border: 1px solid #819fa8; border-radius: 5px; }
+            window { background: rgba(48,61,72,0.98); background-image: none; opacity: 1; color: #e6edf2; border: 1px solid #819fa8; border-radius: 5px; }
             window.backdrop { background: transparent; border: none; box-shadow: none; }
             .heading { font-size: 12px; color: #aeb8ca; }
             button { background: transparent; border: none; border-radius: 6px; padding: 7px 9px; color: #e5e9f0; box-shadow: none; }
@@ -86,6 +108,7 @@ def panel():
             outside.connect('button-press-event',lambda *args:self.window.destroy() if self.window else None)
             self.backdrop.add(outside);self.backdrop.show_all()
             self.window=Gtk.ApplicationWindow(application=self);self.window.set_title('Agent activity')
+            self.window.set_visual(self.window.get_screen().get_rgba_visual())
             self.window.set_default_size(350,-1);self.window.set_resizable(False)
             GtkLayerShell.init_for_window(self.window);GtkLayerShell.set_namespace(self.window,'agent-activity-panel')
             GtkLayerShell.set_layer(self.window,GtkLayerShell.Layer.OVERLAY)
@@ -123,11 +146,7 @@ def panel():
             for row,available in sorted(shown,key=lambda item:(order.get(item[0]['state'],2),item[0]['host'],item[0].get('name') or '')):
                 button=Gtk.Button();button.set_sensitive(available)
                 line=Gtk.Box(spacing=9);button.add(line)
-                if row['agent']=='Codex':
-                    image=Gtk.Image.new_from_pixbuf(GdkPixbuf.Pixbuf.new_from_file_at_scale(str(attention.BASE/'codex.png'),20,20,True))
-                elif row['agent']=='Claude':
-                    image=Gtk.Image.new_from_pixbuf(GdkPixbuf.Pixbuf.new_from_file_at_scale(str(attention.BASE/'claude.svg'),20,20,True))
-                else:image=Gtk.Label(label='◆')
+                image=AgentIcon(row['agent'],row['state']=='working') if row['agent'] in ('Codex','Claude') else Gtk.Label(label='◆')
                 image.set_tooltip_text(row['agent']);line.pack_start(image,False,False,0)
                 name=Gtk.Label(label=row.get('name') or 'Untitled chat',xalign=0);name.get_style_context().add_class('name');name.set_ellipsize(Pango.EllipsizeMode.END);name.set_width_chars(30);name.set_max_width_chars(30)
                 line.pack_start(name,True,True,0)
