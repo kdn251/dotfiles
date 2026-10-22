@@ -85,10 +85,10 @@ def panel():
             css=Gtk.CssProvider();css.load_from_data(b"""
             window { background: rgba(48,61,72,0.98); background-image: none; opacity: 1; color: #e6edf2; border: 1px solid #819fa8; border-radius: 5px; }
             window.backdrop { background: transparent; border: none; box-shadow: none; }
-            .heading { font-size: 12px; color: #aeb8ca; }
-            button { background: transparent; border: none; border-radius: 6px; padding: 7px 9px; color: #e5e9f0; box-shadow: none; }
+            label { font-family: monospace; font-size: 10pt; font-weight: normal; text-shadow: none; }
+            button { background: transparent; border: none; border-radius: 6px; padding: 7px 9px; color: #e6edf2; box-shadow: none; text-shadow: none; }
             button:hover { background: rgba(109,143,157,.22); } button:disabled { color: #8c96a7; }
-            .name { font-size: 12px; }
+            .name { font-family: monospace; font-size: 10pt; font-weight: normal; text-shadow: none; }
             button.inactive .name { color: #aab5bd; }
             """)
             Gtk.StyleContext.add_provider_for_screen(Gdk.Screen.get_default(),css,Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION)
