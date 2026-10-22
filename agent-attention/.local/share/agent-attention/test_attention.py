@@ -4,6 +4,12 @@ from PIL import Image
 import attention as a
 
 class AttentionTests(unittest.TestCase):
+    def test_attention_is_silent_outside_moonlight_gameplay(self):
+        for window in ({'class':'kitty','title':'terminal'}, {'class':'Moonlight','title':'Moonlight'}):
+            with self.subTest(window=window), patch.object(a,'config',return_value={'enabled':True}), patch.object(a,'hypr',return_value=window), patch.object(a,'notify') as notify, patch.object(a,'pause_game') as pause, patch.object(a,'focus') as focus, patch.object(a,'resolve_target') as resolve:
+                a.Router().handle({'source':'Codex','session':'test','event':'finished'})
+                notify.assert_not_called();pause.assert_not_called();focus.assert_not_called();resolve.assert_not_called()
+
     def test_windowed_pause_menu_is_recognized_before_input(self):
         im=Image.new('L',(720,480))
         fixture=pathlib.Path(__file__).parent/'testdata/expedition33-windowed-menu.png'

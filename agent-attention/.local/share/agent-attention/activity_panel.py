@@ -51,8 +51,45 @@ def age(timestamp):
 
 def panel():
     import gi
-    gi.require_version('Gtk','3.0');gi.require_version('GtkLayerShell','0.1')
-    from gi.repository import Gtk,Gdk,GLib,GtkLayerShell,Pango,GdkPixbuf
+    gi.require_version('PangoCairo','1.0');gi.require_version('Gtk','3.0');gi.require_version('GtkLayerShell','0.1')
+    from gi.repository import Gtk,Gdk,GLib,GtkLayerShell,Pango,GdkPixbuf,PangoCairo
+    class ScrollingTitle(Gtk.Label):
+        def __init__(self,title):
+            super().__init__(label=title,xalign=0)
+            self.get_style_context().add_class('name')
+            self.set_ellipsize(Pango.EllipsizeMode.END);self.set_max_width_chars(30)
+            self.hover_started=None;self.tick=None
+            self.connect('draw',self.draw_title)
+        def enter(self,*args):
+            if self.hover_started is None:
+                self.hover_started=time.monotonic()
+                self.tick=self.add_tick_callback(self.animate)
+            return False
+        def leave(self,*args):
+            self.hover_started=None
+            if self.tick is not None:self.remove_tick_callback(self.tick);self.tick=None
+            self.queue_draw();return False
+        def animate(self,*args):
+            self.queue_draw();return True
+        def draw_title(self,widget,cr):
+            if self.hover_started is None:return False
+            layout=self.get_layout().copy()
+            layout.set_width(-1);layout.set_ellipsize(Pango.EllipsizeMode.NONE)
+            width,height=layout.get_pixel_size();available=self.get_allocated_width()
+            overflow=width-available
+            if overflow<=0:return False
+            # Pause at each end, smoothly pan, then return to the beginning.
+            travel=overflow/32;phase=(time.monotonic()-self.hover_started)%(2*travel+2)
+            if phase<.7:offset=0
+            elif phase<.7+travel:offset=(phase-.7)*32
+            elif phase<1.7+travel:offset=overflow
+            elif phase<1.7+2*travel:offset=overflow-(phase-1.7-travel)*32
+            else:offset=0
+            cr.save();cr.rectangle(0,0,available,self.get_allocated_height());cr.clip()
+            color=self.get_style_context().get_color(self.get_state_flags())
+            cr.set_source_rgba(color.red,color.green,color.blue,color.alpha)
+            cr.move_to(-offset,(self.get_allocated_height()-height)/2)
+            PangoCairo.show_layout(cr,layout);cr.restore();return True
     class AgentIcon(Gtk.DrawingArea):
         frames={}
         def __init__(self,agent,working):
@@ -149,13 +186,15 @@ def panel():
                 image=AgentIcon(row['agent'],row['state']=='working') if row['agent'] in ('Codex','Claude') else Gtk.Label(label='◆')
                 if row['state']!='working':image.set_opacity(.6)
                 image.set_tooltip_text(row['agent']);line.pack_start(image,False,False,0)
-                name=Gtk.Label(label=row.get('name') or 'Untitled chat',xalign=0);name.get_style_context().add_class('name');name.set_ellipsize(Pango.EllipsizeMode.END);name.set_max_width_chars(30)
+                name=ScrollingTitle(row.get('name') or 'Untitled chat')
+                button.add_events(Gdk.EventMask.ENTER_NOTIFY_MASK|Gdk.EventMask.LEAVE_NOTIFY_MASK)
+                button.connect('enter-notify-event',name.enter);button.connect('leave-notify-event',name.leave)
                 line.pack_start(name,True,True,0)
                 status={'working':'Working','attention':'Needs attention','unknown':'Status unknown','idle':'Idle'}.get(row['state'],'Unknown')
                 tip=f"{row['agent']} · {row.get('model') or 'model not reported'}\n{row['host']} · {status}"
                 if row.get('background'):tip+='\nBackground job · no terminal'
                 elif not available:tip+='\nMatching tab unavailable'
-                button.set_tooltip_text(tip);button.connect('clicked',self.select,row);self.rows.pack_start(button,False,False,0)
+                image.set_tooltip_text(tip);button.connect('clicked',self.select,row);self.rows.pack_start(button,False,False,0)
             if missing:self.rows.pack_start(Gtk.Label(label='Status unavailable: '+', '.join(missing)),False,False,4)
             if not shown:self.rows.pack_start(Gtk.Label(label='No active or visible agent sessions'),False,False,8)
             self.rows.show_all();return True

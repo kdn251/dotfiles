@@ -273,3 +273,8 @@ Original GIF retained as `claude-thinking.gif`; rebuild the transparent frame st
 with `build-claude-frames.py` (Pillow). It expands and contracts the orange star.
 This is a community-uploaded asset, not a verified official Anthropic download.
 Status circles are omitted. The idle Claude logo uses the animation’s orange (#d97757).
+
+Agent attention notifications, pausing, and automatic focus occur only while a
+Moonlight stream is focused. Other desktop apps and the Moonlight launcher stay
+silent; Herder audio and Waybar monitoring are unchanged. Long chat titles scroll
+on row hover and reset on pointer exit; hover the logo for session details.

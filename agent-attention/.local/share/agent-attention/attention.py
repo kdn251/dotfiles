@@ -170,15 +170,15 @@ class Router:
         if now-self.seen.get(identity,-1000) < c.get('dedupe_seconds',15): return
         self.seen[identity] = now
         if len(self.seen)>1000: self.seen = {k:v for k,v in self.seen.items() if now-v<300}
-        active = hypr('activewindow'); target = resolve_target(e,hypr('clients'))
+        active = hypr('activewindow')
+        if 'moonlight' not in active.get('class','').lower() or active.get('title') == 'Moonlight':
+            logging.info('Attention suppressed outside Moonlight gameplay: %s',e.get('source')); return
+        target = resolve_target(e,hypr('clients'))
         title = f"{e['source']} needs attention"
         body = f"{e.get('name') or e.get('session','')}: {e.get('event','finished')}"
         logging.info('Attention %s %s %s', e['source'],e.get('session'),e.get('event'))
         logging.info('Attention target: %s',target or 'UNRESOLVED')
-        if 'moonlight' not in active.get('class','').lower():
-            if not target or target['address'] != active.get('address'): notify(title,body)
-            return
-        if active.get('title') == 'Moonlight' or not target:
+        if not target:
             notify(title,body+' — automatic switching unavailable for this session'); return
         if now-self.last_interrupt < c.get('cooldown_seconds',15):
             notify(title,body+' — another alert just interrupted the game'); return
