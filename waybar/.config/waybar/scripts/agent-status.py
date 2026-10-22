@@ -3,8 +3,9 @@
 import html,json,pathlib,time,sys
 PATH=pathlib.Path.home()/'.local/state/agent-attention/activity.json'
 PREVIEW=PATH.with_name('completion-preview.json')
+CLASSIC='--classic' in sys.argv
 
-def render(data,now):
+def render_status(data,now):
     if not isinstance(data,dict) or now-data.get('updated',0)>8:
         return {'text':'?','class':['unknown','working','f0'],'tooltip':'Agent monitor unavailable; activity is unknown.'}
     state=data.get('state','unknown')
@@ -26,6 +27,15 @@ def render(data,now):
     lines.append('Working reflects an active turn, not a guarantee of progress.')
     return {'text':text,'class':classes,'tooltip':'\n'.join(lines)}
 
+def render(data,now):
+    result=render_status(data,now)
+    if not CLASSIC and 'working' in result['class']:
+        # Frozen idle/unknown snapshots must never imply an active agent.
+        active=isinstance(data,dict) and data.get('state')=='working' and now-data.get('updated',0)<=8
+        frame=int(now*32)%96 if active else 0
+        result['class']=[c for c in result['class'] if not (c.startswith('f') and c[1:].isdigit())]+['painted','f'+str(frame)]
+    return result
+
 def main():
     if '--preview-complete' in sys.argv:
         PREVIEW.write_text(json.dumps({'until':time.time()+15}));return
@@ -39,7 +49,7 @@ def main():
                     result={'text':'·','class':['complete','f'+str(int(time.time()*12)%24)],'tooltip':'Completion animation preview (15 seconds). Real monitoring continues.'}
             except (OSError,ValueError,KeyError):pass
             print(json.dumps(result),flush=True)
-            time.sleep(1/12)
+            time.sleep(1/12 if CLASSIC else 1/32)
     except (BrokenPipeError,KeyboardInterrupt):pass
 
 if __name__=='__main__':main()

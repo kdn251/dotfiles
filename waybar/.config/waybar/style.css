@@ -5,7 +5,7 @@
    @ws_active_bg / @tooltip_bg / @tooltip_border / @tooltip_fg vars. */
 /* @import "colors-waybar.css"; */
 @import "agent-mascots.css";
-@import "sisyphus-studies.css";
+@import "sisyphus-live.css";
 
 * {
     font-family: "JetBrainsMono Nerd Font", Roboto, Helvetica, Arial, sans-serif;
@@ -334,15 +334,3 @@ tooltip label {
 #custom-agent_sisyphus.uncertain { color: #f0b976; }
 #custom-agent_sisyphus.resting { opacity: 0.45; }
 #custom-agent_sisyphus.complete { color: #a6e3a1; }
-
-/* Temporary A/B/C artwork comparison; the live indicator remains separate. */
-#custom-sisyphus_study_a, #custom-sisyphus_study_b, #custom-sisyphus_study_c {
-  background-repeat: no-repeat;
-  background-position: left center;
-  background-size: 64px 32px;
-  padding: 0 5px 0 64px;
-  margin: 0 3px 0 0;
-  min-height: 32px;
-  font-size: 10px;
-  color: #c5cbd2;
-}

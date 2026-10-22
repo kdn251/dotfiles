@@ -10,9 +10,6 @@
     "clock"
   ],
   "modules-right": [
-    "custom/sisyphus_study_a",
-    "custom/sisyphus_study_b",
-    "custom/sisyphus_study_c",
     "custom/agent_sisyphus",
     "custom/miniflux_download",
     "custom/twitch_dl",
@@ -37,27 +34,6 @@
     "network",
     "battery"
   ],
-  "custom/sisyphus_study_a": {
-    "exec": "python3 ~/.config/waybar/scripts/sisyphus-studies.py a",
-    "return-type": "json",
-    "format": "{}",
-    "tooltip": true,
-    "restart-interval": 2
-  },
-  "custom/sisyphus_study_b": {
-    "exec": "python3 ~/.config/waybar/scripts/sisyphus-studies.py b",
-    "return-type": "json",
-    "format": "{}",
-    "tooltip": true,
-    "restart-interval": 2
-  },
-  "custom/sisyphus_study_c": {
-    "exec": "python3 ~/.config/waybar/scripts/sisyphus-studies.py c",
-    "return-type": "json",
-    "format": "{}",
-    "tooltip": true,
-    "restart-interval": 2
-  },
   "custom/agent_sisyphus": {
     "on-click": "python3 ~/.local/share/agent-attention/activity_panel.py",
     "cursor": true,
