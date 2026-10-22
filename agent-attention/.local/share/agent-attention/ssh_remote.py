@@ -1,6 +1,29 @@
 """Remote standalone SSH event sender and stream; uses only the Python stdlib."""
-import json, os, pathlib, sys, time, uuid
+import json, os, pathlib, re, sys, time, uuid
 ROOT=pathlib.Path.home()/'.local/state/agent-attention-ssh/events'
+
+def codex_user_turn_complete(payload,home=None):
+    """Ignore internal-thread callbacks and require a persisted user-turn finish."""
+    sid=payload.get('thread-id','')
+    if not re.fullmatch(r'[0-9a-fA-F-]{36}',sid):return False
+    base=pathlib.Path(home) if home else pathlib.Path(os.environ.get('CODEX_HOME',str(pathlib.Path.home()/'.codex')))
+    paths=list((base/'sessions').glob('**/*'+sid+'.jsonl'))
+    if len(paths)!=1:return False
+    try:
+        with paths[0].open('rb') as stream:
+            first=json.loads(stream.readline());meta=first.get('payload',{})
+            if first.get('type')!='session_meta' or meta.get('id')!=sid:return False
+            if isinstance(meta.get('source'),dict) or meta.get('thread_source','user')!='user':return False
+            stream.seek(0,2);size=stream.tell();stream.seek(max(0,size-262144))
+            if size>262144:stream.readline()
+            lifecycle=None
+            for line in stream:
+                record=json.loads(line);data=record.get('payload',{})
+                if record.get('type')=='event_msg' and data.get('type') in ('task_started','task_complete','task_aborted'):
+                    lifecycle=data
+            return bool(lifecycle and lifecycle['type']=='task_complete' and
+                        (not payload.get('turn-id') or payload['turn-id']==lifecycle.get('turn_id')))
+    except (OSError,ValueError):return False
 
 def build_event(source,payload,environ):
     # Herdr is already monitored separately; detached multiplexers need their own routing.
@@ -57,6 +80,7 @@ def main():
         event['probe']=True;emit(event);print('SSH route probe sent');return
     try:
         payload=json.loads(sys.argv[2]) if mode=='codex-notify' else json.load(sys.stdin)
+        if mode=='codex-notify' and not codex_user_turn_complete(payload):return
         emit(build_event('Codex' if mode=='codex-notify' else 'Claude',payload,os.environ))
     except Exception as exc:print('agent-attention-ssh: '+str(exc),file=sys.stderr)
     finally:

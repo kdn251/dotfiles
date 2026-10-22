@@ -1,10 +1,31 @@
 import json,os,pathlib,subprocess,tempfile,unittest
 from unittest.mock import patch
-from ssh_remote import build_event
+from ssh_remote import build_event,codex_user_turn_complete
 from ssh_attention import address,command
 from install_ssh_remote import install
 
 class SSHAttentionTests(unittest.TestCase):
+    def test_codex_only_notifies_completed_user_turns(self):
+        sid='01a1644b-3172-7c92-8c77-f251651f9c74'
+        with tempfile.TemporaryDirectory() as tmp:
+            root=pathlib.Path(tmp);sessions=root/'sessions';sessions.mkdir()
+            payload={'thread-id':sid,'turn-id':'turn1'}
+            self.assertFalse(codex_user_turn_complete(payload,root))
+            file=sessions/('rollout-'+sid+'.jsonl')
+            records=[{'type':'session_meta','payload':{'id':sid,'source':'cli','thread_source':'user'}},
+                     {'type':'event_msg','payload':{'type':'task_started','turn_id':'turn1'}},
+                     {'type':'response_item','payload':{'role':'assistant','phase':'commentary'}}]
+            def save():file.write_text(''.join(json.dumps(r)+'\n' for r in records))
+            save();self.assertFalse(codex_user_turn_complete(payload,root))
+            records.append({'type':'event_msg','payload':{'type':'task_complete','turn_id':'turn1'}})
+            save();self.assertTrue(codex_user_turn_complete(payload,root))
+            self.assertFalse(codex_user_turn_complete({**payload,'turn-id':'other'},root))
+            records[0]['payload']['source']={'subagent':{'parent_thread_id':'parent'}}
+            save();self.assertFalse(codex_user_turn_complete(payload,root))
+            records[0]['payload']['source']='cli'
+            records.append({'type':'event_msg','payload':{'type':'task_started','turn_id':'turn2'}})
+            save();self.assertFalse(codex_user_turn_complete(payload,root))
+
     def test_ssh_shell_default_and_excluded_sessions(self):
         with tempfile.TemporaryDirectory() as tmp:
             root=pathlib.Path(tmp);install(root)

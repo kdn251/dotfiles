@@ -79,6 +79,11 @@ shells, and older CLIs are excluded. Existing shells need to reconnect or source
 The remote sender is a small Python standard-library script. Claude hooks cover
 completion, permission requests, questions, and selected attention notifications.
 Codex's documented `notify` callback covers `agent-turn-complete` only; standalone
+callbacks are filtered against the local session record to require a completed
+user turn. Internal threads, subagents, progress messages, and active turns do
+not trigger the interruption. Only lifecycle metadata is used, never message text.
+Missing or unrecognized session records suppress the callback rather than guess.
+Standalone
 Codex approval prompts are **not** covered by this older CLI integration. No
 agent upgrades or permission-setting changes are made. Fresh agent sessions load
 the callbacks; an existing session may not reload them.
