@@ -107,7 +107,7 @@ def panel():
             self.backdrop.add(outside);self.backdrop.show_all()
             self.window=Gtk.ApplicationWindow(application=self);self.window.set_title('Agent activity')
             self.window.set_visual(self.window.get_screen().get_rgba_visual())
-            self.window.set_default_size(350,-1);self.window.set_resizable(False)
+            self.window.set_default_size(320,-1);self.window.set_resizable(False)
             GtkLayerShell.init_for_window(self.window);GtkLayerShell.set_namespace(self.window,'agent-activity-panel')
             GtkLayerShell.set_layer(self.window,GtkLayerShell.Layer.OVERLAY)
             for edge in (GtkLayerShell.Edge.TOP,GtkLayerShell.Edge.RIGHT):GtkLayerShell.set_anchor(self.window,edge,True)
