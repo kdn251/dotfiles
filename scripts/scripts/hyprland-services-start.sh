@@ -5,3 +5,4 @@ dbus-update-activation-environment --systemd WAYLAND_DISPLAY XDG_CURRENT_DESKTOP
 systemctl --user start hyprland-session.target
 systemctl --user restart kanshi.service hypridle.service
 systemctl --user start waybar.service
+systemctl --user start moonlight-cursor.service

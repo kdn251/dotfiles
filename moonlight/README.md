@@ -113,3 +113,17 @@ dialog only after saving your work. No cancels shutdown. The command does not
 force applications closed. Keep shutdown explicit rather than tied to stream
 disconnects. The BIOS/Windows wake settings and Apollo virtual display setup are
 host-specific and are not managed by these dotfiles.
+
+## Fullscreen stream cursor
+
+`scripts/scripts/moonlight-cursor.py` and `moonlight-cursor.service` enable
+Hyprland's three-second cursor inactivity timeout only while a fullscreen
+Moonlight stream is focused and the pointer is over that window. Moving the
+mouse reveals it. Leaving the stream restores the desktop timeout to zero.
+The Moonlight launcher and windowed streams are excluded. This controls the
+local cursor, not a cursor drawn into the video by the host game.
+
+The Hyprland session startup script starts the service after importing its
+environment. Install the `scripts` and `systemd` dotfiles packages, then run
+`systemctl --user daemon-reload` and
+`systemctl --user start moonlight-cursor.service` to activate it without logging out.

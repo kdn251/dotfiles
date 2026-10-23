@@ -1,0 +1,11 @@
+[Unit]
+Description=Hide idle cursor only over fullscreen Moonlight streams
+PartOf=hyprland-session.target
+After=hyprland-session.target
+
+[Service]
+ExecStart=/usr/bin/python3 %h/scripts/moonlight-cursor.py
+ExecStopPost=-/usr/bin/hyprctl keyword cursor:inactive_timeout 0
+Restart=on-failure
+RestartSec=2
+
