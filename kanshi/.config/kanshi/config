@@ -1,3 +1,10 @@
+# TV-only docking: keep all windows/workspaces on the TV while connected.
+# Existing laptop-only profiles restore eDP-1 when the TV is unplugged.
+profile turing_tv_only {
+    output "Samsung Electric Company QN90D 0x01000E00" enable mode 3840x2160@60Hz position 0,0 scale 2.4
+    output "eDP-1" disable
+}
+
 # Kanshi configuration for Hyprland laptop docking
 # Save this file as ~/.config/kanshi/config
 

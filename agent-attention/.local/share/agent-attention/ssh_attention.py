@@ -3,7 +3,7 @@ import ipaddress, json, logging, os, pathlib, re, select, shlex, socket, subproc
 
 def command(host):
     if not re.fullmatch(r'[A-Za-z0-9_][A-Za-z0-9_.@-]*',host):raise ValueError('Invalid SSH alias')
-    return ['ssh','-T','-S','none','-o','BatchMode=yes','-o','ClearAllForwardings=yes','-o','ConnectTimeout=5','-o','ServerAliveInterval=5','-o','ServerAliveCountMax=2',host,'python3 "$HOME/.local/share/agent-attention-ssh/ssh_remote.py" watch']
+    return ['ssh','-T','-S','none','-o','BatchMode=yes','-o','RemoteCommand=none','-o','ClearAllForwardings=yes','-o','ConnectTimeout=5','-o','ServerAliveInterval=5','-o','ServerAliveCountMax=2',host,'python3 "$HOME/.local/share/agent-attention-ssh/ssh_remote.py" watch']
 
 def watch(endpoint,inbox):
     host=endpoint['host']

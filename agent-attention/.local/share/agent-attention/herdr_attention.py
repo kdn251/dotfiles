@@ -7,7 +7,7 @@ def ssh_command(endpoint,mode,expected=None):
     if not re.fullmatch(r'[A-Za-z0-9_][A-Za-z0-9_.@-]*',host):raise ValueError('Invalid SSH alias')
     args=['python3','-u','-c',(BASE/'herdr_remote.py').read_text(),endpoint.get('remote_socket','~/.config/herdr/herdr.sock'),mode]
     if expected is not None:args.append(json.dumps(expected))
-    return ['ssh','-T','-S','none','-o','BatchMode=yes','-o','ClearAllForwardings=yes','-o','ConnectTimeout=5','-o','ServerAliveInterval=5','-o','ServerAliveCountMax=2',host,shlex.join(args)]
+    return ['ssh','-T','-S','none','-o','BatchMode=yes','-o','RemoteCommand=none','-o','ClearAllForwardings=yes','-o','ConnectTimeout=5','-o','ServerAliveInterval=5','-o','ServerAliveCountMax=2',host,shlex.join(args)]
 
 class Tracker:
     def __init__(self):self.previous={};self.pending={}
