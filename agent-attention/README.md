@@ -158,6 +158,14 @@ Verified on October 22, 2026:
 | Expedition 33 cutscene | F | Centered Pause label |
 | Expedition 33 battle | Escape held 150 ms via wtype | Resume menu label |
 | Expedition 33 exploration | Escape held 150 ms via wtype | Resume menu label |
+| Expedition 33 party menu | No input; already in menu | Journal and Inventory labels together |
+
+On October 23 the party menu was added after real attention events failed the
+Resume-only detector. Both labels must match before switching without input.
+Live party-menu attention successfully selected the remote Claude tab without
+closing the menu. Nested character/Pictos menus are not yet recognized by this
+check; those need separate reference captures. Existing display/language limits
+below also apply to the party-menu templates.
 
 Instant Hyprland Escape shortcuts did not reliably open the menu. F selects an
 attack during battle, so it must stay cutscene-only. Already-paused screens are

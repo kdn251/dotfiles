@@ -124,6 +124,16 @@ def menu_score(im):
 def detector_score(detector, im):
     return {'expedition33-pause': pause_score, 'expedition33-menu': menu_score}[detector](im)
 
+def inventory_score(im):
+    """Require both fixed menu labels; darkness alone is not a pause signal."""
+    def match(name, box):
+        a = vector(im.crop(box))
+        b = vector(Image.open(BASE / ('expedition33-'+name+'.png')).convert('L'))
+        denom = math.sqrt(sum(x*x for x in a)*sum(x*x for x in b))
+        return sum(x*y for x,y in zip(a,b))/denom if denom else 0
+    return min(match('journal',(43,68,148,90)),
+               match('inventory',(43,99,148,120)))
+
 def cinematic(im):
     # A 16:9 stream on this 3:2 display has 8% bars. Cinematics have ~18%.
     # Sample inside that extra letterbox, not the stream's normal outer bars.
@@ -137,7 +147,10 @@ def select_action(profile, im):
     return mode, profile['modes'][mode]
 
 def pause_game(profile, active):
-    im = screen(); mode, action = select_action(profile, im)
+    im = screen()
+    if profile.get('mode') == 'auto-expedition33' and inventory_score(im) > .80:
+        return True, 'inventory menu already open'
+    mode, action = select_action(profile, im)
     detector = action.get('detector')
     if detector and detector_score(detector, im) > .60:
         return True, mode+' already paused'

@@ -4,6 +4,23 @@ from PIL import Image
 import attention as a
 
 class AttentionTests(unittest.TestCase):
+    def test_inventory_is_recognized_without_sending_escape(self):
+        root=pathlib.Path(__file__).resolve().parent
+        im=Image.open(root/'testdata/expedition33-party-menu.png').convert('L')
+        with patch.object(a,'BASE',root),patch.object(a,'screen',return_value=im),patch.object(a,'run') as run,patch.object(a,'dispatch') as dispatch:
+            ok,detail=a.pause_game({'mode':'auto-expedition33'}, {})
+            self.assertTrue(ok);self.assertEqual(detail,'inventory menu already open')
+            run.assert_not_called();dispatch.assert_not_called()
+
+    def test_inventory_requires_both_labels_and_rejects_gameplay(self):
+        root=pathlib.Path(__file__).resolve().parent
+        with patch.object(a,'BASE',root):
+            self.assertLess(a.inventory_score(Image.open(root/'testdata/expedition33-exploration.png').convert('L')),.80)
+            im=Image.open(root/'testdata/expedition33-party-menu.png').convert('L')
+            im.paste(0,(43,99,148,120))
+            self.assertLess(a.inventory_score(im),.80)
+            self.assertLess(a.inventory_score(Image.new('L',(720,480))),.80)
+
     def test_attention_is_silent_outside_moonlight_gameplay(self):
         for window in ({'class':'kitty','title':'terminal'}, {'class':'Moonlight','title':'Moonlight'}):
             with self.subTest(window=window), patch.object(a,'config',return_value={'enabled':True}), patch.object(a,'hypr',return_value=window), patch.object(a,'notify') as notify, patch.object(a,'pause_game') as pause, patch.object(a,'focus') as focus, patch.object(a,'resolve_target') as resolve:
