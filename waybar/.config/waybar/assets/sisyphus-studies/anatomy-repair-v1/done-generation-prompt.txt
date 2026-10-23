@@ -1,0 +1,4 @@
+Mode: built-in image generation, reference-guided seated completion state, transparent background.
+Reference: anatomy-repair-v1/frames/frame-012.png (copied to /tmp/anatomy-gait-12.png for inspection).
+
+undefined

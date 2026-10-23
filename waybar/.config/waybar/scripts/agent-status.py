@@ -34,6 +34,8 @@ def render(data,now):
         active=isinstance(data,dict) and data.get('state')=='working' and now-data.get('updated',0)<=8
         frame=int(now*32)%96 if active else 0
         result['class']=[c for c in result['class'] if not (c.startswith('f') and c[1:].isdigit())]+['painted','f'+str(frame)]
+    if not CLASSIC and 'complete' in result['class']:
+        result['class'] += ['painted','done']
     return result
 
 def main():
@@ -46,7 +48,8 @@ def main():
             result=render(data,time.time())
             try:
                 if json.loads(PREVIEW.read_text())['until']>time.time():
-                    result={'text':'·','class':['complete','f'+str(int(time.time()*12)%24)],'tooltip':'Completion animation preview (15 seconds). Real monitoring continues.'}
+                    result=render({'state':'complete','updated':time.time()},time.time())
+                    result['tooltip']='Completion animation preview (15 seconds). Real monitoring continues.'
             except (OSError,ValueError,KeyError):pass
             print(json.dumps(result),flush=True)
             time.sleep(1/12 if CLASSIC else 1/32)

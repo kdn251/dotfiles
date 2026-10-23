@@ -1,4 +1,4 @@
-/* Approved painted Sisyphus A; original SVG theme remains available. */
+/* Approved painted Sisyphus motion-v3; original SVG theme remains available. */
 #custom-agent_sisyphus.painted.working.f0 { background-image: url("assets/agent-mascots/painted-working/frame-000.png"); }
 #custom-agent_sisyphus.painted.working.f1 { background-image: url("assets/agent-mascots/painted-working/frame-001.png"); }
 #custom-agent_sisyphus.painted.working.f2 { background-image: url("assets/agent-mascots/painted-working/frame-002.png"); }
@@ -95,3 +95,4 @@
 #custom-agent_sisyphus.painted.working.f93 { background-image: url("assets/agent-mascots/painted-working/frame-093.png"); }
 #custom-agent_sisyphus.painted.working.f94 { background-image: url("assets/agent-mascots/painted-working/frame-094.png"); }
 #custom-agent_sisyphus.painted.working.f95 { background-image: url("assets/agent-mascots/painted-working/frame-095.png"); }
+#custom-agent_sisyphus.painted.complete.done { background-image: url("assets/agent-mascots/painted-complete.png"); }
