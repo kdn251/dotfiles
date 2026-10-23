@@ -10,6 +10,7 @@ faugus-launcher
 google-chrome
 handy-bin
 herdr-bin
+localsend-bin
 neofetch
 openai-codex-bin
 opencode-bin
