@@ -117,7 +117,7 @@ def restore(rows,url,token):
     if snapshot['nav_row'] is not None:
         navigation.insert(min(snapshot['nav_index'],len(navigation)),snapshot['nav_row'])
     elif snapshot['row'] is not None:
-        # Preserve restored FIFO placement even if navigation started later.
+        # Preserve restored queue placement even if navigation started later.
         navigation.insert(min(snapshot['index'],len(navigation)),snapshot['row'])
     media.atomic_write(state()/'queue-navigation.json',json.dumps(navigation,ensure_ascii=False))
     saved=snapshot['current'];current=read_state('queue-current.json')
@@ -143,7 +143,7 @@ def change(action,url='',token='',*extra):
             if not media.identity(url) or any(c in url for c in '\r\n\t'):
                 raise ValueError('Queue supports YouTube videos and Twitch VODs')
             if not any(identity(row['url'])==ident for row in rows):
-                rows.append(dict(metadata(url),queue_token=uuid.uuid4().hex))
+                rows.insert(0,dict(metadata(url),queue_token=uuid.uuid4().hex))
         elif action in ('stop-after', 'clear-stop'):
             selected=next((row for row in rows if identity(row['url'])==ident),None)
             if selected is None:raise ValueError('Video is no longer in Queue')
@@ -230,7 +230,7 @@ def prepare_view(directory):
               'articlelist-title-format " '+TITLE+'"',
               'bind yy articlelist,searchresultslist undo-checkpoint queue-yank -- "Pick up Queue row (V then y for selected rows); p moves below, P above"',
               'bind p articlelist,searchresultslist undo-checkpoint queue-after -- "Move picked-up Queue row below this row"',
-              'bind P articlelist,searchresultslist undo-checkpoint queue-before -- "Move picked-up Queue row above this row"']
+              'bind P articlelist,searchresultslist undo-checkpoint queue-before -- "Browse creator playlists (or move picked-up Queue rows above)"']
     for key,action,description in [('z','stop-after','Stop autoplay after this video 💤'),('Z','clear-stop','Remove stop-after marker')]:
         lines.append(f'bind {key} articlelist,searchresultslist set browser "python3 ~/scripts/newsboat_queue.py {action} %u" ; open-in-browser-noninteractively ; set browser "~/scripts/newsboat-brave-app.sh %u" -- "{description}"')
     config.write_text('\n'.join(lines)+'\n')

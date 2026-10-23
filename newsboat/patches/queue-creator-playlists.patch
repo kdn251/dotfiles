@@ -1,0 +1,16 @@
+--- a/src/itemlistformaction.cpp
++++ b/src/itemlistformaction.cpp
+@@ -624,6 +624,13 @@
+                 sources.push_back(*item);
+             }
+             if (sources.empty()) {
++                if (args[0] == "queue-before") {
++                    const auto browser = cfg->get_configvalue("browser");
++                    cfg->set_configvalue("browser", "python3 ~/scripts/newsboat-playlists.py request %u");
++                    v.open_in_browser(visible_items[itempos].first->link(), "", "", "", false);
++                    cfg->set_configvalue("browser", browser);
++                    break;
++                }
+                 v.get_statusline().show_error("Pick up Queue rows with yy first"); break;
+             }
+             const auto destination = visible_items[itempos].first;
