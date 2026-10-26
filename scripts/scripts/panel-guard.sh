@@ -65,6 +65,7 @@ _panel_close_others() {
   if [ "$self" != "protonvpn" ] && [ -x "$HOME/scripts/protonvpn-waybar.sh" ]; then
     "$HOME/scripts/protonvpn-waybar.sh" hide-if-visible >/dev/null 2>&1 &
   fi
+  # LocalSend stays open for drag-and-drop; only its own icon hides it.
 }
 
 # Usable as a command, not just a sourced library, so the ProtonVPN dropdown

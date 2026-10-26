@@ -334,3 +334,14 @@ tooltip label {
 #custom-agent_sisyphus.uncertain { color: #f0b976; }
 #custom-agent_sisyphus.resting { opacity: 0.45; }
 #custom-agent_sisyphus.complete { color: #a6e3a1; }
+
+/* LocalSend's official logo, matching the other tray-sized controls. */
+#custom-localsend {
+  background-image: url("assets/localsend-white.png");
+  background-repeat: no-repeat;
+  background-position: center;
+  background-size: 20px 20px;
+  min-width: 20px;
+  padding: 0 8px;
+}
+#custom-localsend:hover { background-color: rgba(255,255,255,0.12); }

@@ -21,6 +21,7 @@
     "custom/recording",
     "custom/handy",
     // "custom/blanket",
+    "custom/localsend",
     "custom/protonvpn",
     // "custom/tailscale",
     // "custom/rclone",
@@ -197,6 +198,12 @@
     "on-click": "blanket",
     "exec": "echo '{\"text\": \"Blanket\", \"tooltip\": \"Click to toggle controls\"}'",
     "return-type": "json"
+  },
+  "custom/localsend": {
+    "format": " ",
+    "tooltip-format": "LocalSend · Send and receive files",
+    "cursor": true,
+    "on-click": "~/scripts/localsend-waybar.sh toggle"
   },
   "custom/protonvpn": {
     "format": "{}",

@@ -76,7 +76,9 @@ def main():
                                 "org.freedesktop.Notifications.CloseNotification",
                                 str(notification_id)], stdout=subprocess.DEVNULL, timeout=2)
 
-    for window in hypr("clients"):
+    # LocalSend deliberately stays open for drag-and-drop from other windows.
+    clients = hypr("clients")
+    for window in clients:
         cls = window["class"]
         if cls not in {"calendar-float", "proton.vpn.app.gtk", "protonvpn-app"}:
             continue
