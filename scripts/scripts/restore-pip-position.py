@@ -34,7 +34,7 @@ class Tracker:
         self.runtime = Path(runtime)
         self.windows = {}
 
-    def update(self, current, now):
+    def update(self, current):
         live = set()
         for client in current:
             if not client.get('mapped') or not client.get('floating') or not is_pip(client):
@@ -42,7 +42,7 @@ class Tracker:
             address = client['address']
             key = (address, client['pid'])
             live.add(key)
-            state = self.windows.setdefault(key, {'saved': None, 'fs': False, 'until': 0})
+            state = self.windows.setdefault(key, {'saved': None, 'fs': False})
             snapshot = self.runtime / f'pip-fullscreen-{os.getuid()}-{address}.geometry'
             # F / Mod+F captures exact geometry before entry, including moves
             # made between polling ticks. Atomic rename prevents partial reads.
@@ -55,16 +55,11 @@ class Tracker:
             except (OSError, ValueError, KeyError, TypeError):
                 pass
             fullscreen = client['fullscreen'] != 0
-            if fullscreen:
-                state['until'] = 0
-            elif state['fs'] and state['saved'] is not None:
-                state['until'] = now + 0.6
+            if not fullscreen and state['fs'] and state['saved'] is not None:
+                # Restore once on exit. Repeated corrections fight intentional
+                # dragging and corner shortcuts immediately after fullscreen.
                 restore(address, state['saved'])
-            elif now < state['until']:
-                # Late client resize/configure replies can re-center the float.
-                if geometry(client) != state['saved']:
-                    restore(address, state['saved'])
-            else:
+            elif not fullscreen:
                 state['saved'] = geometry(client)
             state['fs'] = fullscreen
         self.windows = {key: value for key, value in self.windows.items() if key in live}
@@ -74,7 +69,7 @@ def main():
     tracker = Tracker(os.environ.get('XDG_RUNTIME_DIR', '/tmp'))
     while True:
         try:
-            tracker.update(clients(), time.monotonic())
+            tracker.update(clients())
         except (subprocess.SubprocessError, OSError, ValueError) as error:
             print(f'PiP position restore: {error}', flush=True)
         time.sleep(0.1)
