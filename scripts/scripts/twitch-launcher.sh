@@ -230,12 +230,7 @@ CHOICE_INPUT=$(
         if (NF >= 5 && $5 != "") label = label " " $5
         printf "%s\t%s\000icon\x1f%s\n", label, $3, icon
       }' "$MENU_ORDERED" |
-    fuzzel --dmenu --with-nth=1 \
-      --font "Stream Launcher Icons,JetBrainsMono Nerd Font:size=14" \
-      --prompt "        " \
-      --line-height 35 \
-      --width 50 \
-      --lines 10
+    python3 "$HOME/scripts/stream-picker.py"
 )
 CHOICE=""
 if [[ "$CHOICE_INPUT" == *$'\t'* ]]; then
