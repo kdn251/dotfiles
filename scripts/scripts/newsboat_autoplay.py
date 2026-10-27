@@ -60,6 +60,11 @@ def normal_plan(current):
 
 def _plan(current):
     from newsboat_queue import entries, identity, navigation
+    # An explicitly opened playlist owns autoplay, even when its video is queued.
+    if os.environ.get('NEWSBOAT_QUEUE_PLAYBACK') != '1' and episode_context(current):
+        result = normal_plan(current)
+        result['current_queue_token'] = ''
+        return result
     rows = entries()
     candidates = [row for row in rows if identity(row['url']) != identity(current)]
     queued = any(identity(row['url']) == identity(current) for row in rows)

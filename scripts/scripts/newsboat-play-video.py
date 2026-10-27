@@ -42,7 +42,9 @@ def launch(args):
         return 1
     from newsboat_queue import entries, identity, navigation
     env=dict(os.environ)
-    queued=any(identity(row['url'])==identity(args[0]) for row in entries())
+    from newsboat_autoplay import episode_context
+    in_playlist = episode_context(args[0]) is not None
+    queued=not in_playlist and any(identity(row['url'])==identity(args[0]) for row in entries())
     if queued or env.get('NEWSBOAT_QUEUE_PLAYBACK')=='1' or env.get('NEWSBOAT_QUEUE_VIEW')=='1':
         navigation(args[0])
         env['NEWSBOAT_QUEUE_PLAYBACK']='1'
