@@ -36,6 +36,10 @@ case "$class:$title" in
     trap 'hyprctl dispatch setprop "address:$address no_focus unset" >/dev/null' EXIT
     hyprctl --batch "dispatch setprop address:$address no_focus 0; dispatch focuswindow address:$address" >/dev/null
     if [ "$fullscreen" = 0 ]; then
+      # Capture geometry before unpinning/fullscreen changes it.
+      geometry_state="$runtime/pip-fullscreen-$UID-${address}.geometry"
+      printf '%s\n' "$focused" > "$geometry_state.tmp"
+      mv -f "$geometry_state.tmp" "$geometry_state"
       rm -f "$state"
       if [ "$pinned" = true ]; then
         hyprctl dispatch pin "address:$address" >/dev/null
