@@ -34,6 +34,12 @@
   border: 1px solid #e7a58d;
 }
 
+/* The background already supplies 6px of top padding, matching Hyprland's
+   top gaps_out. Avoid adding another 6px above popup notification cards. */
+.floating-notifications .notification-row .notification-background .notification {
+  margin-top: 0px;
+}
+
 .notification-row .notification-background .notification .notification-default-action {
   border-radius: 5px;
   padding: 10px;
