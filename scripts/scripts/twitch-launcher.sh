@@ -205,6 +205,7 @@ python3 "$HOME/scripts/kick-live.py" --menu >>"$MENU_TMP"
 
 TOP5=$(sort -t"$(printf '\t')" -k1,1nr -k2,2 "$MENU_TMP" | awk -F'\t' '$1 + 0 > 0' | head -n 5)
 
+CUSTOM_CHANNEL_URL=""
 # An argument names a streamer to open directly, skipping the picker. Used by
 # the go-live notification's Watch button, which already knows who you want.
 if [ -n "${1:-}" ]; then
@@ -240,17 +241,39 @@ CHOICE=""
 if [[ "$CHOICE_INPUT" == *$'\t'* ]]; then
   CHOICE="${CHOICE_INPUT#*$'\t'}"
 else
-  # An unmatched username is an explicit Twitch request, not a saved-list edit.
-  custom="${CHOICE_INPUT#https://}"
-  custom="${custom#http://}"
-  custom="${custom#www.}"
-  custom="${custom#twitch.tv/}"
-  custom="${custom#@}"
-  custom="${custom%/}"
-  if [[ "$custom" =~ ^[a-zA-Z0-9_]{1,25}$ ]]; then
-    CHOICE="${custom,,}"
-  elif [ -n "$CHOICE_INPUT" ]; then
-    notify-send -a "Streams" -t 4000 "Invalid Twitch username" "Enter a username or a twitch.tv/channel link."
+  # Explicit service prefixes work even when the channel is not in a list.
+  # Bare usernames and Twitch links keep their original Twitch behavior.
+  case "$CHOICE_INPUT" in
+    [rR]/*|[yY]/*|[kK]/*)
+      prefix="${CHOICE_INPUT:0:1}"
+      custom="${CHOICE_INPUT:2}"
+      custom="${custom#@}"
+      custom="${custom%/}"
+      case "${prefix,,}" in
+        r) service=Rumble; base=https://rumble.com/c/; pattern='^[a-zA-Z0-9_-]+$' ;;
+        y) service=YouTube; base=https://www.youtube.com/@; pattern='^[[:alnum:]_.-]+$' ;;
+        k) service=Kick; base=https://kick.com/; pattern='^[a-zA-Z0-9_-]+$'; custom="${custom,,}" ;;
+      esac
+      if [[ "$custom" =~ $pattern ]]; then
+        CHOICE="$custom ($service)"
+        CUSTOM_CHANNEL_URL="$base$custom"
+      fi
+      ;;
+    *)
+      custom="${CHOICE_INPUT#https://}"
+      custom="${custom#http://}"
+      custom="${custom#www.}"
+      custom="${custom#twitch.tv/}"
+      custom="${custom#@}"
+      custom="${custom%/}"
+      if [[ "$custom" =~ ^[a-zA-Z0-9_]{1,25}$ ]]; then
+        CHOICE="${custom,,}"
+      fi
+      ;;
+  esac
+  if [ -z "$CHOICE" ] && [ -n "$CHOICE_INPUT" ]; then
+    notify-send -a "Streams" -t 4000 "Invalid stream username" \
+      "Enter a Twitch username, r/name (Rumble), y/handle (YouTube), or k/name (Kick)."
   fi
 fi
 rm -f "$MENU_ORDERED"
@@ -285,7 +308,10 @@ if [[ "$CHOICE" == *"(Rumble)" || "$CHOICE" == *"(YouTube)" || "$CHOICE" == *"(K
     CHANNEL_LIST="$RUMBLE_LIST"
     LIVE_HELPER="$HOME/scripts/rumble-live.py"
   fi
-  CHANNEL_URL=$(awk -v name="$STREAMER_USERNAME" '$1 == name {print $2; exit}' "$CHANNEL_LIST")
+  CHANNEL_URL="${CUSTOM_CHANNEL_URL:-}"
+  if [ -z "$CHANNEL_URL" ]; then
+    CHANNEL_URL=$(awk -v name="$STREAMER_USERNAME" '$1 == name {print $2; exit}' "$CHANNEL_LIST")
+  fi
   (
     # The background live check already cached the avatar: show it immediately,
     # before waiting for the playback URL to resolve.
