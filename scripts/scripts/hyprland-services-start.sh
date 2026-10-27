@@ -6,3 +6,6 @@ systemctl --user start hyprland-session.target
 systemctl --user restart kanshi.service hypridle.service
 systemctl --user start waybar.service
 systemctl --user start moonlight-cursor.service
+
+# Keep the stream picker warm so its hotkey only needs to show the window.
+python3 "$HOME/scripts/stream-picker.py" --daemon >/dev/null 2>&1 &

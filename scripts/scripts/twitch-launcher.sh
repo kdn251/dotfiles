@@ -136,6 +136,8 @@ mkdir -p "$IMAGE_CACHE"
 mkdir -p "$PIXMAPS"
 touch "$STATS_FILE"
 
+# Profile-cache maintenance must not delay showing the picker.
+(
 # Ensure all cached images are available in the pixmaps directory
 ln -sf "$IMAGE_CACHE/"*.png "$PIXMAPS/" 2>/dev/null
 
@@ -148,6 +150,10 @@ for user in $USERNAMES; do
 done
 
 if [ "$MISSING" -eq 1 ]; then
+  (
+  # Never hold up the menu for avatar requests, or start duplicate fetches.
+  exec 9>"$IMAGE_CACHE/.fetch.lock"
+  flock -n 9 || exit 0
   for user in $USERNAMES; do
     LOWER_USER=$(echo "$user" | tr '[:upper:]' '[:lower:]')
     IMG_PATH="$IMAGE_CACHE/${LOWER_USER}.png"
@@ -176,7 +182,10 @@ if [ "$MISSING" -eq 1 ]; then
     fi
   done
   wait
+  ) </dev/null &
 fi
+
+) </dev/null &
 
 # --- 3. Build prioritized fuzzel list ---
 # Top 5 most-watched live streamers (by pick count) first, then everyone
@@ -199,9 +208,14 @@ awk -v stats="$STATS_FILE" '
   }' "$USERNAME_LIST" >"$MENU_TMP"
 
 # Read the background live check without delaying the picker for a request.
-python3 "$HOME/scripts/rumble-live.py" --menu >>"$MENU_TMP"
-python3 "$HOME/scripts/youtube-live.py" --menu >>"$MENU_TMP"
-python3 "$HOME/scripts/kick-live.py" --menu >>"$MENU_TMP"
+python3 - "$HOME/scripts" >>"$MENU_TMP" <<'PYMENU'
+import sys
+from pathlib import Path
+sys.path.insert(0, sys.argv[1])
+from stream_live_cache import menu
+for service in ('Rumble', 'YouTube', 'Kick'):
+    menu(Path.home()/'.cache'/(service.lower()+'-live.json'), service)
+PYMENU
 
 TOP5=$(sort -t"$(printf '\t')" -k1,1nr -k2,2 "$MENU_TMP" | awk -F'\t' '$1 + 0 > 0' | head -n 5)
 
@@ -230,7 +244,7 @@ CHOICE_INPUT=$(
         if (NF >= 5 && $5 != "") label = label " " $5
         printf "%s\t%s\000icon\x1f%s\n", label, $3, icon
       }' "$MENU_ORDERED" |
-    python3 "$HOME/scripts/stream-picker.py"
+    python3 "$HOME/scripts/stream-picker-client.py"
 )
 CHOICE=""
 if [[ "$CHOICE_INPUT" == *$'\t'* ]]; then

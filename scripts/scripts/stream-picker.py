@@ -1,6 +1,10 @@
 #!/usr/bin/env python3
 """Stream menu with a live, platform-colored prompt; stdout is the selection."""
 import ctypes
+import os
+
+# This small menu needs no Vulkan renderer startup; GL maps much faster.
+os.environ.setdefault("GSK_RENDERER", "gl")
 import sys
 from pathlib import Path
 
@@ -10,7 +14,7 @@ import gi
 gi.require_version('Gtk', '4.0')
 gi.require_version('Gdk', '4.0')
 gi.require_version('Gtk4LayerShell', '1.0')
-from gi.repository import Gdk, Gio, Gtk, Gtk4LayerShell as Layer, Pango
+from gi.repository import Gdk, Gio, Gtk, Gtk4LayerShell as Layer, Pango, GLib
 
 PLATFORMS = {
     't': ('Twitch', '\ue900', '#9146ff'),
@@ -45,8 +49,10 @@ def parse_menu(data):
 
 
 class Picker(Gtk.Application):
-    def __init__(self, items):
+    def __init__(self, items, resident=False):
         super().__init__(application_id='local.stream.picker', flags=Gio.ApplicationFlags.NON_UNIQUE)
+        self.resident = resident
+        self.reply = None
         self.items = items
         self.connect('activate', self.activate_picker)
 
@@ -102,8 +108,31 @@ class Picker(Gtk.Application):
         keys.connect('key-pressed', self.key_pressed)
         self.window.add_controller(keys)
         self.changed(self.entry)
+        if self.resident:
+            self.hold()
+            self.window.connect('close-request', self.close_request)
+            start_server(self)
+        else:
+            self.window.present()
+            self.entry.grab_focus()
+
+    def close_request(self, *_):
+        self.finish('')
+        return True
+
+    def show_request(self, data, reply):
+        if self.reply is not None:
+            reply('')
+            self.window.present()
+            return False
+        self.reply = reply
+        self.items = parse_menu(data)
+        self.entry.set_text('')
+        self.changed(self.entry)
+        self.scroll.get_vadjustment().set_value(0)
         self.window.present()
         self.entry.grab_focus()
+        return False
 
     def changed(self, entry):
         text = entry.get_text()
@@ -133,9 +162,15 @@ class Picker(Gtk.Application):
         self.list.select_row(self.list.get_row_at_index(0))
 
     def finish(self, value):
-        if value:
-            print(value, flush=True)
-        self.quit()
+        if self.resident:
+            self.window.set_visible(False)
+            reply, self.reply = self.reply, None
+            if reply:
+                reply(value)
+        else:
+            if value:
+                print(value, flush=True)
+            self.quit()
 
     def row_activated(self, _list, row):
         self.finish(row.result)
@@ -146,7 +181,7 @@ class Picker(Gtk.Application):
 
     def key_pressed(self, _controller, key, _code, modifiers):
         if key == Gdk.KEY_Escape:
-            self.quit()
+            self.finish('')
             return True
         if key in (Gdk.KEY_Return, Gdk.KEY_KP_Enter) and modifiers & Gdk.ModifierType.SHIFT_MASK:
             self.finish(self.entry.get_text())
@@ -170,6 +205,49 @@ class Picker(Gtk.Application):
         return False
 
 
+def start_server(picker):
+    import json
+    import socket
+    import threading
+    path = Path(os.environ['XDG_RUNTIME_DIR'])/'stream-picker.sock'
+    path.unlink(missing_ok=True)
+    server = socket.socket(socket.AF_UNIX)
+    server.bind(str(path))
+    path.chmod(0o600)
+    server.listen(4)
+
+    def handle(client):
+        with client:
+            try:
+                client.settimeout(5)
+                with client.makefile('r') as source:
+                    data = json.loads(source.readline())
+                    event = threading.Event()
+                    answer = []
+                    def reply(value):
+                        answer.append(value)
+                        event.set()
+                    GLib.idle_add(picker.show_request, data, reply)
+                    event.wait()
+                    client.sendall((json.dumps(answer[0])+'\n').encode())
+            except (OSError, ValueError):
+                pass
+
+    def serve():
+        while True:
+            client, _ = server.accept()
+            threading.Thread(target=handle, args=(client,), daemon=True).start()
+    threading.Thread(target=serve, daemon=True).start()
+
+
 if __name__ == '__main__':
-    picker = Picker(parse_menu(sys.stdin.read()))
+    resident = '--daemon' in sys.argv
+    if resident:
+        import fcntl
+        lock = (Path(os.environ['XDG_RUNTIME_DIR'])/'stream-picker.lock').open('w')
+        try:
+            fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except BlockingIOError:
+            raise SystemExit(0)
+    picker = Picker([] if resident else parse_menu(sys.stdin.read()), resident)
     picker.run([])
