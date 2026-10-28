@@ -362,6 +362,7 @@ PYICON
     stream_session_current || exit 0
     LIVE_URL=$(jq -er '.url' <<<"$LIVE") || exit 1
     LIVE_TITLE=$(jq -r '.title' <<<"$LIVE")
+    PLAYER_TITLE=$(python3 "$HOME/scripts/stream_menu_metadata.py" "$STREAMER" "$SERVICE" "$LIVE_TITLE")
     PLAYER_ARGS=()
     if [[ "$SERVICE" == YouTube ]]; then
       YTDL="$HOME/.local/bin/yt-dlp"
@@ -383,7 +384,7 @@ PYICON
     play_live_stream --cache=yes --cache-secs=30 --demuxer-max-bytes=150MiB \
       --demuxer-max-back-bytes=100MiB --hwdec=auto \
       --input-ipc-server="/tmp/mpv-${SERVICE,,}-live-ipc" \
-      "${PLAYER_ARGS[@]}" --force-media-title="$STREAMER — $LIVE_TITLE" "$LIVE_URL"
+      "${PLAYER_ARGS[@]}" --force-media-title="$PLAYER_TITLE" "$LIVE_URL"
   ) &
   exit 0
 fi
@@ -459,6 +460,7 @@ awk -v user="$STREAMER_USERNAME" '
   # force-media-title so the window and the clip filenames say who is streaming
   # rather than showing the HLS playlist token.
   stream_session_current || exit 0
+  PLAYER_TITLE=$(python3 "$HOME/scripts/stream_menu_metadata.py" "$STREAMER" Twitch)
   FIRST_FRAME=$(mktemp "${XDG_RUNTIME_DIR:-/tmp}/twitch-first-frame.XXXXXX")
   TWITCH_FIRST_FRAME="$FIRST_FRAME" mpv \
     --script="$HOME/scripts/twitch-first-frame.lua" \
@@ -478,7 +480,7 @@ awk -v user="$STREAMER_USERNAME" '
     --cscale=spline36 \
     --dscale=mitchell \
     --input-ipc-server="$MPV_SOCKET" \
-    --force-media-title="$STREAMER" \
+    --force-media-title="$PLAYER_TITLE" \
     "$LOW_URL" &
   MPV_PID=$!
 

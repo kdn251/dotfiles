@@ -7,6 +7,7 @@ import os
 os.environ.setdefault("GSK_RENDERER", "gl")
 import sys
 from pathlib import Path
+import stream_menu_metadata
 
 # Load before GTK/Wayland so layer-shell can intercept surface creation.
 ctypes.CDLL('libgtk4-layer-shell.so', mode=ctypes.RTLD_GLOBAL)
@@ -14,7 +15,7 @@ import gi
 gi.require_version('Gtk', '4.0')
 gi.require_version('Gdk', '4.0')
 gi.require_version('Gtk4LayerShell', '1.0')
-from gi.repository import Gdk, Gio, Gtk, Gtk4LayerShell as Layer, Pango, GLib
+from gi.repository import Gdk, Gio, Gtk, Gtk4LayerShell as Layer, Pango, GLib, Gsk, Graphene
 
 PLATFORMS = {
     't': ('Twitch', '\ue900', '#9146ff'),
@@ -48,12 +49,25 @@ def parse_menu(data):
     return items
 
 
+class RoundedAvatar(Gtk.Image):
+    def do_snapshot(self, snapshot):
+        bounds = Graphene.Rect().init(0, 0, self.get_width(), self.get_height())
+        clip = Gsk.RoundedRect()
+        clip.init_from_rect(bounds, 6)
+        snapshot.push_rounded_clip(clip)
+        Gtk.Image.do_snapshot(self, snapshot)
+        snapshot.pop()
+
+
 class Picker(Gtk.Application):
     def __init__(self, items, resident=False):
         super().__init__(application_id='local.stream.picker', flags=Gio.ApplicationFlags.NON_UNIQUE)
         self.resident = resident
         self.reply = None
         self.prefetch_timer = None
+        self.marquee_timer = None
+        self.marquee_row = None
+        self.metadata = stream_menu_metadata.load()
         self.items = items
         self.connect('activate', self.activate_picker)
 
@@ -75,10 +89,17 @@ class Picker(Gtk.Application):
           entry:focus-within { outline: none; box-shadow: none; }
           .picker list { background: transparent; color: #eceff4; }
           .picker row { background: transparent; color: #eceff4;
-                        padding: 3px 6px; border-radius: 0; min-height: 29px; }
+                        padding: 7px 8px; border-radius: 8px; min-height: 40px;
+                        font-family: sans-serif; font-size: 12pt; }
           .picker row label { color: #eceff4; }
           .picker row:selected { background: #3b4252; color: #88c0d0; }
-          .picker row:selected label { color: #88c0d0; }
+          .picker row:selected label { color: #eceff4; }
+          .picker row .stream-name { font-weight: 700; }
+          .picker row .stream-category { color: #88c0d0; font-size: 10pt; }
+          .picker row .stream-title { color: #b5bdcc; font-size: 10.5pt; }
+          .picker row .stream-viewers { color: #88c0d0; font-size: 11pt; font-weight: 700;
+              background: transparent; padding: 0; }
+          .picker row:selected { background: #3b4252; }
         ''')
         Gtk.StyleContext.add_provider_for_display(Gdk.Display.get_default(), css, Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION)
         box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=10)
@@ -99,8 +120,13 @@ class Picker(Gtk.Application):
         scroll = Gtk.ScrolledWindow()
         self.scroll = scroll
         scroll.set_policy(Gtk.PolicyType.NEVER, Gtk.PolicyType.EXTERNAL)
-        scroll.set_min_content_height(350)
-        scroll.set_max_content_height(350)
+        scroll.set_min_content_height(324)
+        scroll.set_max_content_height(324)
+        scroll.set_kinetic_scrolling(False)
+        wheel = Gtk.EventControllerScroll.new(Gtk.EventControllerScrollFlags.VERTICAL | Gtk.EventControllerScrollFlags.DISCRETE)
+        wheel.set_propagation_phase(Gtk.PropagationPhase.CAPTURE)
+        wheel.connect("scroll", self.scroll_rows)
+        scroll.add_controller(wheel)
         scroll.set_propagate_natural_height(True)
         scroll.set_child(self.list)
         box.append(scroll)
@@ -129,6 +155,7 @@ class Picker(Gtk.Application):
             return False
         self.reply = reply
         self.items = parse_menu(data)
+        self.metadata = stream_menu_metadata.load()
         self.entry.set_text('')
         self.changed(self.entry)
         self.scroll.get_vadjustment().set_value(0)
@@ -145,25 +172,99 @@ class Picker(Gtk.Application):
         query = text[2:].lstrip('@') if service != 't' else text
         while child := self.list.get_first_child():
             self.list.remove(child)
-        for label, identity, icon, item_service in self.items:
+        results = []
+        for item in self.items:
+            label, identity, icon, item_service = item
             if service != 't' and item_service != service:
                 continue
-            if not matches(query, label):
-                continue
+            info = stream_menu_metadata.details(label, identity, item_service, self.metadata)
+            name, category, stream_title, viewers = info
+            rank = stream_menu_metadata.search_rank(query, name, category, stream_title)
+            if rank is not None:
+                results.append((rank, item, info))
+        # Stable sorting preserves favorites/order for ties and an empty search.
+        for _, (label, identity, icon, item_service), info in sorted(results, key=lambda result: result[0]):
+            name, category, stream_title, viewers = info
             row = Gtk.ListBoxRow()
             row.result = label + '\t' + identity
             content = Gtk.Box(spacing=10)
-            avatar = Gtk.Image.new_from_file(icon) if icon and Path(icon).is_file() else Gtk.Image.new_from_icon_name('video-display-symbolic')
-            avatar.set_pixel_size(28)
+            avatar = RoundedAvatar(file=icon) if icon and Path(icon).is_file() else RoundedAvatar(icon_name="video-display-symbolic")
+            avatar.set_pixel_size(36)
+            avatar.set_valign(Gtk.Align.CENTER)
             content.append(avatar)
-            title = Gtk.Label(label=label, xalign=0, hexpand=True)
-            title.set_ellipsize(Pango.EllipsizeMode.END)
-            content.append(title)
+            words = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=5, hexpand=True)
+            top = Gtk.Box(spacing=10)
+            title = Gtk.Label(label=name, xalign=0)
+            title.set_markup(stream_menu_metadata.highlight(name, query, fuzzy=True))
+            title.add_css_class('stream-name')
+            top.append(title)
+            game = Gtk.Label(label=category, xalign=0, hexpand=True)
+            game.set_ellipsize(Pango.EllipsizeMode.END)
+            game.set_markup(stream_menu_metadata.highlight(category, query))
+            game.add_css_class('stream-category')
+            top.append(game)
+            count = Gtk.Label(label=viewers.replace(" watching", ""), xalign=1)
+            count.set_tooltip_text(viewers)
+            count.set_valign(Gtk.Align.CENTER)
+            count.set_yalign(0.5)
+            count.set_visible(bool(viewers))
+            count.add_css_class('stream-viewers')
+            top.append(count)
+            words.append(top)
+            subtitle = Gtk.Label(label=stream_title or 'Live now', xalign=0, hexpand=True)
+            subtitle.set_ellipsize(Pango.EllipsizeMode.END)
+            subtitle.add_css_class('stream-title')
+            subtitle.set_tooltip_text(stream_title or label)
+            words.append(subtitle)
+            row.subtitle = subtitle
+            row.full_title = stream_title or 'Live now'
+            row.query = query
+            subtitle.set_markup(stream_menu_metadata.highlight(row.full_title, query))
+            content.append(words)
             row.set_child(content)
             self.list.append(row)
+        rows = []
+        child = self.list.get_first_child()
+        while child:
+            rows.append(child)
+            child = child.get_next_sibling()
+        self.row_height = max((r.measure(Gtk.Orientation.VERTICAL, -1)[1] for r in rows), default=54)
+        for r in rows:
+            r.set_size_request(-1, self.row_height)
+        height = self.row_height * min(6, max(1, len(rows)))
+        self.scroll.set_min_content_height(0)
+        self.scroll.set_max_content_height(height)
+        self.scroll.set_min_content_height(height)
         self.list.select_row(self.list.get_row_at_index(0))
 
+    def scroll_rows(self, _controller, _dx, dy):
+        adjustment = self.scroll.get_vadjustment()
+        height = getattr(self, 'row_height', 54)
+        step = 1 if dy > 0 else -1 if dy < 0 else 0
+        adjustment.set_value(round(adjustment.get_value() / height) * height + step * height)
+        return True
+
     def prefetch_selected(self, _list, row):
+        if self.marquee_timer:
+            GLib.source_remove(self.marquee_timer)
+            self.marquee_timer = None
+        if self.marquee_row:
+            self.marquee_row.subtitle.set_markup(stream_menu_metadata.highlight(self.marquee_row.full_title, self.marquee_row.query))
+        self.marquee_row = row
+        if row:
+            ticks = [0]
+            def scroll_title():
+                if not self.window.get_visible():
+                    self.marquee_timer = None
+                    return False
+                ticks[0] += 1
+                layout = row.subtitle.create_pango_layout(row.full_title)
+                if layout.get_pixel_size()[0] > row.subtitle.get_width() and ticks[0] > 8:
+                    text = row.full_title + '     •     '
+                    offset = (ticks[0] - 8) % len(text)
+                    row.subtitle.set_markup(stream_menu_metadata.highlight(text, row.query, offset=offset))
+                return True
+            self.marquee_timer = GLib.timeout_add(100, scroll_title)
         if self.prefetch_timer:
             GLib.source_remove(self.prefetch_timer)
             self.prefetch_timer = None

@@ -728,7 +728,47 @@ function get_chapter(possec)
     end
 end
 
+-- Measure only when the title or layout changes; never on every frame.
+local title_measure = mp.create_osd_overlay('ass-events')
+title_measure.hidden = true
+title_measure.compute_bounds = true
+local title_marquee = {}
+local title_scrolling = false
+
+local function scroll_title(element, text)
+    local geo = element.layout.geometry
+    local key = text .. element.layout.style .. tostring(geo.w) ..
+        tostring(osc_param.playresx) .. tostring(osc_param.playresy)
+    local saved = title_marquee[element.name or 'title']
+    if not saved or saved.key ~= key then
+        title_measure.res_x = osc_param.playresx
+        title_measure.res_y = osc_param.playresy
+        title_measure.data = '{\\an7\\pos(0,0)}' ..
+            element.layout.style:gsub('{\\clip%b()}', '') .. text
+        local bounds = title_measure:update()
+        local width = bounds and bounds.x1 and (bounds.x1 - bounds.x0) or 0
+        saved = {key=key, width=width, started=mp.get_time()}
+        title_marquee[element.name or 'title'] = saved
+    end
+    if saved.width <= geo.w then return nil end
+    title_scrolling = true
+    local overflow = saved.width - geo.w + 8
+    local travel = overflow / 35
+    local phase = (mp.get_time() - saved.started) % (travel + 2.4)
+    local offset = math.min(overflow, math.max(0, phase - 0.9) * 35)
+    local column = (geo.an - 1) % 3
+    local x = geo.x - (column == 1 and geo.w / 2 or column == 2 and geo.w or 0)
+    local y = geo.y - (geo.an <= 3 and geo.h or geo.an <= 6 and geo.h / 2 or 0)
+    return string.format('{\\an7\\pos(%f,%f)\\clip(%f,%f,%f,%f)}',
+        x - offset, y, x, y - geo.h, x + geo.w, y + geo.h * 2) .. text
+end
+
+mp.add_periodic_timer(0.05, function()
+    if title_scrolling and state.osc_visible then request_tick() end
+end)
+
 function render_elements(master_ass)
+    title_scrolling = false
 
     -- when the slider is dragged or hovered and we have a target chapter name
     -- then we use it instead of the normal title. we calculate it before the
@@ -995,6 +1035,11 @@ function render_elements(master_ass)
             end
 
             local maxchars = element.layout.button.maxchars
+            local marquee = (element.name == "title" or element.name == "wctitle") and scroll_title(element, buttontext)
+            if marquee then
+                buttontext = marquee
+                maxchars = nil
+            end
             if not (maxchars == nil) and (#buttontext > maxchars) then
                 local max_ratio = 1.25  -- up to 25% more chars while shrinking
                 local limit = math.max(0, math.floor(maxchars * max_ratio) - 3)
@@ -1144,6 +1189,7 @@ end
 
 function new_element(name, type)
     elements[name] = {}
+    elements[name].name = name
     elements[name].type = type
 
     -- add default stuff

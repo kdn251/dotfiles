@@ -58,6 +58,16 @@ if [ -z "$response" ] || ! jq -e '.data.users' >/dev/null 2>&1 <<<"$response"; t
   exit 1
 fi
 
+# Keep complete titles/categories for the compact two-line picker rows.
+mkdir -p "$HOME/.cache"
+metadata_tmp=$(mktemp "$HOME/.cache/twitch-live.json.XXXXXX")
+jq '[.data.users[] | select(. != null and .stream != null) |
+    {key: (.login | ascii_downcase), value: {title: .stream.title,
+     category: .stream.game.displayName, viewer_count: .stream.viewersCount,
+     display_name: .displayName, checked_at: now}}] | from_entries' \
+    <<<"$response" >"$metadata_tmp"
+if [ -s "$metadata_tmp" ]; then mv "$metadata_tmp" "$HOME/.cache/twitch-live.json"; else rm -f "$metadata_tmp"; fi
+
 tmp="$LIVE_LIST.tmp"
 jq -r '
   def human:
