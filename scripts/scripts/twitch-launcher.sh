@@ -69,8 +69,7 @@ chat_stop() {
 
 # Same, but only if we are still the current stream (see SESSION_ID).
 chat_stop_if_current() {
-  [ "$(cat "$SESSION_FILE" 2>/dev/null)" = "$SESSION_ID" ] || return 0
-  chat_stop
+  manage_chat stop
 }
 
 # Start a fresh Chatterino showing exactly one tab: $1's chat.
@@ -87,6 +86,7 @@ chat_start() {
   local ch tmp
   ch="${1,,}"
   chat_stop
+  stream_session_current || return 0
 
   mkdir -p "$(dirname "$CHAT_LAYOUT")"
   tmp=$(mktemp)
@@ -126,6 +126,21 @@ chat_start() {
 
   chatterino >/dev/null 2>&1 &
 }
+
+# Serialize chat transitions without holding up playback. Recheck ownership
+# after obtaining the lock: a newer selection may have overtaken this worker.
+manage_chat() (
+  exec 8>"${XDG_RUNTIME_DIR:-/tmp}/twitch-chat-transition-${UID}.lock"
+  flock 8
+  stream_session_current || exit 0
+  if [ "$1" = start ]; then
+    python3 "$HOME/scripts/media-chat.py" --close-youtube
+    stream_session_current || exit 0
+    chat_start "$2"
+  else
+    chat_stop
+  fi
+)
 
 # --- 1. Setup & Force Icon Sync ---
 if [ ! -f "$USERNAME_LIST" ]; then
@@ -363,7 +378,7 @@ PYICON
     stream_session_current || exit 0
     pkill mpv
     python3 "$HOME/scripts/media-chat.py" --close-youtube
-    chat_stop
+    manage_chat stop &
     stream_session_current || exit 0
     play_live_stream --cache=yes --cache-secs=30 --demuxer-max-bytes=150MiB \
       --demuxer-max-back-bytes=100MiB --hwdec=auto \
@@ -420,8 +435,7 @@ awk -v user="$STREAMER_USERNAME" '
   pkill mpv
   rm -f "$MPV_SOCKET"
 
-  python3 "$HOME/scripts/media-chat.py" --close-youtube
-  chat_start "$STREAMER_USERNAME"
+  manage_chat start "$STREAMER_USERNAME" &
 
   # Pillarbox only shows up on the 16:9 LG; on the 3:2 laptop panel
   # panscan=1.0 would crop ~14% off the sides. Apply only when docked.
@@ -430,7 +444,7 @@ awk -v user="$STREAMER_USERNAME" '
     ASPECT_ARGS=(--panscan=1.0)
   fi
 
-  LOW_URL=$(streamlink "${SL_COMMON[@]}" --stream-url "$URL" 480p,360p,worst 2>/dev/null)
+  LOW_URL=$(python3 "$HOME/scripts/twitch-stream-url.py" "$STREAMER_USERNAME" 2>/dev/null)
 
   if [ -z "$LOW_URL" ]; then
     stream_session_current || exit 0
@@ -445,7 +459,9 @@ awk -v user="$STREAMER_USERNAME" '
   # force-media-title so the window and the clip filenames say who is streaming
   # rather than showing the HLS playlist token.
   stream_session_current || exit 0
-  mpv \
+  FIRST_FRAME=$(mktemp "${XDG_RUNTIME_DIR:-/tmp}/twitch-first-frame.XXXXXX")
+  TWITCH_FIRST_FRAME="$FIRST_FRAME" mpv \
+    --script="$HOME/scripts/twitch-first-frame.lua" \
     --cache=yes \
     --cache-secs=30 \
     --demuxer-max-bytes=150MiB \
@@ -467,12 +483,14 @@ awk -v user="$STREAMER_USERNAME" '
   MPV_PID=$!
 
   (
-    for i in $(seq 1 20); do
-      [ -S "$MPV_SOCKET" ] && break
+    for i in $(seq 1 150); do
+      stream_session_current && kill -0 "$MPV_PID" 2>/dev/null || exit 0
+      [ -s "$FIRST_FRAME" ] && [ -S "$MPV_SOCKET" ] && break
       sleep 0.1
     done
-    [ ! -S "$MPV_SOCKET" ] && exit 1
-    BEST_URL=$(streamlink "${SL_COMMON[@]}" --stream-url "$URL" best,1080p60,1080p,720p60,720p 2>/dev/null)
+    [ -s "$FIRST_FRAME" ] && [ -S "$MPV_SOCKET" ] || exit 1
+    sleep 0.5
+    BEST_URL=$(python3 "$HOME/scripts/twitch-stream-url.py" "$STREAMER_USERNAME" --best 2>/dev/null)
     if [ -n "$BEST_URL" ] && stream_session_current && kill -0 "$MPV_PID" 2>/dev/null; then
       IPC_CMD=$(jq -cn --arg url "$BEST_URL" '{"command": ["loadfile", $url, "replace"]}')
       echo "$IPC_CMD" | socat - "$MPV_SOCKET" >/dev/null 2>&1
@@ -481,6 +499,7 @@ awk -v user="$STREAMER_USERNAME" '
   ) &
 
   wait $MPV_PID
+  rm -f "$FIRST_FRAME"
 
   # Stream is over (window closed, or killed): take the chat window with it.
   chat_stop_if_current

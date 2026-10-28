@@ -53,6 +53,7 @@ class Picker(Gtk.Application):
         super().__init__(application_id='local.stream.picker', flags=Gio.ApplicationFlags.NON_UNIQUE)
         self.resident = resident
         self.reply = None
+        self.prefetch_timer = None
         self.items = items
         self.connect('activate', self.activate_picker)
 
@@ -94,6 +95,7 @@ class Picker(Gtk.Application):
         self.list = Gtk.ListBox(selection_mode=Gtk.SelectionMode.SINGLE)
         self.list.set_activate_on_single_click(True)
         self.list.connect('row-activated', self.row_activated)
+        self.list.connect('row-selected', self.prefetch_selected)
         scroll = Gtk.ScrolledWindow()
         self.scroll = scroll
         scroll.set_policy(Gtk.PolicyType.NEVER, Gtk.PolicyType.AUTOMATIC)
@@ -160,6 +162,26 @@ class Picker(Gtk.Application):
             row.set_child(content)
             self.list.append(row)
         self.list.select_row(self.list.get_row_at_index(0))
+
+    def prefetch_selected(self, _list, row):
+        if self.prefetch_timer:
+            GLib.source_remove(self.prefetch_timer)
+            self.prefetch_timer = None
+        if row is None:
+            return
+        identity = row.result.split('\t', 1)[1]
+        if identity.endswith(('(YouTube)', '(Rumble)', '(Kick)')):
+            return
+        name = identity.split()[0]
+        def warm():
+            import subprocess
+            self.prefetch_timer = None
+            subprocess.Popen([sys.executable, str(Path(__file__).with_name('twitch-stream-url.py')),
+                              name, '--prefetch'], stdin=subprocess.DEVNULL,
+                             stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                             start_new_session=True)
+            return False
+        self.prefetch_timer = GLib.timeout_add(150, warm)
 
     def finish(self, value):
         if self.resident:
