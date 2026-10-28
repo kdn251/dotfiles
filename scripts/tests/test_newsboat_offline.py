@@ -26,7 +26,10 @@ class OfflineTests(unittest.TestCase):
     def test_stalled_server_opens_offline_home_within_budget(self):
         self.run_startup(healthy=False)
 
-    def run_startup(self, healthy):
+    def test_refused_connection_opens_offline_home(self):
+        self.run_startup(healthy=False, refused=True)
+
+    def run_startup(self, healthy, refused=False):
         release=threading.Event()
         class Handler(http.server.BaseHTTPRequestHandler):
             def do_GET(self):
@@ -62,7 +65,7 @@ class OfflineTests(unittest.TestCase):
                 config=home/'config';config.write_text('show-read-feeds yes\n')
                 subprocess.run([str(BINARY),'-C',str(config),'-u',str(home/'urls'),'-c',str(home/'cache.db'),'-x','reload'],check=True,capture_output=True)
                 config.write_text('urls-source miniflux\nshow-read-feeds yes\nminiflux-show-special-feeds no\ninclude '+str(home/'miniflux_creds.conf')+'\ndownload-timeout 25\n')
-                (home/'miniflux_creds.conf').write_text(f'miniflux-url "http://127.0.0.1:{server.server_port}"\nminiflux-login test\nminiflux-password test\n')
+                (home/'miniflux_creds.conf').write_text(f'miniflux-url "http://127.0.0.1:{9 if refused else server.server_port}"\nminiflux-login test\nminiflux-password test\n')
                 saved=root/'state/newsboat/youtube-playlists/playthroughs'
                 saved.mkdir(parents=True)
                 (saved/'PLoffline.json').write_text(json.dumps(dict(schema=2,id='PLoffline',
@@ -90,7 +93,7 @@ class OfflineTests(unittest.TestCase):
                     self.assertIn('Newsboat — offline'.encode(),output)
                     self.assertIn(b'Downloads',output)
                     self.assertIn(b'Playthroughs',output)
-                    self.assertLess(time.monotonic()-started,28)
+                    self.assertLess(time.monotonic()-started,5 if refused else 28)
                     os.write(fd,b'\r')
                     deadline=time.monotonic()+3
                     output=b''

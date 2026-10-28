@@ -44,6 +44,15 @@ class Tracker:
             live.add(key)
             state = self.windows.setdefault(key, {'saved': None, 'fs': False})
             snapshot = self.runtime / f'pip-fullscreen-{os.getuid()}-{address}.geometry'
+            restored = snapshot.with_name(snapshot.name + '.restored')
+            try:
+                if int(restored.read_text()) == client['pid'] and not client['fullscreen']:
+                    state['saved'] = geometry(client)
+                    state['fs'] = False
+                    snapshot.unlink(missing_ok=True)
+                restored.unlink(missing_ok=True)
+            except (OSError, ValueError):
+                pass
             # F / Mod+F captures exact geometry before entry, including moves
             # made between polling ticks. Atomic rename prevents partial reads.
             try:

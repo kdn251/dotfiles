@@ -98,7 +98,7 @@ class Picker(Gtk.Application):
         self.list.connect('row-selected', self.prefetch_selected)
         scroll = Gtk.ScrolledWindow()
         self.scroll = scroll
-        scroll.set_policy(Gtk.PolicyType.NEVER, Gtk.PolicyType.AUTOMATIC)
+        scroll.set_policy(Gtk.PolicyType.NEVER, Gtk.PolicyType.EXTERNAL)
         scroll.set_min_content_height(350)
         scroll.set_max_content_height(350)
         scroll.set_propagate_natural_height(True)

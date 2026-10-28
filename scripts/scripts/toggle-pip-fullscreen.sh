@@ -40,6 +40,8 @@ case "$class:$title" in
       geometry_state="$runtime/pip-fullscreen-$UID-${address}.geometry"
       printf '%s\n' "$focused" > "$geometry_state.tmp"
       mv -f "$geometry_state.tmp" "$geometry_state"
+      # Keep a separate snapshot: the fallback watcher consumes .geometry.
+      cp "$geometry_state" "$geometry_state.return"
       rm -f "$state"
       if [ "$pinned" = true ]; then
         hyprctl dispatch pin "address:$address" >/dev/null
@@ -47,7 +49,19 @@ case "$class:$title" in
       fi
       hyprctl dispatch fullscreen 0 >/dev/null
     else
-      hyprctl dispatch fullscreen 0 >/dev/null
+      geometry_state="$runtime/pip-fullscreen-$UID-${address}.geometry"
+      # Exit and restore before the compositor renders the next frame.
+      restore=$(jq -r --argjson pid "$pid" --arg address "$address" '
+        select(.pid == $pid and .floating == true)
+        | "dispatch resizewindowpixel exact \(.size[0]) \(.size[1]),address:\($address); dispatch movewindowpixel exact \(.at[0]) \(.at[1]),address:\($address)"
+      ' "$geometry_state.return" 2>/dev/null || true)
+      if [ -n "$restore" ]; then
+        hyprctl --batch "dispatch fullscreen 0; $restore" >/dev/null
+        printf '%s\n' "$pid" > "$geometry_state.restored"
+        rm -f "$geometry_state" "$geometry_state.return"
+      else
+        hyprctl dispatch fullscreen 0 >/dev/null
+      fi
       if [ -f "$state" ] && [ "$(cat "$state")" = "$pid" ]; then
         if [ "$pinned" != true ]; then
           hyprctl dispatch pin "address:$address" >/dev/null

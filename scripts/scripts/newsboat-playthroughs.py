@@ -64,7 +64,7 @@ def prepare_view(directory, ident=None):
 
 
 def show(ident=None):
-    if ident:
+    if ident and os.environ.get('NEWSBOAT_OFFLINE') != '1':
         group=next((g for g in library.read_groups() if g['id']==ident),None)
         if group is not None:
             try:

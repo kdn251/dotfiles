@@ -710,7 +710,7 @@ def run(args):
             renderer.close()
             for sig, handler in previous_signals.items():
                 signal.signal(sig, handler)
-    if remote and startup_error and re.search(rb'connect|timed out|resolve host|network|HTTP.*(?:401|403|50[234])', startup_error, re.I):
+    if remote and startup_error and re.search(rb'connect|timed out|resolve host|network|HTTP[^\r\n]*(?:response code:\s*0\b|401|403|5[0-9]{2})', startup_error, re.I):
         offline_requested = True
     if offline_requested:
         from newsboat_offline import show
