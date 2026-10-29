@@ -38,7 +38,7 @@ log() { echo "$(date): $*" >>"$LOG_FILE"; }
 [ -f "$MASTER_LIST" ] || { log "ERROR: master list not found: $MASTER_LIST"; exit 1; }
 
 # First field of each non-comment line, lowercased, as a JSON array.
-logins=$(awk '!/^[[:space:]]*#/ && NF { print tolower($1) }' "$MASTER_LIST" |
+logins=$(awk '!/^[[:space:]]*#/ && NF && !seen[tolower($1)]++ { print tolower($1) }' "$MASTER_LIST" |
   jq -R . | jq -s -c .)
 [ "$logins" != "[]" ] || { log "ERROR: master list has no usable names"; exit 1; }
 

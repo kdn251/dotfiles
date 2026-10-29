@@ -37,6 +37,7 @@ def matches(query, label):
 
 def parse_menu(data):
     items = []
+    seen = set()
     for line in data.splitlines():
         value, _, metadata = line.partition('\0')
         label, sep, identity = value.partition('\t')
@@ -45,6 +46,10 @@ def parse_menu(data):
         icon = metadata.removeprefix('icon\x1f') if metadata.startswith('icon\x1f') else ''
         service = next((key for key, (name, _, _) in PLATFORMS.items()
                         if identity.endswith(f'({name})')), 't')
+        key = (service, identity.split()[0].casefold())
+        if key in seen:
+            continue
+        seen.add(key)
         items.append((label, identity, icon, service))
     return items
 
@@ -344,8 +349,10 @@ class Picker(Gtk.Application):
                 self.list.select_row(target)
                 # Keep typing in the search entry after keyboard navigation.
                 adjustment = self.scroll.get_vadjustment()
-                top = target.get_allocation().y
-                bottom = top + target.get_height()
+                # get_height() excludes CSS padding; scrolling uses the full
+                # row pitch, otherwise the next row is clipped by 14 pixels.
+                top = target.get_index() * self.row_height
+                bottom = top + self.row_height
                 if top < adjustment.get_value():
                     adjustment.set_value(top)
                 elif bottom > adjustment.get_value() + adjustment.get_page_size():
