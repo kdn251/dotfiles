@@ -192,6 +192,7 @@ class Picker(Gtk.Application):
         self.anchor_search()
         self.window.present()
         self.entry.grab_focus()
+        self.warm_top_streams()
         return False
 
     def changed(self, entry):
@@ -274,6 +275,15 @@ class Picker(Gtk.Application):
         step = 1 if dy > 0 else -1 if dy < 0 else 0
         adjustment.set_value(round(adjustment.get_value() / height) * height + step * height)
         return True
+
+    def warm_top_streams(self):
+        import subprocess
+        channels = [identity.split()[0] for _, identity, _, service in self.items if service == 't'][:2]
+        for name in channels:
+            subprocess.Popen([sys.executable, str(Path(__file__).with_name('twitch-stream-url.py')),
+                              name, '--prefetch'], stdin=subprocess.DEVNULL,
+                             stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                             start_new_session=True)
 
     def prefetch_selected(self, _list, row):
         if self.marquee_timer:

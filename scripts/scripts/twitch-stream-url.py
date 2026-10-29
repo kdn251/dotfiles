@@ -13,11 +13,32 @@ import time
 def cached(path):
     try:
         data=json.loads(path.read_text())
-        if 0 <= time.time()-data['created'] < 60 and data.get('low') and data.get('best'):
+        if 0 <= time.time()-data['created'] < 60 and data.get('schema') == 2 and data.get('low') and data.get('best'):
             return data
     except (OSError,ValueError,KeyError,TypeError):
         pass
     return None
+
+
+def fetch(name):
+    # The stock Twitch plugin probes every rendition serially. We only need
+    # the master index: MPV opens/checks the selected rendition itself.
+    from streamlink import Streamlink
+    from streamlink.plugins.twitch import Twitch, TwitchHLSStream
+    class PlaybackTwitch(Twitch):
+        def _get_hls_streams(self, url, restricted_bitrates, **extra):
+            return TwitchHLSStream.parse_variant_playlist(
+                self.session, url, start_offset=self.time_offset,
+                check_streams=False, low_latency=self.get_option('low-latency'), **extra)
+    options={'disable-ads':True}
+    token=Path.home()/'.newsboat/.twitch_oauth'
+    if token.exists():options['api-header']=[('Authorization','OAuth '+token.read_text().strip())]
+    session=Streamlink({'http-timeout':8},plugins_builtin=False)
+    try:
+        streams=PlaybackTwitch(session,'https://www.twitch.tv/'+name,options=options).streams()
+        return {'streams':{key:{'url':stream.url} for key,stream in streams.items()}}
+    finally:
+        session.http.close()
 
 
 def resolve(name, prefetch=False):
@@ -32,20 +53,30 @@ def resolve(name, prefetch=False):
         fcntl.flock(lock,fcntl.LOCK_EX)
         data=cached(path)
         if data:return data
-        # Avoid flooding Twitch when quickly browsing many rows.
-        with (root/'prefetch.lock').open('a') as budget:
+        # Limit speculative work to two channels; explicit selection bypasses
+        # the budget and never waits behind an unrelated highlighted streamer.
+        with (root/'prefetch.lock').open('a') as budget, (root/'prefetch-2.lock').open('a') as second:
             if prefetch:
                 try:fcntl.flock(budget,fcntl.LOCK_EX|fcntl.LOCK_NB)
-                except BlockingIOError:return None
+                except BlockingIOError:
+                    try:fcntl.flock(second,fcntl.LOCK_EX|fcntl.LOCK_NB)
+                    except BlockingIOError:return None
             args=['streamlink','--twitch-disable-ads']
             token=Path.home()/'.newsboat/.twitch_oauth'
             if token.exists():args+=['--twitch-api-header','Authorization=OAuth '+token.read_text().strip()]
-            result=subprocess.run(args+['--json','https://www.twitch.tv/'+name],
-                                  capture_output=True,text=True,timeout=12)
+            try:
+                result=subprocess.run([sys.executable,__file__,name,'--fetch'],
+                                      capture_output=True,text=True,timeout=12)
+            except subprocess.TimeoutExpired:
+                result=None
+            if result is None or result.returncode:
+                # Retain the upstream resolver if its plugin API changes.
+                result=subprocess.run(args+['--json','https://www.twitch.tv/'+name],
+                                      capture_output=True,text=True,timeout=12)
             if result.returncode:raise ValueError('Could not resolve Twitch stream')
             streams=json.loads(result.stdout)['streams']
-            quality=next((key for prefix in ('480p','360p') for key in streams if key.startswith(prefix)), 'worst')
-            data=dict(created=time.time(),low=streams[quality]['url'],best=streams['best']['url'])
+            quality=next((key for prefix in ('360p','480p') for key in streams if key.startswith(prefix)), 'worst')
+            data=dict(schema=2,created=time.time(),low=streams[quality]['url'],best=streams['best']['url'])
             if not all(data[k].startswith('https://') for k in ('low','best')):
                 raise ValueError('Invalid stream URL')
             tmp=path.with_suffix('.tmp')
@@ -55,8 +86,19 @@ def resolve(name, prefetch=False):
 
 if __name__=='__main__':
     try:
+        if '--fetch' in sys.argv:
+            print(json.dumps(fetch(sys.argv[1].lower())))
+            raise SystemExit(0)
         data=resolve(sys.argv[1].lower(), '--prefetch' in sys.argv)
         if data and '--prefetch' not in sys.argv:
-            print(data['best' if '--best' in sys.argv else 'low'])
+            if '--best' in sys.argv:
+                # Validate just the upgrade, after low-quality playback starts.
+                # An inaccessible HD rendition must not replace a working stream.
+                from urllib.request import Request, urlopen
+                with urlopen(Request(data['best'],headers={'User-Agent':'Mozilla/5.0'}),timeout=3) as response:
+                    if b'#EXTM3U' not in response.read(256):raise ValueError('Invalid HD playlist')
+                print(data['best'])
+            else:
+                print(data['low'])
     except (OSError,ValueError,KeyError,subprocess.TimeoutExpired):
         raise SystemExit(1)

@@ -448,10 +448,14 @@ awk -v user="$STREAMER_USERNAME" '
     --retry-open 3
   )
 
-  pkill mpv
-  rm -f "$MPV_SOCKET"
-
+  # Chat and URL resolution proceed independently. Leave the current player
+  # intact until we know whether its window can be reused.
   manage_chat start "$STREAMER_USERNAME" &
+  # Resolve the network URL while preparing local title/monitor settings.
+  LOW_FILE=$(mktemp "${XDG_RUNTIME_DIR:-/tmp}/twitch-url.XXXXXX")
+  python3 "$HOME/scripts/twitch-stream-url.py" "$STREAMER_USERNAME" >"$LOW_FILE" 2>/dev/null &
+  RESOLVE_PID=$!
+  PLAYER_TITLE=$(python3 "$HOME/scripts/stream_menu_metadata.py" "$STREAMER" Twitch)
 
   # Pillarbox only shows up on the 16:9 LG; on the 3:2 laptop panel
   # panscan=1.0 would crop ~14% off the sides. Apply only when docked.
@@ -460,10 +464,13 @@ awk -v user="$STREAMER_USERNAME" '
     ASPECT_ARGS=(--panscan=1.0)
   fi
 
-  LOW_URL=$(python3 "$HOME/scripts/twitch-stream-url.py" "$STREAMER_USERNAME" 2>/dev/null)
+  wait "$RESOLVE_PID"
+  LOW_URL=$(cat "$LOW_FILE")
+  rm -f "$LOW_FILE"
 
   if [ -z "$LOW_URL" ]; then
     stream_session_current || exit 0
+    pkill mpv
     streamlink "${SL_COMMON[@]}" --player mpv "$URL" best,720p,480p
     STREAM_RC=$?
     chat_stop_if_current
@@ -475,9 +482,15 @@ awk -v user="$STREAMER_USERNAME" '
   # force-media-title so the window and the clip filenames say who is streaming
   # rather than showing the HLS playlist token.
   stream_session_current || exit 0
-  PLAYER_TITLE=$(python3 "$HOME/scripts/stream_menu_metadata.py" "$STREAMER" Twitch)
   FIRST_FRAME=$(mktemp "${XDG_RUNTIME_DIR:-/tmp}/twitch-first-frame.XXXXXX")
+  MPV_PID=$(python3 "$HOME/scripts/twitch-player-ipc.py" "$STREAMER_USERNAME" "$PLAYER_TITLE" "$LOW_URL" "$FIRST_FRAME" 2>/dev/null)
+  REUSED_PLAYER=1
+  if [ -z "$MPV_PID" ]; then
+    REUSED_PLAYER=0
+    pkill mpv
+    rm -f "$MPV_SOCKET"
   TWITCH_STREAMER_USERNAME="$STREAMER_USERNAME" TWITCH_FIRST_FRAME="$FIRST_FRAME" mpv \
+    --term-status-msg= \
     --script="$HOME/scripts/twitch-first-frame.lua" \
     --cache=yes \
     --cache-secs=30 \
@@ -498,6 +511,7 @@ awk -v user="$STREAMER_USERNAME" '
     --force-media-title="$PLAYER_TITLE" \
     "$LOW_URL" &
   MPV_PID=$!
+  fi
 
   (
     for i in $(seq 1 150); do
@@ -511,11 +525,14 @@ awk -v user="$STREAMER_USERNAME" '
     if [ -n "$BEST_URL" ] && stream_session_current && kill -0 "$MPV_PID" 2>/dev/null; then
       IPC_CMD=$(jq -cn --arg url "$BEST_URL" '{"command": ["loadfile", $url, "replace"]}')
       echo "$IPC_CMD" | socat - "$MPV_SOCKET" >/dev/null 2>&1
-      notify-send -i /usr/share/icons/Papirus/48x48/apps/gnome-twitch.svg "MPV" "Quality upgraded" -t 1500 -u low
     fi
   ) &
 
-  wait $MPV_PID
+  if [ "$REUSED_PLAYER" = 1 ]; then
+    python3 "$HOME/scripts/twitch-player-ipc.py" wait "$MPV_PID" "$SESSION_ID"
+  else
+    wait "$MPV_PID"
+  fi
   rm -f "$FIRST_FRAME"
 
   # Stream is over (window closed, or killed): take the chat window with it.

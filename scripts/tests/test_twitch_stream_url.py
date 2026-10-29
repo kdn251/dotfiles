@@ -11,11 +11,11 @@ helper=importlib.util.module_from_spec(spec);spec.loader.exec_module(helper)
 
 class StreamURLTests(unittest.TestCase):
     def test_prefetch_reuse_expiry_and_quality(self):
-        streams={k:{'url':'https://example.test/'+k} for k in ('160p30','480p30','worst','best')}
+        streams={k:{'url':'https://example.test/'+k} for k in ('160p30','360p30','480p30','worst','best')}
         response=Mock(returncode=0,stdout=json.dumps({'streams':streams}))
         with tempfile.TemporaryDirectory() as root, patch.dict(os.environ,XDG_RUNTIME_DIR=root), patch.object(helper.subprocess,'run',return_value=response) as run:
             first=helper.resolve('example',prefetch=True)
-            self.assertTrue(first['low'].endswith('480p30'))
+            self.assertTrue(first['low'].endswith('360p30'))
             self.assertTrue(first['best'].endswith('best'))
             self.assertEqual(helper.resolve('example'),first)
             self.assertEqual(run.call_count,1)

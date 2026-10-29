@@ -61,7 +61,13 @@ def twitch_player(clients):
             if b'--input-ipc-server=/tmp/mpv-twitch-ipc' not in args:
                 continue
             env=dict(part.split(b'=',1) for part in process.joinpath('environ').read_bytes().split(b'\0') if b'=' in part)
-            name=env.get(b'TWITCH_STREAMER_USERNAME',b'').decode()
+            # Environment belongs to the first stream when the player is reused.
+            import importlib.util
+            spec=importlib.util.spec_from_file_location('twitch_ipc',Path(__file__).with_name('twitch-player-ipc.py'))
+            ipc=importlib.util.module_from_spec(spec);spec.loader.exec_module(ipc)
+            try:name=ipc.channel(client['pid']) or ''
+            except (OSError,ValueError):name=''
+            name=name or env.get(b'TWITCH_STREAMER_USERNAME',b'').decode()
             if not name:
                 import shlex
                 for line in Path('/tmp/twitch-stream-context.conf').read_text().splitlines():
