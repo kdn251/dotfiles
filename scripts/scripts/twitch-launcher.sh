@@ -20,7 +20,7 @@ exec >>/tmp/twitch-stream-debug.log 2>&1
 # All services use the same compact loading notification.
 notify_loading() {
   local icon="$1" description="$2"
-  local args=(-t 2000 -u low)
+  local args=(-a Streams -t 4000 -u normal)
   [ -f "$icon" ] && args+=(-i "$icon")
   notify-send "${args[@]}" "MPV" "Loading $description stream..."
 }
@@ -397,13 +397,17 @@ PYICON
     manage_chat stop &
     stream_session_current || exit 0
     play_live_stream --cache=yes --cache-secs=30 --demuxer-max-bytes=150MiB \
-      --demuxer-max-back-bytes=100MiB --hwdec=auto \
+      --demuxer-max-back-bytes=100MiB --hwdec=vaapi \
       --input-ipc-server="/tmp/mpv-${SERVICE,,}-live-ipc" \
       "${PLAYER_ARGS[@]}" --force-media-title="$PLAYER_TITLE" "$LIVE_URL"
   ) &
   exit 0
 fi
 URL="https://www.twitch.tv/$STREAMER_USERNAME"
+
+# Acknowledge the selection before stats, player setup, or URL resolution.
+IMG_PATH="$PIXMAPS/${STREAMER_USERNAME,,}.png"
+notify_loading "$IMG_PATH" "$STREAMER" &
 
 # --- 4. Update Stats ---
 # Increments the count for the selected streamer in the stats file
@@ -426,9 +430,6 @@ awk -v user="$STREAMER_USERNAME" '
   # cleanup knows it has been superseded. Chatterino is (re)started further
   # down, after the old mpv is gone.
   stream_session_current || exit 0
-
-  IMG_PATH="$PIXMAPS/${STREAMER_USERNAME,,}.png"
-  notify_loading "$IMG_PATH" "$STREAMER" &
 
   # Build streamlink auth args
   # NOTE: --twitch-low-latency dropped on purpose. It forces playback to the
@@ -500,7 +501,7 @@ awk -v user="$STREAMER_USERNAME" '
     --force-window=immediate \
     --vo=gpu \
     --gpu-api=opengl \
-    --hwdec=auto \
+    --hwdec=vaapi \
     "${ASPECT_ARGS[@]}" \
     --video-sync=audio \
     --no-interpolation \
