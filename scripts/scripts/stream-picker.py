@@ -141,8 +141,33 @@ class Picker(Gtk.Application):
             self.window.connect('close-request', self.close_request)
             start_server(self)
         else:
+            self.anchor_search()
             self.window.present()
             self.entry.grab_focus()
+
+    def anchor_search(self):
+        # Center the initial full menu once, then keep its top edge fixed while
+        # filtering changes the height. Horizontal centering stays automatic.
+        display = Gdk.Display.get_default()
+        monitors = display.get_monitors()
+        monitor = Layer.get_monitor(self.window)
+        try:
+            import json
+            import subprocess
+            current = json.loads(subprocess.check_output(['hyprctl', 'monitors', '-j'], timeout=1))
+            connector = next(item['name'] for item in current if item.get('focused'))
+            monitor = next(monitors.get_item(i) for i in range(monitors.get_n_items())
+                           if monitors.get_item(i).get_connector() == connector)
+        except (OSError, ValueError, StopIteration, subprocess.SubprocessError):
+            pass
+        if monitor is None and monitors.get_n_items():
+            monitor = monitors.get_item(0)
+        if monitor is not None:
+            Layer.set_monitor(self.window, monitor)
+            height = self.window.get_child().measure(Gtk.Orientation.VERTICAL, 650)[1]
+            Layer.set_anchor(self.window, Layer.Edge.TOP, True)
+            Layer.set_margin(self.window, Layer.Edge.TOP,
+                             max(12, (monitor.get_geometry().height - height) // 2))
 
     def close_request(self, *_):
         self.finish('')
@@ -159,6 +184,7 @@ class Picker(Gtk.Application):
         self.entry.set_text('')
         self.changed(self.entry)
         self.scroll.get_vadjustment().set_value(0)
+        self.anchor_search()
         self.window.present()
         self.entry.grab_focus()
         return False
