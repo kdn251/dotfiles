@@ -51,6 +51,7 @@ play_live_stream() {
 # flush Settings/settings.json, which is where the login token lives.
 chat_stop() {
   local addr i
+  rm -f "${XDG_RUNTIME_DIR:-/tmp}/twitch-chat-channel-${UID}"
   for addr in $(hyprctl clients -j 2>/dev/null |
     jq -r --arg c "$CHAT_CLASS" '.[] | select(.class == $c) | .address'); do
     hyprctl dispatch closewindow address:"$addr" >/dev/null 2>&1
@@ -124,7 +125,10 @@ chat_start() {
   fi
   mv "$tmp" "$CHAT_LAYOUT"
 
-  chatterino >/dev/null 2>&1 &
+  # Chatterino must not inherit the transition lock: otherwise every later
+  # switch/cleanup waits for the very process it is supposed to close.
+  chatterino 8>&- >/dev/null 2>&1 &
+  printf '%s\n' "$ch" > "${XDG_RUNTIME_DIR:-/tmp}/twitch-chat-channel-${UID}"
 }
 
 # Serialize chat transitions without holding up playback. Recheck ownership
@@ -134,6 +138,9 @@ manage_chat() (
   flock 8
   stream_session_current || exit 0
   if [ "$1" = start ]; then
+    if [ "$(cat "${XDG_RUNTIME_DIR:-/tmp}/twitch-chat-channel-${UID}" 2>/dev/null)" = "${2,,}" ] && hyprctl clients -j | jq -e --arg c "$CHAT_CLASS" 'any(.[]; .class == $c)' >/dev/null; then
+      exit 0
+    fi
     python3 "$HOME/scripts/media-chat.py" --close-youtube
     stream_session_current || exit 0
     chat_start "$2"
@@ -141,6 +148,14 @@ manage_chat() (
     chat_stop
   fi
 )
+
+# Mod+C can reopen chat only for an identified, still-running Twitch player.
+if [ "${1:-}" = --chat-only ]; then
+  kill -0 "$3" 2>/dev/null || exit 0
+  SESSION_ID=$(cat "$SESSION_FILE" 2>/dev/null) || exit 0
+  manage_chat start "$2"
+  exit 0
+fi
 
 # --- 1. Setup & Force Icon Sync ---
 if [ ! -f "$USERNAME_LIST" ]; then
@@ -462,7 +477,7 @@ awk -v user="$STREAMER_USERNAME" '
   stream_session_current || exit 0
   PLAYER_TITLE=$(python3 "$HOME/scripts/stream_menu_metadata.py" "$STREAMER" Twitch)
   FIRST_FRAME=$(mktemp "${XDG_RUNTIME_DIR:-/tmp}/twitch-first-frame.XXXXXX")
-  TWITCH_FIRST_FRAME="$FIRST_FRAME" mpv \
+  TWITCH_STREAMER_USERNAME="$STREAMER_USERNAME" TWITCH_FIRST_FRAME="$FIRST_FRAME" mpv \
     --script="$HOME/scripts/twitch-first-frame.lua" \
     --cache=yes \
     --cache-secs=30 \
