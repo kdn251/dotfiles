@@ -17,7 +17,8 @@ class LoadingNotificationTests(unittest.TestCase):
                 patch.object(notice.subprocess, 'run') as run:
             notice.watch('new', '123')
             sleep.assert_called_once()
-            self.assertEqual(run.call_args.args[0], ['makoctl','dismiss','-n','123'])
+            self.assertEqual(run.call_args.args[0][-2:], ['org.freedesktop.Notifications.CloseNotification','123'])
+            self.assertEqual(run.call_args.args[0][0], 'gdbus')
 
     def test_replaced_selection_dismisses_only_its_own_notice(self):
         with patch.object(notice.Path, 'read_text', return_value='newer'), \

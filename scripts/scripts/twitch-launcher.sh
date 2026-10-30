@@ -345,21 +345,18 @@ esac
 python3 "$HOME/scripts/media_chat_fullscreen.py" prepare "$SESSION_ID" "$LAYOUT_SERVICE" "$STREAMER_USERNAME"
 
 
-# Resolve non-Twitch broadcasts again on selection in case the cached live
-# entry has since ended. They do not use Twitch credentials or Chatterino.
+# Use a recently prefetched playback URL on selection, or resolve it now.
+# The long-lived menu cache is never used as a playback URL cache.
 if [[ "$CHOICE" == *"(Rumble)" || "$CHOICE" == *"(YouTube)" || "$CHOICE" == *"(Kick)" ]]; then
   if [[ "$CHOICE" == *"(YouTube)" ]]; then
     SERVICE=YouTube
     CHANNEL_LIST="$HOME/scripts/youtube_live_channels.tsv"
-    LIVE_HELPER="$HOME/scripts/youtube-live.py"
   elif [[ "$CHOICE" == *"(Kick)" ]]; then
     SERVICE=Kick
     CHANNEL_LIST="$HOME/scripts/kick_channels.tsv"
-    LIVE_HELPER="$HOME/scripts/kick-live.py"
   else
     SERVICE=Rumble
     CHANNEL_LIST="$RUMBLE_LIST"
-    LIVE_HELPER="$HOME/scripts/rumble-live.py"
   fi
   CHANNEL_URL="${CUSTOM_CHANNEL_URL:-}"
   if [ -z "$CHANNEL_URL" ]; then
@@ -380,7 +377,7 @@ PYICON
     NOTIFY_ARGS=(-a "$SERVICE" -t 6000)
     [ -f "$IMG_PATH" ] && NOTIFY_ARGS+=(-i "$IMG_PATH")
     ERROR_FILE=$(mktemp)
-    if ! LIVE=$(python3 "$LIVE_HELPER" "$CHANNEL_URL" 2>"$ERROR_FILE"); then
+    if ! LIVE=$(python3 "$HOME/scripts/stream-playback-url.py" "$SERVICE" "$CHANNEL_URL" 2>"$ERROR_FILE"); then
       if stream_session_current; then
         notify-send "${NOTIFY_ARGS[@]}" "$STREAMER — $SERVICE" "$(cat "$ERROR_FILE")"
       fi

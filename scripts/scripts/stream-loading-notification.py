@@ -24,7 +24,9 @@ def watch(session, notification):
             if ready == session: break
         except (OSError, ValueError): pass
         time.sleep(.05)
-    subprocess.run(['makoctl', 'dismiss', '-n', notification], check=False,
+    subprocess.run(['gdbus', 'call', '--session', '--dest', 'org.freedesktop.Notifications',
+                    '--object-path', '/org/freedesktop/Notifications',
+                    '--method', 'org.freedesktop.Notifications.CloseNotification', notification], check=False,
                    stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
 

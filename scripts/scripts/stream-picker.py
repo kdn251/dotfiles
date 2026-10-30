@@ -312,14 +312,20 @@ class Picker(Gtk.Application):
         if row is None:
             return
         identity = row.result.split('\t', 1)[1]
-        if identity.endswith(('(YouTube)', '(Rumble)', '(Kick)')):
-            return
         name = identity.split()[0]
+        service = next((s for s in ('YouTube', 'Rumble', 'Kick') if identity.endswith('('+s+')')), 'Twitch')
+        if service == 'Twitch':
+            command = [sys.executable, str(Path(__file__).with_name('twitch-stream-url.py')), name, '--prefetch']
+        else:
+            channel = self.metadata.get(service[0].lower(), {}).get(name.casefold(), {}).get('channel')
+            if not channel:
+                return
+            command = [sys.executable, str(Path(__file__).with_name('stream-playback-url.py')), service, channel, '--prefetch']
         def warm():
             import subprocess
             self.prefetch_timer = None
-            subprocess.Popen([sys.executable, str(Path(__file__).with_name('twitch-stream-url.py')),
-                              name, '--prefetch'], stdin=subprocess.DEVNULL,
+            if not self.window.get_visible(): return False
+            subprocess.Popen(command, stdin=subprocess.DEVNULL,
                              stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
                              start_new_session=True)
             return False
