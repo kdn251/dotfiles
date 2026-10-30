@@ -421,7 +421,7 @@ PYICON
       TWITCH_FALLBACK_URL="$LIVE_FALLBACK_URL" STREAM_PAGE_URL="$STREAM_PAGE_URL" STREAM_SESSION_ID="$SESSION_ID" STREAM_TITLE_SERVICE="$SERVICE" STREAM_TITLE_NAME="$STREAMER" \
       play_live_stream --script="$HOME/scripts/twitch-first-frame.lua" \
         --script="$HOME/scripts/stream-title-refresh.lua" --cache=yes --cache-secs=30 \
-        --demuxer-max-bytes=150MiB --demuxer-max-back-bytes=100MiB --hwdec=vaapi \
+        --demuxer-max-bytes=384MiB --demuxer-max-back-bytes=256MiB --hwdec=vaapi \
         --force-window=immediate --input-ipc-server=/tmp/mpv-twitch-ipc \
         "${PLAYER_ARGS[@]}" --force-media-title="$PLAYER_TITLE" "$LIVE_URL"
     fi
@@ -510,8 +510,8 @@ awk -v user="$STREAMER_USERNAME" '
   PLAY_URL="av://hls:$PLAY_URL"
   FALLBACK_URL="av://hls:$FALLBACK_URL"
 
-  # back-bytes feeds mpv-clip.sh, which dumps the last 30s out of this buffer;
-  # 30s of 1080p60 is roughly 25MB, so the previous 50MiB was marginal.
+  # Retain enough played packets for clips up to two minutes at typical
+  # 1080p60 bitrates; the clip menu reports the actual buffered duration.
   # force-media-title so the window and the clip filenames say who is streaming
   # rather than showing the HLS playlist token.
   stream_session_current || exit 0
@@ -528,8 +528,8 @@ awk -v user="$STREAMER_USERNAME" '
     --script="$HOME/scripts/stream-title-refresh.lua" \
     --cache=yes \
     --cache-secs=30 \
-    --demuxer-max-bytes=150MiB \
-    --demuxer-max-back-bytes=100MiB \
+    --demuxer-max-bytes=384MiB \
+    --demuxer-max-back-bytes=256MiB \
     --demuxer-readahead-secs=20 \
     --force-window=immediate \
     --vo=gpu \

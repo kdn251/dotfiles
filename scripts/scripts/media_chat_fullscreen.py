@@ -11,6 +11,7 @@ import time
 ROOT = Path(os.environ.get('XDG_RUNTIME_DIR', '/tmp'))
 STATE = ROOT / f'media-chat-fullscreen-{os.getuid()}.json'
 OWNER = ROOT / 'media-chat-workspace-owner'
+PREFERENCE = ROOT / f'media-chat-fullscreen-return-{os.getuid()}.json'
 WORKSPACE = 'chatterino_chat'
 CLASSES = {'com.chatterino.chatterino', 'newsboat-live-chat'}
 PROPERTIES = {'keepaspect': True, 'panscan': 0, 'video-zoom': 0,
@@ -148,12 +149,62 @@ def restore(state, clients, hide=True):
     STATE.unlink(missing_ok=True)
 
 
+def focus_player():
+    """After revealing theater chat, return keyboard focus to its video once."""
+    state = read()
+    if not state:
+        return
+    clients = json.loads(hypr('-j', 'clients'))
+    player = next((c for c in clients if c.get('pid') == state['player']['pid'] and
+                   c.get('address') == state['player']['address'] and c.get('fullscreen') == 2), None)
+    if not player:
+        return
+    monitors = json.loads(hypr('-j', 'monitors'))
+    monitor = next((m for m in monitors if m['id'] == player['monitor']), None)
+    if monitor and monitor.get('activeWorkspace', {}).get('id') == player.get('workspace', {}).get('id'):
+        hypr('dispatch', 'focuswindow', 'address:' + player['address'])
+
+
+def remember_theater(player):
+    PREFERENCE.write_text(json.dumps({'pid': player['pid'], 'address': player['address']}))
+    PREFERENCE.chmod(0o600)
+
+
+def resume_theater(clients):
+    try:
+        saved = json.loads(PREFERENCE.read_text())
+    except (OSError, ValueError):
+        return False
+    player = next((c for c in clients if c.get('pid') == saved.get('pid') and
+                   c.get('address') == saved.get('address')), None)
+    if not player:
+        PREFERENCE.unlink(missing_ok=True)
+        return False
+    if player.get('fullscreen') != 2:
+        return False
+    # Only reopen on the player's visible workspace; don't pull chat across
+    # another workspace or duplicate an opener that is still launching.
+    monitor = next((m for m in json.loads(hypr('-j', 'monitors')) if m['id'] == player['monitor']), None)
+    if not monitor or monitor.get('activeWorkspace', {}).get('id') != player.get('workspace', {}).get('id'):
+        return True
+    if time.monotonic() - saved.get('attempt', 0) < 10:
+        return True
+    saved['attempt'] = time.monotonic()
+    PREFERENCE.write_text(json.dumps(saved))
+    subprocess.Popen(['python3', str(Path(__file__).with_name('media-chat.py')), '--handoff'],
+                     stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
+                     stderr=subprocess.DEVNULL, start_new_session=True)
+    return True
+
+
 def close(clients):
     with STATE.with_suffix('.lock').open('a') as lock:
         fcntl.flock(lock, fcntl.LOCK_EX)
         state = read()
         if not state:
             return False
+        # Mod+C explicitly selects ordinary fullscreen for the next return.
+        PREFERENCE.unlink(missing_ok=True)
         restore(state, clients)
         return True
 
@@ -225,6 +276,7 @@ def begin(clients=None):
             for prop in PROPERTIES:
                 state['properties'][prop] = ipc(state, 'get_property', prop)
             STATE.write_text(json.dumps(state)); STATE.chmod(0o600)
+            PREFERENCE.unlink(missing_ok=True)
             owner_tmp = OWNER.with_suffix('.tmp')
             owner_tmp.write_text(f"{player['workspace']['id']} {player['monitor']} {chat.get('workspace', {}).get('id', 0)}\n")
             owner_tmp.replace(OWNER)
@@ -251,7 +303,7 @@ def maintain(clients):
             return True
         state = read()
         if not state:
-            return False
+            return resume_theater(clients)
         transition = state.get('transition')
         if transition and time.monotonic() < transition['deadline']:
             # The launcher is replacing the player/chat. Keep the preference
@@ -260,6 +312,10 @@ def maintain(clients):
         player = next((c for c in clients if c['address'] == state['player']['address'] and c['pid'] == state['player']['pid']), None)
         chat = next((c for c in clients if c['address'] == state['chat']['address'] and c['pid'] == state['chat']['pid']), None)
         if not player or not chat or player.get('fullscreen') != 2:
+            if player and chat and player.get('fullscreen') != 2:
+                remember_theater(player)
+            else:
+                PREFERENCE.unlink(missing_ok=True)
             restore(state, clients, hide=True)
             return False
         monitors = json.loads(hypr('-j', 'monitors'))
@@ -278,6 +334,7 @@ def maintain(clients):
                 monitor['specialWorkspace'] = {'name': 'special:' + WORKSPACE}
             state['suspended'] = False
             STATE.write_text(json.dumps(state))
+            focus_player()
         if not monitor or monitor.get('specialWorkspace', {}).get('name') != 'special:' + WORKSPACE:
             if time.monotonic() - state.get('created', 0) < 1:
                 return True

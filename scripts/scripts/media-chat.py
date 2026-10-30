@@ -46,11 +46,13 @@ def close_panels(clients, panel_class):
 
 
 def show_workspace():
-    fullscreen_chat.begin(json.loads(hypr('-j', 'clients')))
+    theater = fullscreen_chat.begin(json.loads(hypr('-j', 'clients')))
     monitors=json.loads(hypr('-j','monitors'))
     focused=next((m for m in monitors if m.get('focused')), {})
     if focused.get('specialWorkspace',{}).get('name')!='special:'+WORKSPACE:
         hypr('dispatch','togglespecialworkspace',WORKSPACE)
+    if theater:
+        fullscreen_chat.focus_player()
 
 
 def twitch_player(clients):

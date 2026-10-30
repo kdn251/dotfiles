@@ -133,7 +133,7 @@ def main(args):
             endpoint=next((arg.decode().split('=',1)[1] for arg in process_args if arg.startswith(b'--input-ipc-server=')),'/tmp/mpv-yt-ipc')
         player=Player(endpoint,pid)
         icon=avatar(player)
-        output,duration=save(player,Path(os.environ.get('CLIP_DIR',str(Path.home()/'Videos/clips'))),float(os.environ.get('CLIP_LENGTH','30')))
+        output,duration=save(player,Path(os.environ.get('CLIP_DIR',str(Path.home()/'Videos/clips'))),float(args[2] if len(args)>2 else os.environ.get('CLIP_LENGTH','30')))
         note(f'Saved {duration:.0f}s — {output.name}',icon)
         return 0
     except (OSError,ValueError,KeyError,subprocess.SubprocessError) as error:

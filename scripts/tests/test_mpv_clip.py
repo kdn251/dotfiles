@@ -23,7 +23,8 @@ class ClipTests(unittest.TestCase):
                             '-g','10','-c:a','aac',str(root/'muxed.mp4')],check=True)
             subprocess.run(['ffmpeg','-v','error','-i',str(root/'muxed.mp4'),'-an','-c:v','libvpx-vp9','-deadline','realtime','-cpu-used','8',str(root/'video.webm')],check=True)
             subprocess.run(['ffmpeg','-v','error','-i',str(root/'muxed.mp4'),'-vn','-c:a','libopus',str(root/'audio.webm')],check=True)
-            binding=next(line for line in (ROOT/'mpv/.config/mpv/input.conf').read_text().splitlines() if line.startswith('C '))
+            binding='C script-binding clip_menu/open'
+            self.assertIn('C script-binding clip_menu/open', (ROOT/'mpv/.config/mpv/input.conf').read_text())
             (root/'input.conf').write_text(binding+'\n')
             # Keep regression tests from displaying desktop notifications.
             (root/'notify-send').write_text('#!/bin/sh\nprintf "%s\\n" "$@" > "$CLIP_TEST_NOTICE"\n')
@@ -34,6 +35,7 @@ class ClipTests(unittest.TestCase):
                 output=root/f'clips{index}';notice=root/f'notice{index}'
                 process=subprocess.Popen(['mpv','--no-config','--vo=null','--ao=null','--cache=yes',
                                           '--demuxer-max-back-bytes=20MiB','--input-ipc-server='+endpoint,
+                                          '--script='+str(ROOT/'mpv/.config/mpv/scripts/clip-menu.lua'),
                                           '--input-conf='+str(root/'input.conf'),source],
                                          env=dict(os.environ,PATH=str(root)+':'+os.environ['PATH'],CLIP_DIR=str(output),CLIP_TEST_NOTICE=str(notice)),
                                          stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)
@@ -47,6 +49,12 @@ class ClipTests(unittest.TestCase):
                         except (OSError,ValueError):pass
                         time.sleep(.05)
                     player.command('keypress','C')
+                    deadline=time.monotonic()+2
+                    while time.monotonic()<deadline:
+                        if any('clip-menu-ENTER' in b.get('cmd','') for b in player.get('input-bindings',[])):break
+                        time.sleep(.05)
+                    self.assertTrue(any('clip-menu-ENTER' in b.get('cmd','') for b in player.get('input-bindings',[])), 'Shift+C must open the clip menu')
+                    player.command('keypress','ENTER')
                     deadline=time.monotonic()+5
                     while not notice.exists() and time.monotonic()<deadline:time.sleep(.05)
                     self.assertTrue(notice.exists())

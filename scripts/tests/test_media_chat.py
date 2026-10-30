@@ -15,6 +15,19 @@ class ChatTests(unittest.TestCase):
             mock = patch.object(chat.fullscreen_chat, method, return_value=False)
             mock.start(); self.addCleanup(mock.stop)
 
+    def test_theater_reveal_focuses_video_after_showing_chat(self):
+        events=[]
+        def hypr(*args):
+            if args == ('-j','clients'): return '[]'
+            if args == ('-j','monitors'): return '[{"focused":true,"specialWorkspace":{}}]'
+            events.append('show')
+            return 'ok'
+        with patch.object(chat.fullscreen_chat,'begin',return_value=True), \
+                patch.object(chat.fullscreen_chat,'focus_player',side_effect=lambda:events.append('focus video')), \
+                patch.object(chat,'hypr',side_effect=hypr):
+            chat.show_workspace()
+        self.assertEqual(events,['show','focus video'])
+
     def test_downloaded_player_uses_original_youtube_url(self):
         with patch.object(Path,'read_bytes',return_value=b'NEWSBOAT_MEDIA_URL='+URL.encode()+b'\0'):
             self.assertEqual(chat.video_url([{'class':'mpv','pid':123,'address':'a'}],'a'),URL)

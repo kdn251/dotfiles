@@ -12,6 +12,8 @@ class FullscreenChatTests(unittest.TestCase):
         self.addCleanup(tmp.cleanup)
         owner = patch.object(layout, 'OWNER', Path(tmp.name)/'owner')
         owner.start(); self.addCleanup(owner.stop)
+        preference = patch.object(layout, 'PREFERENCE', Path(tmp.name)/'preference')
+        preference.start(); self.addCleanup(preference.stop)
 
     monitor = dict(id=0, x=0, y=0, width=2880, height=1920, scale=2,
                    specialWorkspace={'name': 'special:chatterino_chat'}, activeWorkspace={'id':3})
@@ -51,6 +53,50 @@ class FullscreenChatTests(unittest.TestCase):
             self.assertEqual(events, ['hide', 'launch'])
             self.assertFalse(layout.OWNER.exists())
             self.assertEqual(layout.read()['transition']['service'], 'Kick')
+
+    def test_theater_returns_after_unfullscreen_but_only_for_same_player(self):
+        state = {'player': self.player, 'chat': self.chat}
+        with tempfile.TemporaryDirectory() as tmp, patch.object(layout, 'STATE', Path(tmp)/'state'), \
+                patch.object(layout, 'read', return_value=state), patch.object(layout, 'restore'):
+            self.assertFalse(layout.maintain([dict(self.player, fullscreen=0), self.chat]))
+        self.assertEqual(json.loads(layout.PREFERENCE.read_text())['pid'], self.player['pid'])
+        with patch.object(layout, 'hypr', return_value=json.dumps([self.monitor])), \
+                patch.object(layout.subprocess, 'Popen') as launch:
+            self.assertFalse(layout.resume_theater([dict(self.player, fullscreen=0)]))
+            launch.assert_not_called()
+            self.assertTrue(layout.resume_theater([self.player]))
+            launch.assert_called_once()
+            self.assertTrue(layout.resume_theater([self.player]))
+            launch.assert_called_once()  # No duplicate openers during startup.
+            self.assertFalse(layout.resume_theater([dict(self.player, pid=999)]))
+            self.assertFalse(layout.PREFERENCE.exists())
+
+    def test_explicit_mod_c_returns_to_normal_fullscreen(self):
+        state = {'player': self.player, 'chat': self.chat}
+        layout.remember_theater(self.player)
+        with tempfile.TemporaryDirectory() as tmp, patch.object(layout, 'STATE', Path(tmp)/'state'), \
+                patch.object(layout, 'read', return_value=state), patch.object(layout, 'restore'):
+            self.assertTrue(layout.close([self.player, self.chat]))
+        self.assertFalse(layout.PREFERENCE.exists())
+        with patch.object(layout.subprocess, 'Popen') as launch:
+            self.assertFalse(layout.resume_theater([self.player]))
+            launch.assert_not_called()
+
+    def test_focus_returns_to_video_only_on_its_visible_workspace(self):
+        state = {'player': self.player}
+        def hypr(*args):
+            if args == ('-j', 'clients'): return json.dumps([self.player])
+            if args == ('-j', 'monitors'): return json.dumps([self.monitor])
+            return 'ok'
+        with patch.object(layout, 'read', return_value=state), \
+                patch.object(layout, 'hypr', side_effect=hypr) as control:
+            layout.focus_player()
+            control.assert_any_call('dispatch', 'focuswindow', 'address:p')
+        with patch.object(layout, 'read', return_value=state), \
+                patch.object(layout, 'hypr', side_effect=[json.dumps([self.player]),
+                    json.dumps([dict(self.monitor, activeWorkspace={'id': 8})])]) as control:
+            layout.focus_player()
+            self.assertEqual(control.call_count, 2)
 
     def test_scaled_monitor_layout(self):
         bounds = layout.layout(self.monitor)
