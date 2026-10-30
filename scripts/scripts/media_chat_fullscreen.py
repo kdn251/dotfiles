@@ -74,7 +74,13 @@ def place_player(pid):
             clients = json.loads(hypr('-j', 'clients'))
             player = next((c for c in clients if c.get('pid') == pid and c.get('class') == 'mpv'), None)
             if player:
-                regular_workspace(player, read())
+                player = regular_workspace(player, read())
+                # Pin only at startup: later manual unpinning stays respected.
+                # Fullscreen/theater uses its existing workspace handling.
+                if not player.get('fullscreen') and not player.get('pinned'):
+                    if not player.get('floating'):
+                        hypr('dispatch', 'setfloating', 'address:' + player['address'])
+                    hypr('dispatch', 'pin', 'address:' + player['address'])
                 return
             os.kill(pid, 0)
         except (OSError, ValueError, subprocess.SubprocessError):
