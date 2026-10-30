@@ -4,7 +4,7 @@ import json
 import sys
 from pathlib import Path
 from html.parser import HTMLParser
-from urllib.parse import urlparse
+from urllib.parse import urlparse, urljoin
 from urllib.request import Request, urlopen
 
 
@@ -55,6 +55,9 @@ def resolve(html, channel):
             url = video.get('url', '')
             if video.get('type') == 'hls' and urlparse(url).scheme == 'https':
                 result = {'url': url, 'title': item.get('title') or 'Rumble live stream'}
+                page_url = urljoin(channel, item.get('url') or '')
+                if urlparse(page_url).scheme == 'https' and urlparse(page_url).hostname in ('rumble.com', 'www.rumble.com'):
+                    result['page_url'] = page_url
                 viewers=item.get('watching_now')
                 if isinstance(viewers,(int,float)):result['viewer_count']=viewers
                 category=item.get('category')

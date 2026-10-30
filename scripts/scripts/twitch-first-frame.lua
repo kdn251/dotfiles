@@ -1,6 +1,8 @@
 -- A reusable Twitch player updates chat identity and first-frame readiness
 -- together when switching streams, rather than relying on startup environment.
 local path = os.getenv('TWITCH_FIRST_FRAME')
+local session = os.getenv('STREAM_SESSION_ID') or ''
+mp.set_property_native('user-data/stream-page', os.getenv('STREAM_PAGE_URL') or '')
 local expected = nil
 local reported = false
 local fallback = os.getenv('TWITCH_FALLBACK_URL')
@@ -8,7 +10,10 @@ mp.set_property_native('user-data/twitch-managed', 2)
 mp.set_property_native('user-data/stream-service', os.getenv('STREAM_TITLE_SERVICE') or 'Twitch')
 mp.set_property_native('user-data/stream-name', os.getenv('STREAM_TITLE_NAME') or os.getenv('TWITCH_STREAMER_USERNAME') or '')
 mp.set_property('user-data/twitch-channel', os.getenv('TWITCH_STREAMER_USERNAME') or '')
-mp.register_script_message('twitch-load', function(channel, title, url, marker, low_url, service)
+mp.register_script_message('twitch-load', function(channel, title, url, marker, low_url, service, new_session, page)
+    session = new_session or ''
+    mp.set_property_native('user-data/stream-page', page or '')
+    mp.set_property_native('user-data/stream-ready-session', '')
     service = service or 'Twitch'
     mp.set_property_native('user-data/stream-service', service)
     mp.set_property_native('user-data/stream-name', channel)
@@ -24,10 +29,11 @@ mp.register_script_message('twitch-load', function(channel, title, url, marker, 
     mp.command_native({'loadfile', url, 'replace', 0, options})
 end)
 mp.register_event('playback-restart', function()
-    if reported or not path then return end
+    if reported then return end
     if expected and mp.get_property('path') ~= expected then return end
     reported = true
-    local file = io.open(path, 'w')
+    mp.set_property_native('user-data/stream-ready-session', session)
+    local file = path and path ~= '' and io.open(path, 'w')
     if file then file:write('playing'); file:close() end
 end)
 

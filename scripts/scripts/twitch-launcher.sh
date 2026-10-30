@@ -19,10 +19,11 @@ exec >>/tmp/twitch-stream-debug.log 2>&1
 
 # All services use the same compact loading notification.
 notify_loading() {
-  local icon="$1" description="$2"
+  local icon="$1" description="$2" notification
   local args=(-a Streams -t 4000 -u normal)
   [ -f "$icon" ] && args+=(-i "$icon")
-  notify-send "${args[@]}" "MPV" "Loading $description stream..."
+  notification=$(notify-send -p "${args[@]}" "MPV" "Loading $description stream...")
+  python3 "$HOME/scripts/stream-loading-notification.py" "$SESSION_ID" "$notification"
 }
 
 # MPV exits with a signal status when another stream intentionally replaces it.
@@ -402,10 +403,16 @@ PYICON
     fi
     # Quality switching reads this JSON instead of evaluating stream titles.
     CONTEXT="$HOME/.cache/${SERVICE,,}-live-player.json"
-    jq --arg service "$SERVICE" --arg channel "$CHANNEL_URL" '. + {service:$service, channel:$channel, quality:"best"}' <<<"$LIVE" >"$CONTEXT.tmp"
+    jq --arg name "$STREAMER" --arg service "$SERVICE" --arg channel "$CHANNEL_URL" '. + {name:$name, service:$service, channel:$channel, quality:"best"}' <<<"$LIVE" >"$CONTEXT.tmp"
     mv "$CONTEXT.tmp" "$CONTEXT"
     stream_session_current || exit 0
-    MPV_PID=$(python3 "$HOME/scripts/twitch-player-ipc.py" "$STREAMER" "$PLAYER_TITLE" "$LIVE_URL" "" "" "$SERVICE" 2>/dev/null)
+    STREAM_PAGE_URL="$CHANNEL_URL"
+    if [[ "$SERVICE" == YouTube ]]; then
+      STREAM_PAGE_URL="$LIVE_URL"
+    elif [[ "$SERVICE" == Rumble ]]; then
+      STREAM_PAGE_URL=$(jq -r --arg fallback "$CHANNEL_URL" '.page_url // $fallback' <<<"$LIVE")
+    fi
+    MPV_PID=$(python3 "$HOME/scripts/twitch-player-ipc.py" "$STREAMER" "$PLAYER_TITLE" "$LIVE_URL" "" "" "$SERVICE" "$SESSION_ID" "$STREAM_PAGE_URL" 2>/dev/null)
     python3 "$HOME/scripts/media-chat.py" --close-youtube
     manage_chat stop &
     stream_session_current || exit 0
@@ -413,7 +420,7 @@ PYICON
       python3 "$HOME/scripts/twitch-player-ipc.py" wait "$MPV_PID" "$SESSION_ID"
     else
       pkill mpv
-      STREAM_TITLE_SERVICE="$SERVICE" STREAM_TITLE_NAME="$STREAMER" \
+      STREAM_PAGE_URL="$STREAM_PAGE_URL" STREAM_SESSION_ID="$SESSION_ID" STREAM_TITLE_SERVICE="$SERVICE" STREAM_TITLE_NAME="$STREAMER" \
       play_live_stream --script="$HOME/scripts/twitch-first-frame.lua" \
         --script="$HOME/scripts/stream-title-refresh.lua" --cache=yes --cache-secs=30 \
         --demuxer-max-bytes=150MiB --demuxer-max-back-bytes=100MiB --hwdec=vaapi \
@@ -511,13 +518,13 @@ awk -v user="$STREAMER_USERNAME" '
   # rather than showing the HLS playlist token.
   stream_session_current || exit 0
   FIRST_FRAME=$(mktemp "${XDG_RUNTIME_DIR:-/tmp}/twitch-first-frame.XXXXXX")
-  MPV_PID=$(python3 "$HOME/scripts/twitch-player-ipc.py" "$STREAMER_USERNAME" "$PLAYER_TITLE" "$PLAY_URL" "$FIRST_FRAME" "$FALLBACK_URL" 2>/dev/null)
+  MPV_PID=$(python3 "$HOME/scripts/twitch-player-ipc.py" "$STREAMER_USERNAME" "$PLAYER_TITLE" "$PLAY_URL" "$FIRST_FRAME" "$FALLBACK_URL" Twitch "$SESSION_ID" "$URL" 2>/dev/null)
   REUSED_PLAYER=1
   if [ -z "$MPV_PID" ]; then
     REUSED_PLAYER=0
     pkill mpv
     rm -f "$MPV_SOCKET"
-  TWITCH_STREAMER_USERNAME="$STREAMER_USERNAME" TWITCH_FIRST_FRAME="$FIRST_FRAME" TWITCH_FALLBACK_URL="$FALLBACK_URL" mpv \
+  STREAM_PAGE_URL="$URL" STREAM_SESSION_ID="$SESSION_ID" TWITCH_STREAMER_USERNAME="$STREAMER_USERNAME" TWITCH_FIRST_FRAME="$FIRST_FRAME" TWITCH_FALLBACK_URL="$FALLBACK_URL" mpv \
     --term-status-msg= \
     --script="$HOME/scripts/twitch-first-frame.lua" \
     --script="$HOME/scripts/stream-title-refresh.lua" \

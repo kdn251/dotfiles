@@ -32,7 +32,7 @@ class StreamReuseTests(unittest.TestCase):
                     connection, pid = reuse.connect()
                     with connection, connection.makefile('rwb', buffering=0) as stream:
                         reuse.command(stream, 'set_property', 'video-margin-ratio-right', .2)
-                    self.assertEqual(reuse.reuse('example', service, video, '', '', service), player.pid)
+                    self.assertEqual(reuse.reuse('example', service, video, '', '', service, 'session-' + service, 'https://example.test/' + service), player.pid)
                     deadline = time.monotonic() + 3
                     while time.monotonic() < deadline:
                         connection, pid = reuse.connect()
@@ -43,10 +43,17 @@ class StreamReuseTests(unittest.TestCase):
                             except ValueError:
                                 position = None
                             margin = reuse.command(stream, 'get_property', 'video-margin-ratio-right')
-                        if actual == service and position is not None:
+                            page = reuse.command(stream, 'get_property', 'user-data/stream-page')
+                            try:
+                                ready = reuse.command(stream, 'get_property', 'user-data/stream-ready-session')
+                            except ValueError:
+                                ready = ''
+                        if actual == service and position is not None and ready == 'session-' + service:
                             break
                         time.sleep(.02)
                     self.assertEqual(actual, service)
+                    self.assertEqual(page, 'https://example.test/' + service)
+                    self.assertEqual(ready, 'session-' + service)
                     self.assertIsNotNone(position)
                     self.assertEqual(margin, .2)
                     self.assertEqual(pid, player.pid)

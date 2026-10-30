@@ -728,6 +728,64 @@ function get_chapter(possec)
     end
 end
 
+-- Stream portraits share the title's visibility and geometry, not video space.
+local portrait = {generation=0, path=nil, shown=false, key=nil}
+local function hide_portrait()
+    if portrait.shown then mp.commandv('overlay-remove', 43) end
+    portrait.shown = false
+    portrait.key = nil
+end
+local function refresh_portrait()
+    portrait.generation = portrait.generation + 1
+    local generation = portrait.generation
+    portrait.path = nil
+    hide_portrait()
+    local service = mp.get_property_native('user-data/stream-service', '')
+    local name = mp.get_property_native('user-data/stream-name', '')
+    if service == '' or name == '' then return end
+    mp.command_native_async({name='subprocess', playback_only=false,
+        args={'python3', os.getenv('HOME') .. '/scripts/stream-title-avatar.py', service, name},
+        capture_stdout=true, capture_stderr=true}, function(ok, result)
+        if generation ~= portrait.generation or not ok or not result or result.status ~= 0 then return end
+        local path = (result.stdout or ''):gsub('%s+$', '')
+        portrait.path = path ~= '' and path or nil
+        request_tick()
+    end)
+end
+mp.observe_property('user-data/stream-name', 'native', refresh_portrait)
+mp.observe_property('user-data/stream-service', 'native', refresh_portrait)
+mp.register_event('shutdown', hide_portrait)
+
+local function portrait_title(element, ass)
+    if element.name ~= 'title' or not portrait.path then return element end
+    local geo = element.layout.geometry
+    local size = math.max(18, geo.h * 1.25)
+    if geo.w < size + 60 then hide_portrait(); return element end
+    local column = (geo.an - 1) % 3
+    local left = geo.x - (column == 1 and geo.w/2 or column == 2 and geo.w or 0)
+    local top = geo.y - (geo.an <= 3 and geo.h or geo.an <= 6 and geo.h/2 or 0)
+    local width, height = mp.get_osd_size()
+    local sx, sy = width/osc_param.playresx, height/osc_param.playresy
+    local x, y = math.floor(left*sx), math.floor((top+(geo.h-size)/2)*sy)
+    local w, h = math.max(1, math.floor(size*sx)), math.max(1, math.floor(size*sy))
+    local key = portrait.path .. ':' .. x .. ':' .. y .. ':' .. w .. ':' .. h
+    if portrait.key ~= key then
+        mp.command_native({'overlay-add', 43, x, y, portrait.path, 0, 'bgra', 96, 96, 384, w, h})
+        portrait.key = key
+        portrait.shown = true
+    end
+    local copy, layout = {}, {}
+    for k,v in pairs(element) do copy[k]=v end
+    for k,v in pairs(element.layout) do layout[k]=v end
+    copy.layout = layout
+    local text_x = left + size + 7
+    layout.geometry = {x=text_x, y=top, an=7, w=geo.w-size-7, h=geo.h}
+    ass.text = ass.text:gsub('\\pos%b()', ''):gsub('\\an%d', ''):gsub('\\clip%b()', '')
+    ass:append(string.format('{\\an7\\pos(%f,%f)\\clip(%f,%f,%f,%f)}',
+        text_x, top, text_x, top-geo.h, left+geo.w, top+geo.h*2))
+    return copy
+end
+
 -- Measure only when the title or layout changes; never on every frame.
 local title_measure = mp.create_osd_overlay('ass-events')
 title_measure.hidden = true
@@ -1026,6 +1084,7 @@ function render_elements(master_ass)
             end
 
         elseif (element.type == "button") then
+            element = portrait_title(element, elem_ass)
 
             local buttontext
             if type(element.content) == "function" then
@@ -1993,6 +2052,17 @@ function osc_init()
     end
 
     ne.eventresponder["mbtn_left_up"] = function ()
+        local page = mp.get_property_native('user-data/stream-page', '')
+        if page ~= '' then
+            mp.command_native_async({name='subprocess', playback_only=false,
+                args={'python3', os.getenv('HOME') .. '/scripts/stream-open-browser.py', page},
+                capture_stdout=true, capture_stderr=true}, function(ok, result)
+                if not ok or not result or result.status ~= 0 then
+                    show_message('Could not open the stream in Brave')
+                end
+            end)
+            return
+        end
         local title = mp.get_property_osd("media-title")
         if (have_pl) then
             title = string.format("[%d/%d] %s", countone(pl_pos - 1),
@@ -2537,6 +2607,7 @@ function request_init_resize()
 end
 
 function render_wipe()
+    hide_portrait()
     msg.trace("render_wipe()")
     if state.osd then
     state.osd.data = "" -- allows set_osd to immediately update on enable
@@ -2705,6 +2776,8 @@ function render()
     -- actual OSC
     if state.osc_visible then
         render_elements(ass)
+    else
+        hide_portrait()
     end
 
     -- submit

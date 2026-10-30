@@ -13,7 +13,8 @@ local function name()
     end
     return initial_name
 end
-local function refresh()
+local refresh
+refresh = function()
     local channel = name()
     if channel == '' or pending then return end
     local version = generation
@@ -22,8 +23,11 @@ local function refresh()
         args={'python3', helper, channel, service}, capture_stdout=true,
         capture_stderr=true}, function(success, result)
         pending = nil
-        if not success or not result or result.status ~= 0 or
-           version ~= generation or channel ~= name() or requested_service ~= service then return end
+        if version ~= generation or channel ~= name() or requested_service ~= service then
+            mp.add_timeout(0, refresh)
+            return
+        end
+        if not success or not result or result.status ~= 0 then return end
         local title = (result.stdout or ''):gsub('%s+$', '')
         if title ~= '' and title ~= mp.get_property('force-media-title', '') then
             mp.set_property('force-media-title', title)
@@ -32,9 +36,13 @@ local function refresh()
 end
 mp.observe_property('user-data/stream-name', 'string', function()
     generation = generation + 1
+    local version = generation
+    mp.add_timeout(0.2, function()
+        if version == generation then refresh() end
+    end)
 end)
--- Give playback first priority on startup; later changes arrive within a minute.
-mp.add_timeout(5, refresh)
+-- Fetch missing metadata asynchronously on startup and every stream switch.
+mp.add_timeout(0.2, refresh)
 mp.add_periodic_timer(60, refresh)
 mp.register_event('shutdown', function()
     if pending then mp.abort_async_command(pending) end
