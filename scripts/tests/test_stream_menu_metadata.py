@@ -18,7 +18,7 @@ class MetadataTests(unittest.TestCase):
     def test_full_labels_preserve_identity(self):
         cache={'t':{'example':{'category':'Grand Theft Auto V','title':'A long\nstream title','viewer_count':12345}}}
         self.assertEqual(details('Example — Grand Theft … · 12.3k','Example — Grand Theft … · 12.3k','t',cache),
-                         ('Example','Grand Theft Auto V','A long stream title',' 12.3k'))
+                         ('Example','Grand Theft Auto V','A long stream title','􀀁 12.3k'))
     def test_names_rank_above_titles(self):
         rows=[('Other','Chatting','Watching Nadeshot'),('NadeshotClips','',''),('Nadeshot','',''),('xNadeshot','','')]
         ranked=sorted(rows,key=lambda row:search_rank('nadeshot',*row))
@@ -44,7 +44,7 @@ class MetadataTests(unittest.TestCase):
 
     def test_player_title(self):
         with patch('stream_menu_metadata.load',return_value={'t':{'nadeshot':{'category':'Call of Duty','title':'Ranked with friends','viewer_count':12400}}}):
-            self.assertEqual(playback_title('Nadeshot','Twitch'),'Nadeshot — Call of Duty ·  12.4k | Ranked with friends')
+            self.assertEqual(playback_title('Nadeshot','Twitch'),'Nadeshot — Call of Duty · 􀀁 12.4k | Ranked with friends')
         with patch('stream_menu_metadata.load',return_value={}):
             self.assertEqual(playback_title('Example','YouTube','Live stream title'),'Example | Live stream title')
             self.assertEqual(playback_title('Example','Twitch'),'Example')

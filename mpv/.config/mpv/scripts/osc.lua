@@ -1120,6 +1120,11 @@ function render_elements(master_ass)
                     (maxchars/#buttontext)*100) .. buttontext
             end
 
+            if element.name == "title" or element.name == "wctitle" then
+                buttontext = buttontext:gsub('(􀀁 [%d%.]+k?)', function(count)
+                    return '{\\1c&H8082FF&}' .. count .. '{\\1c&HFFFFFF&}'
+                end, 1)
+            end
             elem_ass:append(buttontext)
         end
 

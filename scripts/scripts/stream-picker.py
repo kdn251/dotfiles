@@ -102,9 +102,11 @@ class Picker(Gtk.Application):
           .picker row:selected label { color: #eceff4; }
           .picker row .stream-name { font-weight: 700; }
           .picker row .stream-category { color: #88c0d0; font-size: 10pt; }
+          .picker row .stream-uptime { color: #88c0d0; font-size: 11pt; padding: 0; }
           .picker row .stream-title { color: #b5bdcc; font-size: 10.5pt; }
-          .picker row .stream-viewers { color: #88c0d0; font-size: 11pt; font-weight: 700;
+          .picker row .stream-viewers { color: #ff8280; font-size: 11pt; font-weight: 700;
               background: transparent; padding: 0; }
+          .picker row:selected .stream-viewers { color: #ff8280; }
           .picker row:selected { background: #3b4252; }
         ''')
         Gtk.StyleContext.add_provider_for_display(Gdk.Display.get_default(), css, Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION)
@@ -237,15 +239,17 @@ class Picker(Gtk.Application):
             game.add_css_class('stream-category')
             top.append(game)
             count = Gtk.Label(label=viewers, xalign=1)
-            count.set_tooltip_text(viewers.removeprefix(" ") + " viewers")
-            count.set_valign(Gtk.Align.CENTER)
-            count.set_yalign(0.5)
+            count.set_tooltip_text(viewers.removeprefix("􀀁 ") + " viewers")
+            count.set_valign(Gtk.Align.END)
+            count.set_yalign(1.0)
             count.set_visible(bool(viewers))
             count.add_css_class('stream-viewers')
             top.append(count)
             row.stream_data = self.metadata.get(item_service, {}).get(name.casefold(), {})
             row.uptime = Gtk.Label(label=stream_menu_metadata.uptime(row.stream_data), xalign=1)
-            row.uptime.add_css_class('stream-category')
+            row.uptime.add_css_class('stream-uptime')
+            row.uptime.set_valign(Gtk.Align.END)
+            row.uptime.set_yalign(1.0)
             row.uptime.set_visible(bool(row.uptime.get_text()))
             top.append(row.uptime)
             words.append(top)

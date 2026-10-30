@@ -45,7 +45,7 @@ def details(label, identity, service, cache):
     viewers=data.get('viewer_count')
     count=''
     if isinstance(viewers,(int,float)) and not isinstance(viewers,bool):
-        count=' '+(f'{viewers/1000:.1f}k' if viewers>=1000 else str(int(viewers)))
+        count='􀀁 '+(f'{viewers/1000:.1f}k' if viewers>=1000 else str(int(viewers)))
     if not category and ' — ' in label:
         category=label.split(' — ',1)[1].split(' · ',1)[0]
     return name, category, title, count

@@ -18,7 +18,7 @@ class RefreshTests(unittest.TestCase):
                                           'game': {'displayName': 'New game'}}}}}
         with patch.object(helper, 'urlopen', return_value=io.BytesIO(json.dumps(data).encode())):
             self.assertEqual(helper.refresh('Example', 'Twitch'),
-                             'Example — New game ·  1.2k | New title')
+                             'Example — New game · 􀀁 1.2k | New title')
         with patch.object(helper, 'urlopen', return_value=io.BytesIO(b'{"data":{"user":null}}')):
             self.assertEqual(helper.refresh('Example', 'Twitch'), '')
 

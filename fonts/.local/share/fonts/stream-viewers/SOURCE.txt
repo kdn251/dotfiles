@@ -1,0 +1,3 @@
+Twitch SourceIconAccount, used by VideoPlayerOverlayViewCount.
+Source: https://assets.twitch.tv/assets/84603-59a08b82578309fd3d28.js
+Retrieved 2026-10-30.
