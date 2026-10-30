@@ -84,7 +84,11 @@ def highlight(text, query, fuzzy=False, offset=0):
 
 def playback_title(name, service, fallback=''):
     data=load().get(service[0].lower(),{}).get(name.casefold(),{})
-    _, category, title, viewers=details(name,name,service[0].lower(),{service[0].lower():{name.casefold():data}})
+    return format_playback_title(name, data, fallback)
+
+
+def format_playback_title(name, data, fallback=''):
+    _, category, title, viewers=details(name,name,'t',{'t':{name.casefold():data}})
     title=' '.join((fallback or title).split())
     info=' · '.join(part for part in (category,viewers) if part)
     heading=name+(' — '+info if info else '')

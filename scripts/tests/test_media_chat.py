@@ -10,6 +10,11 @@ chat=importlib.util.module_from_spec(spec);spec.loader.exec_module(chat)
 URL='https://www.youtube.com/watch?v=abc123DEF45'
 
 class ChatTests(unittest.TestCase):
+    def setUp(self):
+        for method in ('begin', 'close'):
+            mock = patch.object(chat.fullscreen_chat, method, return_value=False)
+            mock.start(); self.addCleanup(mock.stop)
+
     def test_downloaded_player_uses_original_youtube_url(self):
         with patch.object(Path,'read_bytes',return_value=b'NEWSBOAT_MEDIA_URL='+URL.encode()+b'\0'):
             self.assertEqual(chat.video_url([{'class':'mpv','pid':123,'address':'a'}],'a'),URL)
@@ -21,7 +26,7 @@ class ChatTests(unittest.TestCase):
     def test_repeated_shortcut_toggles_existing_panel(self):
         with tempfile.TemporaryDirectory() as d:
             state=Path(d)/'state';state.write_text('{"url":"'+URL+'"}')
-            with patch.object(chat,'STATE',state),patch.object(chat,'video_url',return_value=URL),patch.object(chat,'hypr',side_effect=['[{"class":"newsboat-youtube-comments"}]','{}','ok']) as hypr,patch.object(chat.subprocess,'Popen') as spawn:
+            with patch.object(chat,'STATE',state),patch.object(chat,'video_url',return_value=URL),patch.object(chat,'hypr',side_effect=['[{"class":"newsboat-youtube-comments"}]','{}','ok']) as hypr,patch.object(chat.subprocess,'Popen') as spawn,patch.object(chat.subprocess,'run'):
                 chat.main()
                 hypr.assert_called_with('dispatch','togglespecialworkspace','chatterino_chat')
                 spawn.assert_not_called()
@@ -37,7 +42,7 @@ class ChatTests(unittest.TestCase):
                     if args==('-j','activewindow'):return '{}'
                     if args==('-j','monitors'):return json.dumps([{'focused':True,'specialWorkspace':{'name':'special:'+chat.WORKSPACE}}])
                     return 'ok'
-                with patch.object(chat,'STATE',state),patch.object(chat,'video_url',return_value=url),patch.object(chat,'hypr',side_effect=respond) as hypr,patch.object(chat.subprocess,'Popen') as spawn:
+                with patch.object(chat,'STATE',state),patch.object(chat,'video_url',return_value=url),patch.object(chat,'hypr',side_effect=respond) as hypr,patch.object(chat.subprocess,'Popen') as spawn,patch.object(chat.subprocess,'run'):
                     chat.main()
                     hypr.assert_any_call('dispatch','movetoworkspacesilent','special:media_chat_closing,address:'+closed)
                     hypr.assert_any_call('dispatch','closewindow','address:'+closed)

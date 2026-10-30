@@ -6,6 +6,7 @@ import os
 from pathlib import Path
 import subprocess
 import time
+import media_chat_fullscreen as fullscreen_chat
 
 CHAT_CLASSES={'com.chatterino.chatterino','newsboat-live-chat'}
 
@@ -38,6 +39,9 @@ def run():
             delay=.75
             try:
                 clients=json.loads(hypr('-j','clients'))
+                if fullscreen_chat.maintain(clients):
+                    time.sleep(.12)
+                    continue
                 chats=[c for c in clients if c.get('class') in CHAT_CLASSES and c.get('floating')
                        and c.get('workspace',{}).get('name')=='special:chatterino_chat']
                 players=[c for c in clients if c.get('class','').lower()=='mpv' and c.get('floating') and not c.get('fullscreen')]

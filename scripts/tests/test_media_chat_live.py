@@ -7,6 +7,11 @@ from media_chat_live import live_target,valid_chat_url
 from test_media_chat import chat
 
 class LiveChatTests(unittest.TestCase):
+    def setUp(self):
+        for method in ('begin', 'close'):
+            mock = patch.object(chat.fullscreen_chat, method, return_value=False)
+            mock.start(); self.addCleanup(mock.stop)
+
     def test_routes_each_running_service_and_rejects_stale_context(self):
         urls={'kick':'https://kick.com/popout/jandro/chat',
               'rumble':'https://rumble.com/chat/popup/123456',

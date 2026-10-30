@@ -1,4 +1,5 @@
 """Read chat context only for the selected, running live player."""
+from stream_player_identity import identity
 import json
 from pathlib import Path
 import re
@@ -23,7 +24,9 @@ def live_target(clients, focused):
         args=Path(f"/proc/{int(players[0]['pid'])}/cmdline").read_bytes().split(b'\0')
         service=next((s for s in ('youtube','rumble','kick') if
                       f'--input-ipc-server=/tmp/mpv-{s}-live-ipc'.encode() in args),None)
-        if not service:return None
+        current = identity(players[0])
+        if current: service = current[0].lower()
+        if service not in ('youtube', 'rumble', 'kick'):return None
         root=Path.home()/'.cache'
         context=json.loads((root/f'{service}-live-player.json').read_text())
         url=context.get('chat_url')

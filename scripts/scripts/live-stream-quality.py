@@ -79,8 +79,12 @@ def cycle(service, path, context_path):
 
 
 def main():
+    try:
+        current = ipc('/tmp/mpv-twitch-ipc', ['get_property', 'user-data/stream-service']).lower()
+    except (OSError, ValueError, AttributeError):
+        current = ''
     for service in ('youtube', 'rumble', 'kick'):
-        path = Path(f'/tmp/mpv-{service}-live-ipc')
+        path = Path('/tmp/mpv-twitch-ipc') if current == service else Path(f'/tmp/mpv-{service}-live-ipc')
         try:
             ipc(path, ['get_property', 'path'])
         except (OSError, ValueError):

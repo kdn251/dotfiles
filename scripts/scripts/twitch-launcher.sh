@@ -32,8 +32,11 @@ stream_session_current() {
 }
 
 play_live_stream() {
-  local rc
-  mpv "$@"
+  local rc player_pid
+  mpv "$@" &
+  player_pid=$!
+  python3 "$HOME/scripts/media_chat_fullscreen.py" place "$player_pid" &
+  wait "$player_pid"
   rc=$?
   stream_session_current || return 0
   case "$rc" in
@@ -331,6 +334,16 @@ STREAMER="$STREAMER_USERNAME"
 # replace a newer stream or display a stale failure notification.
 echo "$SESSION_ID" >"$SESSION_FILE"
 
+# Carry fullscreen-with-chat through replacement of either platform's windows.
+LAYOUT_SERVICE=Twitch
+case "$CHOICE" in
+  *"(YouTube)") LAYOUT_SERVICE=YouTube ;;
+  *"(Rumble)") LAYOUT_SERVICE=Rumble ;;
+  *"(Kick)") LAYOUT_SERVICE=Kick ;;
+esac
+python3 "$HOME/scripts/media_chat_fullscreen.py" prepare "$SESSION_ID" "$LAYOUT_SERVICE" "$STREAMER_USERNAME"
+
+
 # Resolve non-Twitch broadcasts again on selection in case the cached live
 # entry has since ended. They do not use Twitch credentials or Chatterino.
 if [[ "$CHOICE" == *"(Rumble)" || "$CHOICE" == *"(YouTube)" || "$CHOICE" == *"(Kick)" ]]; then
@@ -392,14 +405,21 @@ PYICON
     jq --arg service "$SERVICE" --arg channel "$CHANNEL_URL" '. + {service:$service, channel:$channel, quality:"best"}' <<<"$LIVE" >"$CONTEXT.tmp"
     mv "$CONTEXT.tmp" "$CONTEXT"
     stream_session_current || exit 0
-    pkill mpv
+    MPV_PID=$(python3 "$HOME/scripts/twitch-player-ipc.py" "$STREAMER" "$PLAYER_TITLE" "$LIVE_URL" "" "" "$SERVICE" 2>/dev/null)
     python3 "$HOME/scripts/media-chat.py" --close-youtube
     manage_chat stop &
     stream_session_current || exit 0
-    play_live_stream --cache=yes --cache-secs=30 --demuxer-max-bytes=150MiB \
-      --demuxer-max-back-bytes=100MiB --hwdec=vaapi \
-      --input-ipc-server="/tmp/mpv-${SERVICE,,}-live-ipc" \
-      "${PLAYER_ARGS[@]}" --force-media-title="$PLAYER_TITLE" "$LIVE_URL"
+    if [ -n "$MPV_PID" ]; then
+      python3 "$HOME/scripts/twitch-player-ipc.py" wait "$MPV_PID" "$SESSION_ID"
+    else
+      pkill mpv
+      STREAM_TITLE_SERVICE="$SERVICE" STREAM_TITLE_NAME="$STREAMER" \
+      play_live_stream --script="$HOME/scripts/twitch-first-frame.lua" \
+        --script="$HOME/scripts/stream-title-refresh.lua" --cache=yes --cache-secs=30 \
+        --demuxer-max-bytes=150MiB --demuxer-max-back-bytes=100MiB --hwdec=vaapi \
+        --force-window=immediate --input-ipc-server=/tmp/mpv-twitch-ipc \
+        "${PLAYER_ARGS[@]}" --force-media-title="$PLAYER_TITLE" "$LIVE_URL"
+    fi
   ) &
   exit 0
 fi
@@ -500,6 +520,7 @@ awk -v user="$STREAMER_USERNAME" '
   TWITCH_STREAMER_USERNAME="$STREAMER_USERNAME" TWITCH_FIRST_FRAME="$FIRST_FRAME" TWITCH_FALLBACK_URL="$FALLBACK_URL" mpv \
     --term-status-msg= \
     --script="$HOME/scripts/twitch-first-frame.lua" \
+    --script="$HOME/scripts/stream-title-refresh.lua" \
     --cache=yes \
     --cache-secs=30 \
     --demuxer-max-bytes=150MiB \
@@ -519,6 +540,7 @@ awk -v user="$STREAMER_USERNAME" '
     --force-media-title="$PLAYER_TITLE" \
     "$PLAY_URL" &
   MPV_PID=$!
+  python3 "$HOME/scripts/media_chat_fullscreen.py" place "$MPV_PID" &
   fi
 
   # Start at full quality. Replacing a playing low-quality stream causes a

@@ -9,6 +9,7 @@ import sys
 import time
 from newsboat_media import identity
 from media_chat_live import live_target
+import media_chat_fullscreen as fullscreen_chat
 
 CLASS='newsboat-youtube-comments'
 LIVE_CLASS='newsboat-live-chat'
@@ -45,6 +46,7 @@ def close_panels(clients, panel_class):
 
 
 def show_workspace():
+    fullscreen_chat.begin(json.loads(hypr('-j', 'clients')))
     monitors=json.loads(hypr('-j','monitors'))
     focused=next((m for m in monitors if m.get('focused')), {})
     if focused.get('specialWorkspace',{}).get('name')!='special:'+WORKSPACE:
@@ -52,10 +54,15 @@ def show_workspace():
 
 
 def twitch_player(clients):
+    from stream_player_identity import identity
     for client in clients:
         if client.get('class', '').lower() != 'mpv':
             continue
         try:
+            current = identity(client)
+            if current:
+                if current[0] == 'Twitch': return current[1], client['pid']
+                continue
             process=Path('/proc')/str(int(client['pid']))
             args=process.joinpath('cmdline').read_bytes().split(b'\0')
             if b'--input-ipc-server=/tmp/mpv-twitch-ipc' not in args:
@@ -82,6 +89,7 @@ def twitch_player(clients):
 
 def main():
     clients=json.loads(hypr('-j','clients'))
+    if '--handoff' not in sys.argv and fullscreen_chat.close(clients):return
     active=json.loads(hypr('-j','activewindow'))
     live=live_target(clients,active.get('address'))
     if live and not live['url']:
@@ -106,6 +114,8 @@ def main():
         except OSError:ready=False
         present=any(c.get('class')=='com.chatterino.chatterino' for c in clients)
         if ready and present:
+            if fullscreen_chat.begin(clients):
+                show_workspace();return
             hypr('dispatch','togglespecialworkspace',WORKSPACE)
             return
         subprocess.run([str(Path(__file__).with_name('twitch-launcher.sh')),
@@ -124,7 +134,7 @@ def main():
     try:previous=json.loads(STATE.read_text()).get('url')
     except (OSError,ValueError):previous=None
     if panels and previous==url:
-        if switched:show_workspace()
+        if switched or fullscreen_chat.begin(clients):show_workspace()
         else:hypr('dispatch','togglespecialworkspace',WORKSPACE)
         return
     close_panels(clients,panel_class)

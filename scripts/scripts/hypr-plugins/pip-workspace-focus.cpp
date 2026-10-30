@@ -5,6 +5,8 @@
 #include <hyprland/src/desktop/state/WindowState.hpp>
 #include <hyprland/src/output/Monitor.hpp>
 #include <stdexcept>
+#include <fstream>
+#include <cstdlib>
 
 static CHyprSignalListener workspaceListener;
 
@@ -18,6 +20,37 @@ APICALL EXPORT PLUGIN_DESCRIPTION_INFO PLUGIN_INIT(HANDLE handle) {
 
     workspaceListener = Event::bus()->m_events.workspace.active.listen([](PHLWORKSPACE workspace) {
         const auto focus = Desktop::focusState();
+        // Hide/show fullscreen chat in the workspace transaction itself,
+        // before another frame renders. The Python controller owns this file.
+        const auto monitorForChat = workspace ? workspace->m_monitor.lock() : PHLMONITOR{};
+        const auto runtime = std::getenv("XDG_RUNTIME_DIR");
+        if (runtime && workspace && monitorForChat && monitorForChat->m_activeWorkspace == workspace) {
+            std::ifstream owner(std::string(runtime) + "/media-chat-workspace-owner");
+            int64_t workspaceID = 0, monitorID = -1, specialID = 0;
+            if ((owner >> workspaceID >> monitorID >> specialID) &&
+                monitorForChat->m_id == monitorID && specialID < 0) {
+                const auto special = monitorForChat->m_activeSpecialWorkspace;
+                if (workspace->m_id != workspaceID && special && special->m_id == specialID) {
+                    monitorForChat->setSpecialWorkspace(PHLWORKSPACE{});
+                    // Closing a special workspace can retain its outgoing
+                    // animation. It must be invisible on the destination's
+                    // very first frame, not merely scheduled to fade out.
+                    special->m_alpha->setValueAndWarp(0.f);
+                    special->m_renderOffset->warp();
+                } else if (workspace->m_id == workspaceID && !special) {
+                    for (const auto& window : Desktop::windowState()->windows()) {
+                        if (window->m_isMapped && window->m_workspace &&
+                            window->m_workspace->m_id == specialID &&
+                            (window->m_class == "com.chatterino.chatterino" || window->m_class == "newsboat-live-chat")) {
+                            monitorForChat->setSpecialWorkspace(specialID);
+                            window->m_workspace->m_alpha->setValueAndWarp(1.f);
+                            window->m_workspace->m_renderOffset->setValueAndWarp(Vector2D{});
+                            break;
+                        }
+                    }
+                }
+            }
+        }
         const auto active = focus->window();
         const auto monitor = focus->monitor();
         if (!workspace || !monitor || monitor->m_activeWorkspace != workspace ||
@@ -38,7 +71,7 @@ APICALL EXPORT PLUGIN_DESCRIPTION_INFO PLUGIN_INIT(HANDLE handle) {
         }
         focus->fullWindowFocus(nullptr, Desktop::FOCUS_REASON_WORKSPACE_CHANGE);
     });
-    return {"pip-workspace-focus", "Keep pinned MPV unfocused on empty workspace entry", "local", "1.0"};
+    return {"pip-workspace-focus", "Keep pinned MPV unfocused on empty workspace entry", "local", "1.1"};
 }
 
 APICALL EXPORT void PLUGIN_EXIT() {

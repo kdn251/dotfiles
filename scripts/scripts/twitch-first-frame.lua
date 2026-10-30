@@ -4,9 +4,14 @@ local path = os.getenv('TWITCH_FIRST_FRAME')
 local expected = nil
 local reported = false
 local fallback = os.getenv('TWITCH_FALLBACK_URL')
-mp.set_property_native('user-data/twitch-managed', 1)
+mp.set_property_native('user-data/twitch-managed', 2)
+mp.set_property_native('user-data/stream-service', os.getenv('STREAM_TITLE_SERVICE') or 'Twitch')
+mp.set_property_native('user-data/stream-name', os.getenv('STREAM_TITLE_NAME') or os.getenv('TWITCH_STREAMER_USERNAME') or '')
 mp.set_property('user-data/twitch-channel', os.getenv('TWITCH_STREAMER_USERNAME') or '')
-mp.register_script_message('twitch-load', function(channel, title, url, marker, low_url)
+mp.register_script_message('twitch-load', function(channel, title, url, marker, low_url, service)
+    service = service or 'Twitch'
+    mp.set_property_native('user-data/stream-service', service)
+    mp.set_property_native('user-data/stream-name', channel)
     fallback = low_url
     path = marker
     expected = url
@@ -14,7 +19,9 @@ mp.register_script_message('twitch-load', function(channel, title, url, marker, 
     mp.set_property('user-data/twitch-channel', channel)
     mp.set_property('force-media-title', title)
     mp.set_property_native('pause', false)
-    mp.commandv('loadfile', url, 'replace')
+    local options = {['user-agent']='Mozilla/5.0', referrer='', ['ytdl-format']='bestvideo[height<=?1080]+bestaudio/best[height<=?1080]/best'}
+    if service == 'Kick' or service == 'Rumble' then options.referrer = 'https://' .. service:lower() .. '.com/' end
+    mp.command_native({'loadfile', url, 'replace', 0, options})
 end)
 mp.register_event('playback-restart', function()
     if reported or not path then return end
