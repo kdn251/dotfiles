@@ -101,13 +101,13 @@ class FullscreenChatTests(unittest.TestCase):
             self.assertFalse(layout.begin([dict(self.player, fullscreen=0), self.chat]))
             ipc.assert_not_called()
 
-    def test_fullscreen_exit_restores_without_hiding_chat(self):
+    def test_fullscreen_exit_restores_and_hides_chat(self):
         state = {'player': self.player, 'chat': self.chat}
         with tempfile.TemporaryDirectory() as tmp, patch.object(layout, 'STATE', Path(tmp)/'state'), \
                 patch.object(layout, 'read', return_value=state), patch.object(layout, 'restore') as restore:
             clients = [dict(self.player, fullscreen=0), self.chat]
             self.assertFalse(layout.maintain(clients))
-            restore.assert_called_once_with(state, clients, hide=False)
+            restore.assert_called_once_with(state, clients, hide=True)
 
     def test_workspace_round_trip_keeps_layout_and_returns_chat(self):
         state = {'player': self.player, 'chat': self.chat, 'socket':'/tmp/mpv-twitch-ipc'}

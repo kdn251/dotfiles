@@ -260,7 +260,7 @@ def maintain(clients):
         player = next((c for c in clients if c['address'] == state['player']['address'] and c['pid'] == state['player']['pid']), None)
         chat = next((c for c in clients if c['address'] == state['chat']['address'] and c['pid'] == state['chat']['pid']), None)
         if not player or not chat or player.get('fullscreen') != 2:
-            restore(state, clients, hide=not player or not chat or state.get('suspended', False))
+            restore(state, clients, hide=True)
             return False
         monitors = json.loads(hypr('-j', 'monitors'))
         monitor = next((m for m in monitors if m['id'] == player['monitor']), None)
