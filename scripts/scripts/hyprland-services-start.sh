@@ -9,3 +9,6 @@ systemctl --user start moonlight-cursor.service
 
 # Keep the stream picker warm so its hotkey only needs to show the window.
 python3 "$HOME/scripts/stream-picker.py" --daemon >/dev/null 2>&1 &
+
+# Reuse resolver imports and HTTPS connections across stream selections.
+python3 "$HOME/scripts/twitch_resolver.py" --daemon >/dev/null 2>&1 &

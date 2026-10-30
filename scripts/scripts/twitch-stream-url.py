@@ -20,7 +20,7 @@ def cached(path):
     return None
 
 
-def fetch(name):
+def fetch(name, session=None):
     # The stock Twitch plugin probes every rendition serially. We only need
     # the master index: MPV opens/checks the selected rendition itself.
     from streamlink import Streamlink
@@ -33,12 +33,13 @@ def fetch(name):
     options={'disable-ads':True}
     token=Path.home()/'.newsboat/.twitch_oauth'
     if token.exists():options['api-header']=[('Authorization','OAuth '+token.read_text().strip())]
-    session=Streamlink({'http-timeout':8},plugins_builtin=False)
+    owned=session is None
+    if owned:session=Streamlink({'http-timeout':8},plugins_builtin=False)
     try:
         streams=PlaybackTwitch(session,'https://www.twitch.tv/'+name,options=options).streams()
         return {'streams':{key:{'url':stream.url} for key,stream in streams.items()}}
     finally:
-        session.http.close()
+        if owned:session.http.close()
 
 
 def resolve(name, prefetch=False):
@@ -65,10 +66,15 @@ def resolve(name, prefetch=False):
             token=Path.home()/'.newsboat/.twitch_oauth'
             if token.exists():args+=['--twitch-api-header','Authorization=OAuth '+token.read_text().strip()]
             try:
-                result=subprocess.run([sys.executable,__file__,name,'--fetch'],
-                                      capture_output=True,text=True,timeout=12)
-            except subprocess.TimeoutExpired:
-                result=None
+                from twitch_resolver import request
+                payload=request(name)
+                result=subprocess.CompletedProcess([], 0, json.dumps(payload))
+            except (OSError, ValueError, TimeoutError):
+                try:
+                    result=subprocess.run([sys.executable,__file__,name,'--fetch'],
+                                          capture_output=True,text=True,timeout=12)
+                except subprocess.TimeoutExpired:
+                    result=None
             if result is None or result.returncode:
                 # Retain the upstream resolver if its plugin API changes.
                 result=subprocess.run(args+['--json','https://www.twitch.tv/'+name],

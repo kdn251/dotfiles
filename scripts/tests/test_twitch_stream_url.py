@@ -13,7 +13,7 @@ class StreamURLTests(unittest.TestCase):
     def test_prefetch_reuse_expiry_and_quality(self):
         streams={k:{'url':'https://example.test/'+k} for k in ('160p30','360p30','480p30','worst','best')}
         response=Mock(returncode=0,stdout=json.dumps({'streams':streams}))
-        with tempfile.TemporaryDirectory() as root, patch.dict(os.environ,XDG_RUNTIME_DIR=root), patch.object(helper.subprocess,'run',return_value=response) as run:
+        with tempfile.TemporaryDirectory() as root, patch.dict(os.environ,XDG_RUNTIME_DIR=root), patch('twitch_resolver.request',return_value={'streams':streams}) as run:
             first=helper.resolve('example',prefetch=True)
             self.assertTrue(first['low'].endswith('360p30'))
             self.assertTrue(first['best'].endswith('best'))
@@ -25,7 +25,7 @@ class StreamURLTests(unittest.TestCase):
 
     def test_bad_name_and_failed_resolution_not_cached(self):
         with self.assertRaises(ValueError):helper.resolve('../bad')
-        with tempfile.TemporaryDirectory() as root, patch.dict(os.environ,XDG_RUNTIME_DIR=root), patch.object(helper.subprocess,'run',return_value=Mock(returncode=1)):
+        with tempfile.TemporaryDirectory() as root, patch.dict(os.environ,XDG_RUNTIME_DIR=root), patch('twitch_resolver.request',side_effect=OSError), patch.object(helper.subprocess,'run',return_value=Mock(returncode=1)):
             with self.assertRaises(ValueError):helper.resolve('offline')
             self.assertFalse((Path(root)/'twitch-stream-urls/offline.json').exists())
 
