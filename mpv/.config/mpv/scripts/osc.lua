@@ -1037,6 +1037,10 @@ function render_elements(master_ass)
             local maxchars = element.layout.button.maxchars
             local marquee = (element.name == "title" or element.name == "wctitle") and scroll_title(element, buttontext)
             if marquee then
+                -- ASS uses the first position/clip in an event. Remove the
+                -- fixed layout tags before adding the moving title position.
+                elem_ass.text = elem_ass.text:gsub('\\pos%b()', '')
+                    :gsub('\\an%d', ''):gsub('\\clip%b()', '')
                 buttontext = marquee
                 maxchars = nil
             end
@@ -1772,7 +1776,7 @@ function bar_layout(direction)
     lo.geometry = geo
     lo.style = string.format("%s{\\clip(%f,%f,%f,%f)}",
         osc_styles.vidtitleBar,
-        geo.x, geo.y-geo.h, geo.w, geo.y+geo.h)
+        geo.x, geo.y-geo.h, geo.x+geo.w, geo.y+geo.h)
 
 
     -- Playback control buttons
@@ -2440,6 +2444,11 @@ function show_osc()
     --remember last time of invocation (mouse move)
     state.showtime = mp.get_time()
 
+    if not state.osc_visible then
+        for _, title in pairs(title_marquee) do
+            title.started = mp.get_time()
+        end
+    end
     osc_visible(true)
 
     if (user_opts.fadeduration > 0) then
