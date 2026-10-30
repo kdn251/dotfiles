@@ -75,6 +75,7 @@ class Picker(Gtk.Application):
         self.metadata = stream_menu_metadata.load()
         self.items = items
         self.connect('activate', self.activate_picker)
+        GLib.timeout_add_seconds(30, self.refresh_uptimes)
 
     def activate_picker(self, _app):
         self.window = Gtk.ApplicationWindow(application=self, title='Streams')
@@ -242,6 +243,11 @@ class Picker(Gtk.Application):
             count.set_visible(bool(viewers))
             count.add_css_class('stream-viewers')
             top.append(count)
+            row.stream_data = self.metadata.get(item_service, {}).get(name.casefold(), {})
+            row.uptime = Gtk.Label(label=stream_menu_metadata.uptime(row.stream_data), xalign=1)
+            row.uptime.add_css_class('stream-category')
+            row.uptime.set_visible(bool(row.uptime.get_text()))
+            top.append(row.uptime)
             words.append(top)
             subtitle = Gtk.Label(label=stream_title or 'Live now', xalign=0, hexpand=True)
             subtitle.set_ellipsize(Pango.EllipsizeMode.END)
@@ -268,6 +274,17 @@ class Picker(Gtk.Application):
         self.scroll.set_max_content_height(height)
         self.scroll.set_min_content_height(height)
         self.list.select_row(self.list.get_row_at_index(0))
+
+    def refresh_uptimes(self):
+        if hasattr(self, 'list'):
+            row = self.list.get_first_child()
+            while row:
+                if hasattr(row, 'uptime'):
+                    text = stream_menu_metadata.uptime(row.stream_data)
+                    row.uptime.set_text(text)
+                    row.uptime.set_visible(bool(text))
+                row = row.get_next_sibling()
+        return True
 
     def scroll_rows(self, _controller, _dx, dy):
         adjustment = self.scroll.get_vadjustment()

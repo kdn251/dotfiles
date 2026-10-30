@@ -64,7 +64,7 @@ metadata_tmp=$(mktemp "$HOME/.cache/twitch-live.json.XXXXXX")
 jq '[.data.users[] | select(. != null and .stream != null) |
     {key: (.login | ascii_downcase), value: {title: .stream.title,
      category: .stream.game.displayName, viewer_count: .stream.viewersCount,
-     display_name: .displayName, checked_at: now}}] | from_entries' \
+     display_name: .displayName, started_at: .stream.createdAt, checked_at: now}}] | from_entries' \
     <<<"$response" >"$metadata_tmp"
 if [ -s "$metadata_tmp" ]; then mv "$metadata_tmp" "$HOME/.cache/twitch-live.json"; else rm -f "$metadata_tmp"; fi
 

@@ -13,7 +13,7 @@ def refresh(name, service):
     if service == 'Twitch':
         if not re.fullmatch(r'[A-Za-z0-9_]{1,25}', name):
             return ''
-        query = 'query{user(login:' + json.dumps(name.lower()) + '){stream{title viewersCount game{displayName}}}}'
+        query = 'query{user(login:' + json.dumps(name.lower()) + '){stream{title viewersCount createdAt game{displayName}}}}'
         request = Request('https://gql.twitch.tv/gql',
                           data=json.dumps({'query': query}).encode(),
                           headers={'Client-Id': 'kimne78kx3ncx6brgo4mv6wki5h1ko',
@@ -23,6 +23,7 @@ def refresh(name, service):
         if not stream:
             return ''
         data = {'title': stream.get('title'), 'viewer_count': stream.get('viewersCount'),
+                'started_at': stream.get('createdAt'),
                 'category': (stream.get('game') or {}).get('displayName')}
     else:
         # Other platforms already refresh their metadata in the live-list job.

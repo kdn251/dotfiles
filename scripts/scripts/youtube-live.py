@@ -49,6 +49,7 @@ def fetch(channel, enrich=True):
                 '--no-playlist','--socket-timeout','8','--retries','0',stream['url']],
                 capture_output=True,text=True,timeout=25)
             details=json.loads(result.stdout) if result.returncode==0 else {}
+            stream['started_at'] = details.get('release_timestamp')
             viewers=details.get('concurrent_view_count')
             if isinstance(viewers,(int,float)):stream['viewer_count']=viewers
             category=details.get('game') or next(iter(details.get('categories') or []),None)

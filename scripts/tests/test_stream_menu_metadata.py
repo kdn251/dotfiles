@@ -3,6 +3,18 @@ from stream_menu_metadata import details, playback_title, search_rank, highlight
 from unittest.mock import patch
 
 class MetadataTests(unittest.TestCase):
+    def test_uptime_formats_valid_start_times_only(self):
+        from stream_menu_metadata import uptime, format_playback_title
+        from datetime import datetime, timezone
+        start=datetime(2026,10,30,12,tzinfo=timezone.utc).timestamp()
+        for value in (start, '2026-10-30T12:00:00Z', '2026-10-30 12:00:00'):
+            self.assertEqual(uptime({'started_at':value},start+8040),'Live 2h 14m')
+        self.assertEqual(uptime({'started_at':start},start+59),'Live 0m')
+        for value in (None, '', 'bad', True, start+100):
+            self.assertEqual(uptime({'started_at':value},start),'')
+        with patch('stream_menu_metadata.time.time',return_value=start+8040):
+            self.assertIn('Live 2h 14m',format_playback_title('Example',{'started_at':start,'title':'Gaming'}))
+
     def test_full_labels_preserve_identity(self):
         cache={'t':{'example':{'category':'Grand Theft Auto V','title':'A long\nstream title','viewer_count':12345}}}
         self.assertEqual(details('Example — Grand Theft … · 12.3k','Example — Grand Theft … · 12.3k','t',cache),

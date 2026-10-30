@@ -58,6 +58,7 @@ def resolve(html, channel):
                 page_url = urljoin(channel, item.get('url') or '')
                 if urlparse(page_url).scheme == 'https' and urlparse(page_url).hostname in ('rumble.com', 'www.rumble.com'):
                     result['page_url'] = page_url
+                if item.get('live_streamed_on'): result['started_at'] = item['live_streamed_on']
                 viewers=item.get('watching_now')
                 if isinstance(viewers,(int,float)):result['viewer_count']=viewers
                 category=item.get('category')

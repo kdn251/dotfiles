@@ -24,6 +24,8 @@ def resolve(data):
         raise ValueError('This Kick broadcast has no public playable stream.')
     result=dict(url=url, title=live.get('session_title') or 'Kick live stream')
     if isinstance(live.get('viewer_count'), (int,float)):result['viewer_count']=live['viewer_count']
+    started = live.get('start_time') or live.get('created_at')
+    if started: result['started_at'] = started
     categories=live.get('categories') or []
     if categories and isinstance(categories[0],dict):result['category']=categories[0].get('name','')
     return result

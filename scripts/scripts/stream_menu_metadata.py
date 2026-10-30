@@ -1,5 +1,7 @@
 """Read rich stream labels locally; opening the picker never waits on a server."""
 import json
+import time
+from datetime import datetime, timezone
 from pathlib import Path
 
 
@@ -12,6 +14,26 @@ def load():
         except (OSError,ValueError,AttributeError):
             result[service[0]]={}
     return result
+
+
+def uptime(data, now=None):
+    value = data.get('started_at')
+    if value is None or isinstance(value, bool):
+        return ''
+    try:
+        if isinstance(value, (int, float)):
+            started = float(value)
+        else:
+            date = datetime.fromisoformat(value.replace('Z', '+00:00'))
+            started = date.replace(tzinfo=date.tzinfo or timezone.utc).timestamp()
+        elapsed = (time.time() if now is None else now) - started
+        if elapsed < 0 or started <= 0:
+            return ''
+        minutes = int(elapsed // 60)
+    except (ValueError, TypeError, OverflowError, AttributeError):
+        return ''
+    hours, minutes = divmod(minutes, 60)
+    return f'Live {hours}h {minutes}m' if hours else f'Live {minutes}m'
 
 
 def details(label, identity, service, cache):
@@ -90,7 +112,7 @@ def playback_title(name, service, fallback=''):
 def format_playback_title(name, data, fallback=''):
     _, category, title, viewers=details(name,name,'t',{'t':{name.casefold():data}})
     title=' '.join((fallback or title).split())
-    info=' · '.join(part for part in (category,viewers) if part)
+    info=' · '.join(part for part in (category,viewers,uptime(data)) if part)
     heading=name+(' — '+info if info else '')
     return heading+(' | '+title if title and title.casefold()!=name.casefold() else '')
 
