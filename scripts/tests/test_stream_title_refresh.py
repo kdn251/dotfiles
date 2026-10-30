@@ -18,7 +18,7 @@ class RefreshTests(unittest.TestCase):
                                           'game': {'displayName': 'New game'}}}}}
         with patch.object(helper, 'urlopen', return_value=io.BytesIO(json.dumps(data).encode())):
             self.assertEqual(helper.refresh('Example', 'Twitch'),
-                             'Example — New game · 1.2k watching | New title')
+                             'Example — New game ·  1.2k | New title')
         with patch.object(helper, 'urlopen', return_value=io.BytesIO(b'{"data":{"user":null}}')):
             self.assertEqual(helper.refresh('Example', 'Twitch'), '')
 
@@ -39,7 +39,8 @@ mp = {
  set_property=function(k, v) props[k]=v end,
  observe_property=function(k,t,cb) observe=cb end,
  add_timeout=function(t,cb) timers.first=cb end,
- add_periodic_timer=function(t,cb) timers.periodic=cb end,
+ get_time=function() return clock or 100 end,
+ add_periodic_timer=function(t,cb) if t==1 then timers.tick=cb else timers.periodic=cb end end,
  register_event=function(k,cb) events[k]=cb end,
  command_native_async=function(cmd,cb) callbacks[#callbacks+1]=cb; return #callbacks end,
  abort_async_command=function() end,
@@ -58,6 +59,13 @@ assert(props['force-media-title']=='Second — New game | New title')
 timers.periodic()
 callbacks[3](false,{status=1,stdout=''})
 assert(props['force-media-title']=='Second — New game | New title')
+callbacks[3](true,{status=0,stdout='Second — 1:59:59 | Title'})
+clock=101
+timers.tick()
+assert(props['force-media-title']=='Second — 2:00:00 | Title')
+props['user-data/twitch-channel']='third'; observe()
+timers.tick()
+assert(props['force-media-title']=='Second — 2:00:00 | Title')
 events.shutdown()
 """
         with tempfile.TemporaryDirectory() as tmp:

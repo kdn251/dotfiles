@@ -795,7 +795,9 @@ local title_scrolling = false
 
 local function scroll_title(element, text)
     local geo = element.layout.geometry
-    local key = text .. element.layout.style .. tostring(geo.w) ..
+    -- A ticking live clock must not restart the title marquee every second.
+    local stable_text = text:gsub('%d+:%d%d:%d%d', 'CLOCK')
+    local key = stable_text .. element.layout.style .. tostring(geo.w) ..
         tostring(osc_param.playresx) .. tostring(osc_param.playresy)
     local saved = title_marquee[element.name or 'title']
     if not saved or saved.key ~= key then

@@ -75,7 +75,7 @@ class Picker(Gtk.Application):
         self.metadata = stream_menu_metadata.load()
         self.items = items
         self.connect('activate', self.activate_picker)
-        GLib.timeout_add_seconds(30, self.refresh_uptimes)
+        GLib.timeout_add_seconds(1, self.refresh_uptimes)
 
     def activate_picker(self, _app):
         self.window = Gtk.ApplicationWindow(application=self, title='Streams')
@@ -236,8 +236,8 @@ class Picker(Gtk.Application):
             game.set_markup(stream_menu_metadata.highlight(category, query))
             game.add_css_class('stream-category')
             top.append(game)
-            count = Gtk.Label(label=viewers.replace(" watching", ""), xalign=1)
-            count.set_tooltip_text(viewers)
+            count = Gtk.Label(label=viewers, xalign=1)
+            count.set_tooltip_text(viewers.removeprefix(" ") + " viewers")
             count.set_valign(Gtk.Align.CENTER)
             count.set_yalign(0.5)
             count.set_visible(bool(viewers))

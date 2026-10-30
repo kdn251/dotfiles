@@ -29,11 +29,12 @@ def uptime(data, now=None):
         elapsed = (time.time() if now is None else now) - started
         if elapsed < 0 or started <= 0:
             return ''
-        minutes = int(elapsed // 60)
+        seconds = int(elapsed)
     except (ValueError, TypeError, OverflowError, AttributeError):
         return ''
-    hours, minutes = divmod(minutes, 60)
-    return f'Live {hours}h {minutes}m' if hours else f'Live {minutes}m'
+    hours, remainder = divmod(seconds, 3600)
+    minutes, seconds = divmod(remainder, 60)
+    return f'{hours}:{minutes:02d}:{seconds:02d}'
 
 
 def details(label, identity, service, cache):
@@ -44,7 +45,7 @@ def details(label, identity, service, cache):
     viewers=data.get('viewer_count')
     count=''
     if isinstance(viewers,(int,float)) and not isinstance(viewers,bool):
-        count=(f'{viewers/1000:.1f}k' if viewers>=1000 else str(int(viewers)))+' watching'
+        count=' '+(f'{viewers/1000:.1f}k' if viewers>=1000 else str(int(viewers)))
     if not category and ' — ' in label:
         category=label.split(' — ',1)[1].split(' · ',1)[0]
     return name, category, title, count
