@@ -52,6 +52,14 @@ def resolve(service, channel, prefetch=False):
         if result.returncode: raise ValueError(result.stderr.strip() or 'Could not resolve stream')
         data = json.loads(result.stdout)
         if not str(data.get('url', '')).startswith('https://'): raise ValueError('Invalid stream URL')
+        if service == 'Kick':
+            from stream_hls import resolve_best
+            try:
+                selected = resolve_best(data['url'], service)
+                if selected != data['url']:
+                    data['playback_url'] = selected
+            except (OSError, ValueError):
+                pass  # The master remains playable if preselection fails.
         temp = path.with_suffix('.tmp')
         temp.write_text(json.dumps(dict(service=service, channel=channel, created=time.time(), stream=data)))
         temp.chmod(0o600)

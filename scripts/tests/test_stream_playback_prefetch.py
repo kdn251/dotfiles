@@ -15,6 +15,8 @@ class PrefetchTests(unittest.TestCase):
     def setUp(self):
         self.temp=tempfile.TemporaryDirectory();self.addCleanup(self.temp.cleanup)
         self.root=Path(self.temp.name)
+        best=patch('stream_hls.resolve_best',side_effect=lambda url, service: url)
+        best.start();self.addCleanup(best.stop)
         root=patch.object(playback,'root',return_value=self.root);root.start();self.addCleanup(root.stop)
 
     def test_selection_reuses_prefetch_for_each_platform(self):

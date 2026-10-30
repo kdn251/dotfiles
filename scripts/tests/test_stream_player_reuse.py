@@ -57,6 +57,19 @@ class StreamReuseTests(unittest.TestCase):
                     self.assertIsNotNone(position)
                     self.assertEqual(margin, .2)
                     self.assertEqual(pid, player.pid)
+                # If a preselected rendition fails, fall back without replacing MPV.
+                reuse.reuse('example', 'Fallback', str(Path(tmp)/'missing.m3u8'), '', video,
+                            'Kick', 'fallback-session', 'https://kick.com/example')
+                deadline = time.monotonic() + 3
+                ready = ''
+                while time.monotonic() < deadline:
+                    connection, pid = reuse.connect()
+                    with connection, connection.makefile('rwb', buffering=0) as stream:
+                        ready = reuse.command(stream, 'get_property', 'user-data/stream-ready-session')
+                    if ready == 'fallback-session': break
+                    time.sleep(.02)
+                self.assertEqual(ready, 'fallback-session')
+                self.assertEqual(pid, player.pid)
             finally:
                 player.terminate()
                 player.wait(timeout=5)

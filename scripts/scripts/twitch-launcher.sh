@@ -386,7 +386,8 @@ PYICON
     fi
     rm -f "$ERROR_FILE"
     stream_session_current || exit 0
-    LIVE_URL=$(jq -er '.url' <<<"$LIVE") || exit 1
+    LIVE_URL=$(jq -er '.playback_url // .url' <<<"$LIVE") || exit 1
+    LIVE_FALLBACK_URL=$(jq -r 'if .playback_url and .playback_url != .url then .url else "" end' <<<"$LIVE")
     LIVE_TITLE=$(jq -r '.title' <<<"$LIVE")
     PLAYER_TITLE=$(python3 "$HOME/scripts/stream_menu_metadata.py" "$STREAMER" "$SERVICE" "$LIVE_TITLE")
     PLAYER_ARGS=()
@@ -409,7 +410,7 @@ PYICON
     elif [[ "$SERVICE" == Rumble ]]; then
       STREAM_PAGE_URL=$(jq -r --arg fallback "$CHANNEL_URL" '.page_url // $fallback' <<<"$LIVE")
     fi
-    MPV_PID=$(python3 "$HOME/scripts/twitch-player-ipc.py" "$STREAMER" "$PLAYER_TITLE" "$LIVE_URL" "" "" "$SERVICE" "$SESSION_ID" "$STREAM_PAGE_URL" 2>/dev/null)
+    MPV_PID=$(python3 "$HOME/scripts/twitch-player-ipc.py" "$STREAMER" "$PLAYER_TITLE" "$LIVE_URL" "" "$LIVE_FALLBACK_URL" "$SERVICE" "$SESSION_ID" "$STREAM_PAGE_URL" 2>/dev/null)
     python3 "$HOME/scripts/media-chat.py" --close-youtube
     manage_chat stop &
     stream_session_current || exit 0
@@ -417,7 +418,7 @@ PYICON
       python3 "$HOME/scripts/twitch-player-ipc.py" wait "$MPV_PID" "$SESSION_ID"
     else
       pkill mpv
-      STREAM_PAGE_URL="$STREAM_PAGE_URL" STREAM_SESSION_ID="$SESSION_ID" STREAM_TITLE_SERVICE="$SERVICE" STREAM_TITLE_NAME="$STREAMER" \
+      TWITCH_FALLBACK_URL="$LIVE_FALLBACK_URL" STREAM_PAGE_URL="$STREAM_PAGE_URL" STREAM_SESSION_ID="$SESSION_ID" STREAM_TITLE_SERVICE="$SERVICE" STREAM_TITLE_NAME="$STREAMER" \
       play_live_stream --script="$HOME/scripts/twitch-first-frame.lua" \
         --script="$HOME/scripts/stream-title-refresh.lua" --cache=yes --cache-secs=30 \
         --demuxer-max-bytes=150MiB --demuxer-max-back-bytes=100MiB --hwdec=vaapi \
