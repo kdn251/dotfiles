@@ -21,3 +21,18 @@ mp.register_event('playback-restart', function()
     local file = io.open(path, 'w')
     if file then file:write('playing'); file:close() end
 end)
+
+-- Direct HLS avoids opening the manifest twice. Keep a normal URL fallback
+-- for FFmpeg changes or streams the explicit HLS reader cannot handle.
+local current_path = nil
+mp.register_event('start-file', function()
+    current_path = mp.get_property('path')
+end)
+mp.register_event('end-file', function(event)
+    if event.reason ~= 'error' or not current_path then return end
+    local plain = current_path:match('^av://hls:(https://.+)')
+    if not plain then return end
+    if expected == current_path then expected = plain end
+    current_path = plain
+    mp.commandv('loadfile', plain, 'replace')
+end)

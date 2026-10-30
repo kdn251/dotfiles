@@ -478,6 +478,11 @@ awk -v user="$STREAMER_USERNAME" '
     exit $STREAM_RC
   fi
 
+  # Known HLS: bypass MPV's preliminary HTTP open, which otherwise fetches
+  # the same media playlist again inside FFmpeg. The Lua helper retries the
+  # plain HTTPS URL if the direct HLS route fails.
+  LOW_URL="av://hls:$LOW_URL"
+
   # back-bytes feeds mpv-clip.sh, which dumps the last 30s out of this buffer;
   # 30s of 1080p60 is roughly 25MB, so the previous 50MiB was marginal.
   # force-media-title so the window and the clip filenames say who is streaming
@@ -524,7 +529,7 @@ awk -v user="$STREAMER_USERNAME" '
     sleep 0.5
     BEST_URL=$(python3 "$HOME/scripts/twitch-stream-url.py" "$STREAMER_USERNAME" --best 2>/dev/null)
     if [ -n "$BEST_URL" ] && stream_session_current && kill -0 "$MPV_PID" 2>/dev/null; then
-      IPC_CMD=$(jq -cn --arg url "$BEST_URL" '{"command": ["loadfile", $url, "replace"]}')
+      IPC_CMD=$(jq -cn --arg url "av://hls:$BEST_URL" '{"command": ["loadfile", $url, "replace"]}')
       echo "$IPC_CMD" | socat - "$MPV_SOCKET" >/dev/null 2>&1
     fi
   ) &
