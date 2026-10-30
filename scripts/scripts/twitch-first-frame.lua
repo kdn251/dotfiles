@@ -3,9 +3,11 @@
 local path = os.getenv('TWITCH_FIRST_FRAME')
 local expected = nil
 local reported = false
+local fallback = os.getenv('TWITCH_FALLBACK_URL')
 mp.set_property_native('user-data/twitch-managed', 1)
 mp.set_property('user-data/twitch-channel', os.getenv('TWITCH_STREAMER_USERNAME') or '')
-mp.register_script_message('twitch-load', function(channel, title, url, marker)
+mp.register_script_message('twitch-load', function(channel, title, url, marker, low_url)
+    fallback = low_url
     path = marker
     expected = url
     reported = false
@@ -31,8 +33,13 @@ end)
 mp.register_event('end-file', function(event)
     if event.reason ~= 'error' or not current_path then return end
     local plain = current_path:match('^av://hls:(https://.+)')
-    if not plain then return end
-    if expected == current_path then expected = plain end
-    current_path = plain
-    mp.commandv('loadfile', plain, 'replace')
+    local target = plain
+    if not target and not reported and fallback and fallback ~= '' then
+        target = fallback
+        fallback = nil
+    end
+    if not target then return end
+    if expected == current_path then expected = target end
+    current_path = target
+    mp.commandv('loadfile', target, 'replace')
 end)

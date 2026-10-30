@@ -40,12 +40,12 @@ def channel(expected_pid):
         return command(stream,'get_property','user-data/twitch-channel')
 
 
-def reuse(name,title,url,marker):
+def reuse(name,title,url,marker,fallback=""):
     client,pid=connect()
     with client,client.makefile('rwb',buffering=0) as stream:
         if command(stream,'get_property','user-data/twitch-managed')!=1:
             raise ValueError('Player does not support stream switching')
-        command(stream,'script-message','twitch-load',name,title,url,marker)
+        command(stream,'script-message','twitch-load',name,title,url,marker,fallback)
     return pid
 
 

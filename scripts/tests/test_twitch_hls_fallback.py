@@ -35,6 +35,22 @@ local file = assert(io.open(arg[2], 'r'))
 assert(file:read('*a') == 'playing'); file:close()
 events['end-file']({reason='error'})
 assert(#commands == 2, 'must not retry forever')
+-- A new selection replaces the old fallback and can step down only once.
+local low = 'av://hls:https://example.test/low.m3u8'
+messages['twitch-load']('second', 'Second stream', direct, arg[2], low)
+properties.path = direct; events['start-file']()
+events['end-file']({reason='error'})
+assert(commands[#commands][2] == 'https://example.test/live.m3u8')
+properties.path = commands[#commands][2]; events['start-file']()
+events['end-file']({reason='error'})
+assert(commands[#commands][2] == low)
+properties.path = low; events['start-file']()
+events['end-file']({reason='error'})
+assert(commands[#commands][2] == 'https://example.test/low.m3u8')
+properties.path = commands[#commands][2]; events['start-file']()
+local count = #commands
+events['end-file']({reason='error'})
+assert(#commands == count, 'quality fallback must be bounded')
 '''
             test = Path(tmp) / 'test.lua'
             test.write_text(harness)

@@ -453,8 +453,8 @@ awk -v user="$STREAMER_USERNAME" '
   # intact until we know whether its window can be reused.
   manage_chat start "$STREAMER_USERNAME" &
   # Resolve the network URL while preparing local title/monitor settings.
-  LOW_FILE=$(mktemp "${XDG_RUNTIME_DIR:-/tmp}/twitch-url.XXXXXX")
-  python3 "$HOME/scripts/twitch-stream-url.py" "$STREAMER_USERNAME" >"$LOW_FILE" 2>/dev/null &
+  URL_FILE=$(mktemp "${XDG_RUNTIME_DIR:-/tmp}/twitch-url.XXXXXX")
+  python3 "$HOME/scripts/twitch-stream-url.py" "$STREAMER_USERNAME" --playback >"$URL_FILE" 2>/dev/null &
   RESOLVE_PID=$!
   PLAYER_TITLE=$(python3 "$HOME/scripts/stream_menu_metadata.py" "$STREAMER" Twitch)
 
@@ -466,10 +466,11 @@ awk -v user="$STREAMER_USERNAME" '
   fi
 
   wait "$RESOLVE_PID"
-  LOW_URL=$(cat "$LOW_FILE")
-  rm -f "$LOW_FILE"
+  PLAY_URL=$(jq -er '.best' "$URL_FILE" 2>/dev/null)
+  FALLBACK_URL=$(jq -er '.low' "$URL_FILE" 2>/dev/null)
+  rm -f "$URL_FILE"
 
-  if [ -z "$LOW_URL" ]; then
+  if [ -z "$PLAY_URL" ]; then
     stream_session_current || exit 0
     pkill mpv
     streamlink "${SL_COMMON[@]}" --player mpv "$URL" best,720p,480p
@@ -481,7 +482,8 @@ awk -v user="$STREAMER_USERNAME" '
   # Known HLS: bypass MPV's preliminary HTTP open, which otherwise fetches
   # the same media playlist again inside FFmpeg. The Lua helper retries the
   # plain HTTPS URL if the direct HLS route fails.
-  LOW_URL="av://hls:$LOW_URL"
+  PLAY_URL="av://hls:$PLAY_URL"
+  FALLBACK_URL="av://hls:$FALLBACK_URL"
 
   # back-bytes feeds mpv-clip.sh, which dumps the last 30s out of this buffer;
   # 30s of 1080p60 is roughly 25MB, so the previous 50MiB was marginal.
@@ -489,13 +491,13 @@ awk -v user="$STREAMER_USERNAME" '
   # rather than showing the HLS playlist token.
   stream_session_current || exit 0
   FIRST_FRAME=$(mktemp "${XDG_RUNTIME_DIR:-/tmp}/twitch-first-frame.XXXXXX")
-  MPV_PID=$(python3 "$HOME/scripts/twitch-player-ipc.py" "$STREAMER_USERNAME" "$PLAYER_TITLE" "$LOW_URL" "$FIRST_FRAME" 2>/dev/null)
+  MPV_PID=$(python3 "$HOME/scripts/twitch-player-ipc.py" "$STREAMER_USERNAME" "$PLAYER_TITLE" "$PLAY_URL" "$FIRST_FRAME" "$FALLBACK_URL" 2>/dev/null)
   REUSED_PLAYER=1
   if [ -z "$MPV_PID" ]; then
     REUSED_PLAYER=0
     pkill mpv
     rm -f "$MPV_SOCKET"
-  TWITCH_STREAMER_USERNAME="$STREAMER_USERNAME" TWITCH_FIRST_FRAME="$FIRST_FRAME" mpv \
+  TWITCH_STREAMER_USERNAME="$STREAMER_USERNAME" TWITCH_FIRST_FRAME="$FIRST_FRAME" TWITCH_FALLBACK_URL="$FALLBACK_URL" mpv \
     --term-status-msg= \
     --script="$HOME/scripts/twitch-first-frame.lua" \
     --cache=yes \
@@ -515,24 +517,12 @@ awk -v user="$STREAMER_USERNAME" '
     --dscale=mitchell \
     --input-ipc-server="$MPV_SOCKET" \
     --force-media-title="$PLAYER_TITLE" \
-    "$LOW_URL" &
+    "$PLAY_URL" &
   MPV_PID=$!
   fi
 
-  (
-    for i in $(seq 1 150); do
-      stream_session_current && kill -0 "$MPV_PID" 2>/dev/null || exit 0
-      [ -s "$FIRST_FRAME" ] && [ -S "$MPV_SOCKET" ] && break
-      sleep 0.1
-    done
-    [ -s "$FIRST_FRAME" ] && [ -S "$MPV_SOCKET" ] || exit 1
-    sleep 0.5
-    BEST_URL=$(python3 "$HOME/scripts/twitch-stream-url.py" "$STREAMER_USERNAME" --best 2>/dev/null)
-    if [ -n "$BEST_URL" ] && stream_session_current && kill -0 "$MPV_PID" 2>/dev/null; then
-      IPC_CMD=$(jq -cn --arg url "av://hls:$BEST_URL" '{"command": ["loadfile", $url, "replace"]}')
-      echo "$IPC_CMD" | socat - "$MPV_SOCKET" >/dev/null 2>&1
-    fi
-  ) &
+  # Start at full quality. Replacing a playing low-quality stream causes a
+  # visible freeze; the Lua helper uses the low URL only if startup fails.
 
   if [ "$REUSED_PLAYER" = 1 ]; then
     python3 "$HOME/scripts/twitch-player-ipc.py" wait "$MPV_PID" "$SESSION_ID"

@@ -97,7 +97,9 @@ if __name__=='__main__':
             raise SystemExit(0)
         data=resolve(sys.argv[1].lower(), '--prefetch' in sys.argv)
         if data and '--prefetch' not in sys.argv:
-            if '--best' in sys.argv:
+            if '--playback' in sys.argv:
+                print(json.dumps({'best': data['best'], 'low': data['low']}))
+            elif '--best' in sys.argv:
                 # Validate just the upgrade, after low-quality playback starts.
                 # An inaccessible HD rendition must not replace a working stream.
                 from urllib.request import Request, urlopen
