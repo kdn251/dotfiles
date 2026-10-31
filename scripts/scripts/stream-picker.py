@@ -10,6 +10,7 @@ from pathlib import Path
 import stream_menu_metadata
 from stream_preview import Preview
 import stream_saved
+import stream_vods
 
 # Load before GTK/Wayland so layer-shell can intercept surface creation.
 ctypes.CDLL('libgtk4-layer-shell.so', mode=ctypes.RTLD_GLOBAL)
@@ -79,6 +80,9 @@ class Picker(Gtk.Application):
         self.marquee_row = None
         self.metadata = stream_menu_metadata.load()
         self.items = items
+        self.vods_mode = False
+        self.vods = []
+        self.vods_generation = 0
         self.connect('activate', self.activate_picker)
         GLib.timeout_add(100, self.check_preview)
         GLib.timeout_add_seconds(1, self.refresh_uptimes)
@@ -124,6 +128,7 @@ class Picker(Gtk.Application):
         self.logo.set_size_request(28, -1)
         header.append(self.logo)
         self.entry = Gtk.Entry(hexpand=True)
+        self.entry.set_placeholder_text('Search streams')
         self.entry.connect('changed', self.changed)
         self.entry.connect('activate', self.accept)
         header.append(self.entry)
@@ -215,6 +220,9 @@ class Picker(Gtk.Application):
             self.window.present()
             return False
         self.reply = reply
+        self.vods_mode = False
+        self.vods_generation += 1
+        self.entry.set_placeholder_text('Search streams')
         self.items = parse_menu(data)
         self.metadata = stream_menu_metadata.load()
         self.entry.set_text('')
@@ -232,11 +240,14 @@ class Picker(Gtk.Application):
         name, glyph, color = PLATFORMS[service]
         self.logo.set_markup(f'<span font_family="Stream Launcher Icons" size="18000" foreground="{color}">{glyph}</span>')
         self.logo.set_tooltip_text(name)
-        query = text[2:].lstrip('@') if service != 't' else text
+        query = text[2:].lstrip('@') if service != 't' and not self.vods_mode else text
+        if self.vods_mode:
+            self.logo.set_text('🎬')
+            self.logo.set_tooltip_text('Downloaded VODs')
         while child := self.list.get_first_child():
             self.list.remove(child)
         results = []
-        for item in self.items:
+        for item in ([] if self.vods_mode else self.items):
             label, identity, icon, item_service = item
             if service != 't' and item_service != service:
                 continue
@@ -245,11 +256,21 @@ class Picker(Gtk.Application):
             rank = stream_menu_metadata.search_rank(query, name, category, stream_title)
             if rank is not None:
                 results.append((rank, item, info))
+        if self.vods_mode:
+            from datetime import datetime
+            for vod in self.vods:
+                rank = stream_menu_metadata.search_rank(query, vod['source'], '', vod['title'])
+                if rank is None:continue
+                icon = str(Path.home()/'.cache/twitch-profiles'/(vod['source'].lower()+'.png'))
+                date = datetime.fromtimestamp(vod['saved']).strftime('%b %d, %Y')
+                results.append((rank, (vod['title'], vod['url'], icon, 'vod'),
+                                (vod['source'], date, vod['title'], '')))
         # Stable sorting preserves favorites/order for ties and an empty search.
         for _, (label, identity, icon, item_service), info in sorted(results, key=lambda result: result[0]):
             name, category, stream_title, viewers = info
             row = Gtk.ListBoxRow()
             row.result = label + '\t' + identity
+            row.vod = next((v for v in self.vods if v['url']==identity), None) if self.vods_mode else None
             hover = Gtk.EventControllerMotion()
             hover.connect('enter', lambda _controller, _x, _y, current=row: self.list.select_row(current))
             row.add_controller(hover)
@@ -338,7 +359,7 @@ class Picker(Gtk.Application):
         if self.preview:
             self.preview.stop();self.preview=None
         self.preview_result = row.result if row else None
-        if row is None:return
+        if row is None or self.vods_mode:return
         def start():
             self.preview_timer=None
             if not self.window.get_visible() or self.list.get_selected_row()!=row:return False
@@ -428,7 +449,7 @@ class Picker(Gtk.Application):
         if self.prefetch_timer:
             GLib.source_remove(self.prefetch_timer)
             self.prefetch_timer = None
-        if row is None:
+        if row is None or self.vods_mode:
             return
         identity = row.result.split('\t', 1)[1]
         name = identity.split()[0]
@@ -468,13 +489,48 @@ class Picker(Gtk.Application):
             self.quit()
 
     def row_activated(self, _list, row):
-        self.finish(row.result)
+        if getattr(row, 'vod', None):
+            try:stream_vods.play(row.vod)
+            except (OSError, ValueError) as error:
+                self.show_status(str(error));return
+            self.finish('')
+        else:self.finish(row.result)
 
     def accept(self, _entry):
         row = self.list.get_selected_row()
-        self.finish(row.result if row else self.entry.get_text())
+        if row:self.row_activated(self.list, row)
+        elif not self.vods_mode:self.finish(self.entry.get_text())
+
+    def toggle_vods(self):
+        self.vods_mode = not self.vods_mode
+        self.vods_generation += 1
+        generation = self.vods_generation
+        self.entry.set_placeholder_text('Search downloaded VODs' if self.vods_mode else 'Search streams')
+        self.entry.set_text('')
+        self.changed(self.entry)
+        self.scroll.get_vadjustment().set_value(0)
+        self.entry.grab_focus()
+        if self.vods_mode:
+            import threading
+            def load():
+                try:rows = stream_vods.entries()
+                except (OSError, ValueError):rows = []
+                def apply():
+                    if generation != self.vods_generation or not self.vods_mode:return False
+                    self.vods = rows
+                    self.changed(self.entry)
+                    if not rows:self.show_status('No downloaded Twitch VODs')
+                    return False
+                GLib.idle_add(apply)
+            threading.Thread(target=load, daemon=True).start()
 
     def key_pressed(self, _controller, key, _code, modifiers):
+        if key in (Gdk.KEY_Tab, Gdk.KEY_ISO_Left_Tab):
+            self.toggle_vods()
+            return True
+        if self.vods_mode and key in (Gdk.KEY_Return, Gdk.KEY_KP_Enter):
+            self.accept(self.entry)
+            return True
         if key in (Gdk.KEY_Return, Gdk.KEY_KP_Enter) and modifiers & Gdk.ModifierType.CONTROL_MASK:
             self.save_streamer(None)
             return True
@@ -484,10 +540,10 @@ class Picker(Gtk.Application):
         if key in (Gdk.KEY_Return, Gdk.KEY_KP_Enter) and modifiers & Gdk.ModifierType.SHIFT_MASK:
             self.finish(self.entry.get_text())
             return True
-        if key in (Gdk.KEY_Down, Gdk.KEY_Up, Gdk.KEY_Tab, Gdk.KEY_ISO_Left_Tab):
+        if key in (Gdk.KEY_Down, Gdk.KEY_Up):
             row = self.list.get_selected_row()
             index = row.get_index() if row else -1
-            step = -1 if key in (Gdk.KEY_Up, Gdk.KEY_ISO_Left_Tab) else 1
+            step = -1 if key == Gdk.KEY_Up else 1
             target = self.list.get_row_at_index(max(0, index + step))
             if target:
                 self.list.select_row(target)
