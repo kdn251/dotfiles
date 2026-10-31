@@ -41,6 +41,9 @@ def channel(expected_pid):
 
 
 def reuse(name,title,url,marker,fallback="",service="Twitch",session="",page=""):
+    from stream_preview import adopt
+    promoted=adopt(name,title,marker,service,session,page)
+    if promoted:return promoted
     client,pid=connect()
     with client,client.makefile('rwb',buffering=0) as stream:
         if command(stream,'get_property','user-data/twitch-managed')!=2:

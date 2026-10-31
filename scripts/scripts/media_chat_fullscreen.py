@@ -46,7 +46,12 @@ def ipc(state, *command):
 def socket_for(player):
     args = Path(f"/proc/{player['pid']}/cmdline").read_bytes().split(b'\0')
     paths = ['/tmp/mpv-twitch-ipc'] + [f'/tmp/mpv-{s}-live-ipc' for s in ('youtube', 'rumble', 'kick')]
-    return next((path for path in paths if ('--input-ipc-server=' + path).encode() in args), None)
+    endpoint = next((path for path in paths if ('--input-ipc-server=' + path).encode() in args), None)
+    if endpoint:return endpoint
+    # Promoted previews retain their private socket; the canonical one aliases it.
+    prefix = str(ROOT / 'stream-preview') + '/'
+    return next((arg.decode().split('=',1)[1] for arg in args
+                 if arg.startswith(('--input-ipc-server='+prefix).encode())), None)
 
 
 def regular_workspace(player, state=None):

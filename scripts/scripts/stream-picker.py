@@ -8,6 +8,8 @@ os.environ.setdefault("GSK_RENDERER", "gl")
 import sys
 from pathlib import Path
 import stream_menu_metadata
+from stream_preview import Preview
+import stream_saved
 
 # Load before GTK/Wayland so layer-shell can intercept surface creation.
 ctypes.CDLL('libgtk4-layer-shell.so', mode=ctypes.RTLD_GLOBAL)
@@ -70,11 +72,15 @@ class Picker(Gtk.Application):
         self.resident = resident
         self.reply = None
         self.prefetch_timer = None
+        self.preview_timer = None
+        self.preview = None
+        self.preview_result = None
         self.marquee_timer = None
         self.marquee_row = None
         self.metadata = stream_menu_metadata.load()
         self.items = items
         self.connect('activate', self.activate_picker)
+        GLib.timeout_add(100, self.check_preview)
         GLib.timeout_add_seconds(1, self.refresh_uptimes)
 
     def activate_picker(self, _app):
@@ -93,6 +99,7 @@ class Picker(Gtk.Application):
           entry { background: transparent; color: #eceff4; border: none;
                   box-shadow: none; outline: none; padding: 0; min-height: 36px; }
           entry:focus-within { outline: none; box-shadow: none; }
+          .preview-hint { font-size: 10pt; color: #b5bdcc; }
           .picker list { background: transparent; color: #eceff4; }
           .picker row { background: transparent; color: #eceff4;
                         padding: 7px 8px; border-radius: 8px; min-height: 40px;
@@ -138,11 +145,19 @@ class Picker(Gtk.Application):
         scroll.set_propagate_natural_height(True)
         scroll.set_child(self.list)
         box.append(scroll)
+        self.preview_hint = Gtk.Label(label='', xalign=0)
+        self.preview_hint.set_visible(False)
+        self.preview_hint.add_css_class('preview-hint')
+        self.preview_hint.set_ellipsize(Pango.EllipsizeMode.END)
+        self.preview_hint.set_max_width_chars(65)
+        box.append(self.preview_hint)
         self.window.set_child(box)
         keys = Gtk.EventControllerKey()
         keys.set_propagation_phase(Gtk.PropagationPhase.CAPTURE)
         keys.connect('key-pressed', self.key_pressed)
         self.window.add_controller(keys)
+        import subprocess
+        subprocess.run(['hyprctl','keyword','windowrule','float on, no_initial_focus on, opaque on, opacity 1.0 override 1.0 override, size 480 270, match:class ^(stream-preview)$'],stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)
         self.changed(self.entry)
         if self.resident:
             self.hold()
@@ -172,10 +187,17 @@ class Picker(Gtk.Application):
             monitor = monitors.get_item(0)
         if monitor is not None:
             Layer.set_monitor(self.window, monitor)
+            geometry = monitor.get_geometry()
+            self.preview_monitor = (geometry.x, geometry.y, geometry.width, geometry.height)
+            Layer.set_anchor(self.window, Layer.Edge.LEFT, False)
+            Layer.set_anchor(self.window, Layer.Edge.RIGHT, False)
+            Layer.set_margin(self.window, Layer.Edge.LEFT, 0)
             height = self.window.get_child().measure(Gtk.Orientation.VERTICAL, 650)[1]
+            top = max(12, (geometry.height-height)//2)
+            self.preview_bounds = (geometry.x+(geometry.width-480)//2,
+                geometry.y+top+height+14, 480, 270)
             Layer.set_anchor(self.window, Layer.Edge.TOP, True)
-            Layer.set_margin(self.window, Layer.Edge.TOP,
-                             max(12, (monitor.get_geometry().height - height) // 2))
+            Layer.set_margin(self.window, Layer.Edge.TOP, top)
 
     def close_request(self, *_):
         self.finish('')
@@ -222,6 +244,9 @@ class Picker(Gtk.Application):
             name, category, stream_title, viewers = info
             row = Gtk.ListBoxRow()
             row.result = label + '\t' + identity
+            hover = Gtk.EventControllerMotion()
+            hover.connect('enter', lambda _controller, _x, _y, current=row: self.list.select_row(current))
+            row.add_controller(hover)
             content = Gtk.Box(spacing=10)
             avatar = RoundedAvatar(file=icon) if icon and Path(icon).is_file() else RoundedAvatar(icon_name="video-display-symbolic")
             avatar.set_pixel_size(36)
@@ -279,6 +304,75 @@ class Picker(Gtk.Application):
         self.scroll.set_min_content_height(height)
         self.list.select_row(self.list.get_row_at_index(0))
 
+    def show_status(self, text):
+        if getattr(self, 'status_timer', None):
+            GLib.source_remove(self.status_timer)
+        self.preview_hint.set_text(text)
+        self.preview_hint.set_visible(True)
+        def clear():
+            self.preview_hint.set_visible(False)
+            self.status_timer=None
+            return False
+        self.status_timer=GLib.timeout_add(3000,clear)
+
+    def save_streamer(self, _button):
+        try:
+            name, added = stream_saved.save(self.entry.get_text())
+            self.show_status(name + (' saved' if added else ' is already saved'))
+            if added:
+                import subprocess
+                subprocess.Popen([str(Path.home()/'scripts/update-live-list.sh')],stdin=subprocess.DEVNULL,
+                    stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL,start_new_session=True)
+        except (OSError,ValueError) as error:
+            self.show_status(str(error))
+
+    def schedule_preview(self, row):
+        if self.preview_timer:
+            GLib.source_remove(self.preview_timer);self.preview_timer=None
+        if self.preview:
+            self.preview.stop();self.preview=None
+        self.preview_result = row.result if row else None
+        if row is None:return
+        def start():
+            self.preview_timer=None
+            if not self.window.get_visible() or self.list.get_selected_row()!=row:return False
+            identity=row.result.split('\t',1)[1]
+            name=identity.split()[0]
+            service=next((s for s in ('YouTube','Rumble','Kick') if identity.endswith('('+s+')')),'Twitch')
+            channel=row.stream_data.get('channel') or stream_saved.BASES[service]+name
+            bounds=self.preview_bounds
+            try:
+                import json,subprocess
+                layers=json.loads(subprocess.check_output(['hyprctl','-j','layers'],timeout=1))
+                panel=next(layer for monitor in layers.values() for level in monitor['levels'].values() for layer in level
+                           if layer.get('namespace')=='stream-picker' and layer.get('pid')==os.getpid())
+                mx,my,mw,mh=self.preview_monitor
+                right=panel['x']+panel['w']+14
+                space=mx+mw-right-12
+                if space>=240:
+                    width=min(480,space)
+                    bounds=(right,panel['y'],width,round(width*9/16))
+                else:
+                    below=my+mh-(panel['y']+panel['h']+14)-12
+                    above=panel['y']-my-26
+                    height=min(270,max(60,max(below,above)))
+                    width=min(480,round(height*16/9),mw-24)
+                    height=round(width*9/16)
+                    y=panel['y']+panel['h']+14 if below>=above else panel['y']-height-14
+                    bounds=(mx+(mw-width)//2,y,width,height)
+            except (OSError,ValueError,KeyError,StopIteration,subprocess.SubprocessError):pass
+            self.preview=Preview(name,service,channel,bounds)
+            self.preview.start()
+            return False
+        self.preview_timer=GLib.timeout_add(550,start)
+
+    def check_preview(self):
+        preview=self.preview
+        if preview and self.window.get_visible():
+            if preview.accepted.exists():
+                self.finish(self.preview_result)
+        return True
+
     def refresh_uptimes(self):
         if hasattr(self, 'list'):
             row = self.list.get_first_child()
@@ -295,6 +389,9 @@ class Picker(Gtk.Application):
         height = getattr(self, 'row_height', 54)
         step = 1 if dy > 0 else -1 if dy < 0 else 0
         adjustment.set_value(round(adjustment.get_value() / height) * height + step * height)
+        row = self.list.get_selected_row()
+        target = self.list.get_row_at_index(max(0, (row.get_index() if row else 0) + step))
+        if target:self.list.select_row(target)
         return True
 
     def warm_top_streams(self):
@@ -307,6 +404,7 @@ class Picker(Gtk.Application):
                              start_new_session=True)
 
     def prefetch_selected(self, _list, row):
+        self.schedule_preview(row)
         if self.marquee_timer:
             GLib.source_remove(self.marquee_timer)
             self.marquee_timer = None
@@ -353,6 +451,12 @@ class Picker(Gtk.Application):
         self.prefetch_timer = GLib.timeout_add(150, warm)
 
     def finish(self, value):
+        if self.preview_timer:
+            GLib.source_remove(self.preview_timer);self.preview_timer=None
+        if self.preview:
+            if not value or value != self.preview_result or not self.preview.handoff():
+                self.preview.stop()
+            self.preview=None
         if self.resident:
             self.window.set_visible(False)
             reply, self.reply = self.reply, None
@@ -371,6 +475,9 @@ class Picker(Gtk.Application):
         self.finish(row.result if row else self.entry.get_text())
 
     def key_pressed(self, _controller, key, _code, modifiers):
+        if key in (Gdk.KEY_Return, Gdk.KEY_KP_Enter) and modifiers & Gdk.ModifierType.CONTROL_MASK:
+            self.save_streamer(None)
+            return True
         if key == Gdk.KEY_Escape:
             self.finish('')
             return True
