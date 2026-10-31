@@ -174,6 +174,7 @@ class Picker(Gtk.Application):
         display = Gdk.Display.get_default()
         monitors = display.get_monitors()
         monitor = Layer.get_monitor(self.window)
+        current = []
         try:
             import json
             import subprocess
@@ -189,13 +190,18 @@ class Picker(Gtk.Application):
             Layer.set_monitor(self.window, monitor)
             geometry = monitor.get_geometry()
             self.preview_monitor = (geometry.x, geometry.y, geometry.width, geometry.height)
+            reserved_top = next((m.get('reserved', [0,0,0,0])[1] for m in current
+                                 if m.get('name') == monitor.get_connector()), 0)
+            self.preview_top = geometry.y + reserved_top + 12
             Layer.set_anchor(self.window, Layer.Edge.LEFT, False)
             Layer.set_anchor(self.window, Layer.Edge.RIGHT, False)
             Layer.set_margin(self.window, Layer.Edge.LEFT, 0)
             height = self.window.get_child().measure(Gtk.Orientation.VERTICAL, 650)[1]
             top = max(12, (geometry.height-height)//2)
-            self.preview_bounds = (geometry.x+(geometry.width-480)//2,
-                geometry.y+top+height+14, 480, 270)
+            preview_height = min(270, max(1, top-26))
+            preview_width = round(preview_height*16/9)
+            self.preview_bounds = (geometry.x+(geometry.width-preview_width)//2,
+                geometry.y+top-preview_height-14, preview_width, preview_height)
             Layer.set_anchor(self.window, Layer.Edge.TOP, True)
             Layer.set_margin(self.window, Layer.Edge.TOP, top)
 
@@ -347,19 +353,13 @@ class Picker(Gtk.Application):
                 panel=next(layer for monitor in layers.values() for level in monitor['levels'].values() for layer in level
                            if layer.get('namespace')=='stream-picker' and layer.get('pid')==os.getpid())
                 mx,my,mw,mh=self.preview_monitor
-                right=panel['x']+panel['w']+14
-                space=mx+mw-right-12
-                if space>=240:
-                    width=min(480,space)
-                    bounds=(right,panel['y'],width,round(width*9/16))
-                else:
-                    below=my+mh-(panel['y']+panel['h']+14)-12
-                    above=panel['y']-my-26
-                    height=min(270,max(60,max(below,above)))
-                    width=min(480,round(height*16/9),mw-24)
-                    height=round(width*9/16)
-                    y=panel['y']+panel['h']+14 if below>=above else panel['y']-height-14
-                    bounds=(mx+(mw-width)//2,y,width,height)
+                # Keep the menu centered; shrink the preview to the available
+                # space above it without overlapping the menu or the top bar.
+                height=min(270,max(1,panel['y']-self.preview_top-14))
+                width=min(480,round(height*16/9),mw-24)
+                height=round(width*9/16)
+                bounds=(round(panel['x']+(panel['w']-width)/2),
+                        panel['y']-height-14,width,height)
             except (OSError,ValueError,KeyError,StopIteration,subprocess.SubprocessError):pass
             self.preview=Preview(name,service,channel,bounds)
             self.preview.start()

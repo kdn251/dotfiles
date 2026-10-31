@@ -7,14 +7,39 @@ from unittest.mock import Mock,patch
 import stream_preview as preview
 
 class PreviewTests(unittest.TestCase):
+    def test_current_stream_is_not_previewed(self):
+        with tempfile.TemporaryDirectory() as directory,patch.object(preview,'ROOT',Path(directory)), \
+                patch.object(preview,'clients',return_value=[{'class':'mpv','pid':123}]), \
+                patch.object(preview,'player_identity',return_value=('Twitch','Example')), \
+                patch.object(preview.subprocess,'Popen') as spawn,patch.object(preview,'resolve') as resolve:
+            player=preview.Preview('example','Twitch','https://twitch.tv/example',(0,0,400,225))
+            player._run()
+            spawn.assert_not_called();resolve.assert_not_called()
+            self.assertFalse(preview.already_watching('example','Kick'))
+            self.assertFalse(preview.already_watching('other','Twitch'))
+
+    def test_closed_player_or_other_preview_does_not_suppress_preview(self):
+        with patch.object(preview,'clients',return_value=[{'class':'stream-preview'}]), \
+                patch.object(preview,'player_identity') as identity:
+            self.assertFalse(preview.already_watching('example','Twitch'))
+            identity.assert_not_called()
+        with patch.object(preview,'clients',return_value=[{'class':'mpv'}]), \
+                patch.object(preview,'player_identity',return_value=None):
+            self.assertFalse(preview.already_watching('example','Twitch'))
+
     def test_cancel_during_resolution_cannot_launch_late_player(self):
         started=threading.Event();release=threading.Event()
         def resolve(*args):started.set();release.wait(2);return 'https://example.test/stream'
+        process=Mock();process.pid=123;process.poll.return_value=None
         with tempfile.TemporaryDirectory() as directory,patch.object(preview,'ROOT',Path(directory)), \
-                patch.object(preview,'resolve',side_effect=resolve),patch.object(preview.subprocess,'Popen') as launch:
+                patch.object(preview,'resolve',side_effect=resolve),patch.object(preview.subprocess,'Popen',return_value=process), \
+                patch.object(preview,'clients',return_value=[dict(pid=123,address='preview')]), \
+                patch.object(preview.subprocess,'run'),patch.object(preview,'Player') as ipc:
             player=preview.Preview('test','Twitch','https://twitch.tv/test',(0,0,400,225))
             thread=threading.Thread(target=player._run);thread.start();self.assertTrue(started.wait(1))
-            player.stop();release.set();thread.join(2);launch.assert_not_called()
+            player.stop();release.set();thread.join(2)
+            process.terminate.assert_called_once()
+            ipc.assert_not_called()  # A stale resolver must never load media after cancellation.
 
     def test_promote_preserves_player_without_loading_media_again(self):
         with tempfile.TemporaryDirectory() as directory:

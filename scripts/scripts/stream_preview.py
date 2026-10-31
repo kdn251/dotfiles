@@ -10,6 +10,7 @@ import threading
 import time
 import uuid
 from mpv_clip import Player
+from stream_player_identity import identity as player_identity
 
 SCRIPTS=Path(__file__).resolve().parent
 ROOT=Path(os.environ.get('XDG_RUNTIME_DIR',f'/run/user/{os.getuid()}'))/'stream-preview'
@@ -20,6 +21,19 @@ SESSION=Path('/tmp/twitch-session.id')
 
 def clients():
     return json.loads(subprocess.check_output(['hyprctl','-j','clients'],text=True,timeout=2))
+
+
+def already_watching(name, service):
+    """Read the live player's identity, not stale launcher/cache metadata."""
+    try:
+        for window in clients():
+            if window.get('class') != 'mpv':continue
+            current = player_identity(window)
+            if current and current[0] == service and str(current[1]).casefold() == name.casefold():
+                return True
+    except (OSError, ValueError, subprocess.SubprocessError):
+        pass
+    return False
 
 
 def resolve(name,service,channel):
@@ -50,10 +64,10 @@ class Preview:
 
     def _run(self):
         try:
-            url=resolve(self.name,self.service,self.channel)
+            if already_watching(self.name,self.service):return
             if self.cancelled.is_set():return
             from stream_menu_metadata import playback_title
-            args=['mpv','--no-terminal','--mute=yes','--force-window=immediate',
+            args=['mpv','--no-terminal','--mute=yes','--idle=yes','--force-window=immediate',
                   '--wayland-app-id=stream-preview','--title=Stream preview',
                   '--input-ipc-server='+self.endpoint,'--cache=yes','--cache-secs=30',
                   '--demuxer-max-bytes=384MiB','--demuxer-max-back-bytes=256MiB',
@@ -69,7 +83,7 @@ class Preview:
             if self.service=='Twitch':env['TWITCH_STREAMER_USERNAME']=self.name
             with self.lock:
                 if self.cancelled.is_set():return
-                self.process=subprocess.Popen(args+[url],env=env,stdin=subprocess.DEVNULL,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL,start_new_session=True)
+                self.process=subprocess.Popen(args,env=env,stdin=subprocess.DEVNULL,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL,start_new_session=True)
             for _ in range(100):
                 if self.cancelled.wait(.05):return
                 if self.process.poll() is not None:
@@ -79,7 +93,12 @@ class Preview:
                 if window:
                     x,y,w,h=self.bounds
                     subprocess.run(['hyprctl','--batch',f'dispatch setfloating address:{window["address"]}; dispatch resizewindowpixel exact {w} {h},address:{window["address"]}; dispatch movewindowpixel exact {x} {y},address:{window["address"]}'],stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL,timeout=2)
-                    return
+                    break
+            url=resolve(self.name,self.service,self.channel)
+            if self.cancelled.is_set():return
+            player=Player(self.endpoint,self.process.pid)
+            try:player.command('loadfile',url,'replace')
+            finally:player.close()
         except (OSError,ValueError,subprocess.SubprocessError) as e:
             self.error='Preview unavailable — Enter still opens the stream'
             self.stop()
