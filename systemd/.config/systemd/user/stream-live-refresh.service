@@ -1,0 +1,8 @@
+[Unit]
+Description=Refresh live streamers after wake or unlock
+PartOf=hyprland-session.target
+
+[Service]
+Type=oneshot
+ExecStart=%h/scripts/stream-live-refresh-after-resume.sh
+TimeoutStartSec=240

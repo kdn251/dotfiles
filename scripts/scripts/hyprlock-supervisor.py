@@ -39,7 +39,15 @@ def main():
                     child.kill()
         if child.poll() is not None and not selector.get_map():
             break
-    return 1 if failed or child.wait() != 0 else 0
+    if failed or child.wait() != 0:
+        return 1
+    # A successful lock-client exit is an unlock, not a crash/recovery attempt.
+    try:
+        subprocess.run(['systemctl', '--user', 'start', '--no-block',
+                        'stream-live-refresh.service'], check=False, timeout=5)
+    except (OSError, subprocess.TimeoutExpired):
+        pass  # A refresh failure must never turn a successful unlock into a relock.
+    return 0
 
 if __name__ == "__main__":
     sys.exit(main())

@@ -18,6 +18,10 @@
 
 set -u
 
+# Serialize scheduled refreshes with wake/unlock refreshes.
+exec 9>"${XDG_RUNTIME_DIR:-/tmp}/stream-live-update-${UID}.lock"
+flock -w 90 9 || exit 1
+
 # Poll other services on the same five-minute schedule, even if Twitch is unavailable.
 python3 "$HOME/scripts/rumble-live.py" --update >>/tmp/rumble-live-check.log 2>&1 &
 RUMBLE_CHECK_PID=$!
