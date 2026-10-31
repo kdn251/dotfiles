@@ -80,7 +80,7 @@ class Picker(Gtk.Application):
         self.marquee_row = None
         self.metadata = stream_menu_metadata.load()
         self.items = items
-        self.vods_mode = False
+        self.library_mode = ''
         self.vods = []
         self.vods_generation = 0
         self.connect('activate', self.activate_picker)
@@ -220,7 +220,7 @@ class Picker(Gtk.Application):
             self.window.present()
             return False
         self.reply = reply
-        self.vods_mode = False
+        self.library_mode = ''
         self.vods_generation += 1
         self.entry.set_placeholder_text('Search streams')
         self.items = parse_menu(data)
@@ -240,14 +240,14 @@ class Picker(Gtk.Application):
         name, glyph, color = PLATFORMS[service]
         self.logo.set_markup(f'<span font_family="Stream Launcher Icons" size="18000" foreground="{color}">{glyph}</span>')
         self.logo.set_tooltip_text(name)
-        query = text[2:].lstrip('@') if service != 't' and not self.vods_mode else text
-        if self.vods_mode:
-            self.logo.set_text('🎬')
-            self.logo.set_tooltip_text('Downloaded VODs')
+        query = text[2:].lstrip('@') if service != 't' and not self.library_mode else text
+        if self.library_mode:
+            self.logo.set_text('🎬' if self.library_mode == 'vods' else '📥')
+            self.logo.set_tooltip_text('Downloaded VODs' if self.library_mode == 'vods' else 'Downloads')
         while child := self.list.get_first_child():
             self.list.remove(child)
         results = []
-        for item in ([] if self.vods_mode else self.items):
+        for item in ([] if self.library_mode else self.items):
             label, identity, icon, item_service = item
             if service != 't' and item_service != service:
                 continue
@@ -256,12 +256,12 @@ class Picker(Gtk.Application):
             rank = stream_menu_metadata.search_rank(query, name, category, stream_title)
             if rank is not None:
                 results.append((rank, item, info))
-        if self.vods_mode:
+        if self.library_mode:
             from datetime import datetime
             for vod in self.vods:
                 rank = stream_menu_metadata.search_rank(query, vod['source'], '', vod['title'])
                 if rank is None:continue
-                icon = str(Path.home()/'.cache/twitch-profiles'/(vod['source'].lower()+'.png'))
+                icon = vod.get('icon') or str(Path.home()/'.cache/twitch-profiles'/(vod['source'].lower()+'.png'))
                 date = datetime.fromtimestamp(vod['saved']).strftime('%b %d, %Y')
                 results.append((rank, (vod['title'], vod['url'], icon, 'vod'),
                                 (vod['source'], date, vod['title'], '')))
@@ -270,7 +270,7 @@ class Picker(Gtk.Application):
             name, category, stream_title, viewers = info
             row = Gtk.ListBoxRow()
             row.result = label + '\t' + identity
-            row.vod = next((v for v in self.vods if v['url']==identity), None) if self.vods_mode else None
+            row.vod = next((v for v in self.vods if v['url']==identity), None) if self.library_mode else None
             hover = Gtk.EventControllerMotion()
             hover.connect('enter', lambda _controller, _x, _y, current=row: self.list.select_row(current))
             row.add_controller(hover)
@@ -359,7 +359,7 @@ class Picker(Gtk.Application):
         if self.preview:
             self.preview.stop();self.preview=None
         self.preview_result = row.result if row else None
-        if row is None or self.vods_mode:return
+        if row is None or self.library_mode:return
         def start():
             self.preview_timer=None
             if not self.window.get_visible() or self.list.get_selected_row()!=row:return False
@@ -449,7 +449,7 @@ class Picker(Gtk.Application):
         if self.prefetch_timer:
             GLib.source_remove(self.prefetch_timer)
             self.prefetch_timer = None
-        if row is None or self.vods_mode:
+        if row is None or self.library_mode:
             return
         identity = row.result.split('\t', 1)[1]
         name = identity.split()[0]
@@ -499,36 +499,40 @@ class Picker(Gtk.Application):
     def accept(self, _entry):
         row = self.list.get_selected_row()
         if row:self.row_activated(self.list, row)
-        elif not self.vods_mode:self.finish(self.entry.get_text())
+        elif not self.library_mode:self.finish(self.entry.get_text())
 
-    def toggle_vods(self):
-        self.vods_mode = not self.vods_mode
+    def toggle_vods(self, backwards=False):
+        modes = ('', 'vods', 'downloads')
+        self.library_mode = modes[(modes.index(self.library_mode) + (-1 if backwards else 1)) % len(modes)]
+        self.vods = []
         self.vods_generation += 1
         generation = self.vods_generation
-        self.entry.set_placeholder_text('Search downloaded VODs' if self.vods_mode else 'Search streams')
+        self.entry.set_placeholder_text({'':'Search streams', 'vods':'Search downloaded VODs',
+                                         'downloads':'Search downloaded videos'}[self.library_mode])
         self.entry.set_text('')
         self.changed(self.entry)
         self.scroll.get_vadjustment().set_value(0)
         self.entry.grab_focus()
-        if self.vods_mode:
+        if self.library_mode:
             import threading
+            mode = self.library_mode
             def load():
-                try:rows = stream_vods.entries()
+                try:rows = stream_vods.entries() if mode == 'vods' else stream_vods.downloads()
                 except (OSError, ValueError):rows = []
                 def apply():
-                    if generation != self.vods_generation or not self.vods_mode:return False
+                    if generation != self.vods_generation or not self.library_mode:return False
                     self.vods = rows
                     self.changed(self.entry)
-                    if not rows:self.show_status('No downloaded Twitch VODs')
+                    if not rows:self.show_status('No downloaded Twitch VODs' if mode == 'vods' else 'No downloaded videos')
                     return False
                 GLib.idle_add(apply)
             threading.Thread(target=load, daemon=True).start()
 
     def key_pressed(self, _controller, key, _code, modifiers):
         if key in (Gdk.KEY_Tab, Gdk.KEY_ISO_Left_Tab):
-            self.toggle_vods()
+            self.toggle_vods(key == Gdk.KEY_ISO_Left_Tab)
             return True
-        if self.vods_mode and key in (Gdk.KEY_Return, Gdk.KEY_KP_Enter):
+        if self.library_mode and key in (Gdk.KEY_Return, Gdk.KEY_KP_Enter):
             self.accept(self.entry)
             return True
         if key in (Gdk.KEY_Return, Gdk.KEY_KP_Enter) and modifiers & Gdk.ModifierType.CONTROL_MASK:

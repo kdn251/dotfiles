@@ -35,7 +35,29 @@ def entries():
 
 def play(row):
     if not Path(row['path']).is_file():
-        raise ValueError('This VOD is no longer on disk. Press Tab twice to refresh.')
+        raise ValueError('This video is no longer on disk. Switch tabs to refresh.')
     subprocess.Popen([sys.executable, str(Path(__file__).with_name('newsboat-play-video.py')),
                       row['url'], row['title']], stdin=subprocess.DEVNULL,
                      stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True)
+
+
+def downloads():
+    """Match Downloads: omit scheduled VODs, playthroughs and streaming cache."""
+    from newsboat_playthroughs import member_keys
+    playlist_keys = member_keys()
+    jobs = {media.identity(job['url']): job for _, job in media.records()}
+    rows = {}
+    bases = {'youtube':'https://www.youtube.com/watch?v=',
+             'twitch':'https://www.twitch.tv/videos/', 'twitch-clip':'https://clips.twitch.tv/'}
+    for key, path in media.candidates():
+        if (not path.is_relative_to(media.ROOT) or path.parent == media.ROOT/'twitch-vods'
+                or key in playlist_keys or key[0] not in bases):continue
+        try:stat = path.stat()
+        except OSError:continue
+        info = jobs.get(key, {})
+        title = re.sub(r'\s*\[[^\]]+\]$', '', path.stem)
+        row = dict(url=info.get('url') or bases[key[0]]+key[1], path=str(path),
+                   title=info.get('title') or title, source=info.get('creator') or key[0].title(),
+                   icon=info.get('icon') or '', saved=stat.st_mtime)
+        if key not in rows or rows[key]['saved'] < row['saved']:rows[key]=row
+    return sorted(rows.values(), key=lambda row:row['saved'], reverse=True)

@@ -33,3 +33,23 @@ class VodTests(unittest.TestCase):
             args=spawn.call_args.args[0]
             self.assertTrue(args[1].endswith('/newsboat-play-video.py'))
             self.assertEqual(args[2:],['https://www.twitch.tv/videos/1234567890','A VOD'])
+
+    def test_downloads_excludes_vods_playlists_cache_and_deduplicates(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root=Path(directory)/'library'
+            paths=[root/'youtube'/'one.mp4', root/'twitch-vods'/'scheduled.mp4',
+                   root/'youtube'/'episode.mp4', Path(directory)/'cache'/'cached.mp4',
+                   root/'twitch-vods'/'manual'/'manual.mp4']
+            for path in paths:path.parent.mkdir(parents=True,exist_ok=True);path.touch()
+            keys=[('youtube','abcdefghijk'),('twitch','1234567890'),('youtube','playlistvid'),
+                  ('youtube','cachedvideo'),('twitch','1234567891')]
+            job=dict(url='https://www.youtube.com/watch?v=abcdefghijk',title='Actual title',creator='Creator',icon='avatar.png')
+            with patch.object(vods.media,'ROOT',root),patch.object(vods.media,'records',return_value=[(None,job)]), \
+                    patch.object(vods.media,'candidates',return_value=list(zip(keys,paths))+[(keys[0],paths[0])]), \
+                    patch('newsboat_playthroughs.member_keys',return_value={keys[2]}):
+                rows=vods.downloads()
+                self.assertEqual(len(rows),2)
+                youtube=next(row for row in rows if 'youtube' in row['url'])
+                self.assertEqual(youtube['title'],'Actual title')
+                self.assertEqual(youtube['source'],'Creator')
+                self.assertEqual(youtube['icon'],'avatar.png')
