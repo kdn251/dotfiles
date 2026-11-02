@@ -3,7 +3,21 @@
 
 DB="$HOME/.newsboat/cache.db"
 
-newsboat -x reload >/dev/null 2>&1
+# The normal desktop uses this patched binary; distro Newsboat cannot parse
+# the custom undo-checkpoint bindings in our configuration.
+newsboat_bin="$HOME/.local/lib/newsboat-paged/newsboat"
+[ -x "$newsboat_bin" ] || newsboat_bin=$(command -v newsboat)
+state_dir="${XDG_STATE_HOME:-$HOME/.local/state}/newsboat"
+mkdir -p "$state_dir"
+exec 9>"$state_dir/refresh.lock"
+flock -n 9 || exit 0
+if "$newsboat_bin" -x reload >"$state_dir/refresh.log" 2>&1; then
+  date -Is >"$state_dir/last-refresh-success"
+else
+  status=$?
+  printf 'Newsboat refresh failed; see %s/refresh.log\n' "$state_dir" >&2
+  exit "$status"
+fi
 
 # Reclaim disk space. cleanup-on-quit prunes rows, but SQLite only marks those
 # pages free inside the file and never returns them to the filesystem, so the

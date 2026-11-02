@@ -11,5 +11,5 @@ if git diff --quiet pacman-packages.txt aur-packages.txt; then
 fi
 
 git add pacman-packages.txt aur-packages.txt
-git commit -m "update package lists ($(date '+%Y-%m-%d %H:%M'))"
+git commit --only -m "update package lists ($(date '+%Y-%m-%d %H:%M'))" -- pacman-packages.txt aur-packages.txt
 git push

@@ -1,3 +1,9 @@
+# Scheduled jobs need the same local tools and runtime directory as the desktop.
+SHELL=/bin/bash
+PATH=/home/knaught/.local/bin:/usr/local/sbin:/usr/local/bin:/usr/bin:/bin
+XDG_RUNTIME_DIR=/run/user/1000
+DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/1000/bus
+
 # Run every 15 minutes
 */15 * * * * /home/knaught/scripts/newsboat-refresh.sh
 
@@ -13,8 +19,8 @@
 # Update the list of live Twitch streamers every 5 minutes
 */5 * * * * /home/knaught/scripts/update-live-list.sh
 
-# Update all my pacman and yay packages every hour
-0 * * * * ~/home/knaught/scripts/backup-packages.sh
+# Back up the installed package lists every hour
+0 * * * * /home/knaught/scripts/backup-packages.sh
 
 # Cleanup YouTube thumbnails if not accessed in 30 days
 0 3 * * 0 find ~/.cache/yt-thumbnails -type f -atime +30 -delete

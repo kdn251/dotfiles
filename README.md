@@ -26,6 +26,28 @@
 3. reboot machine for configs to be updated - `sudo reboot`
 4. generate new ssh key - `ssh-keygen -t ed25519 -C "your_email@example.com"` and add it to github
 
+#### Hyprland 0.57 desktop compatibility
+
+The active config is `hypr/.config/hypr/hyprland.lua`; the old `.conf` is retained
+as a reference. Stow `hypr`, `scripts`, and `systemd` to restore the Lua config,
+legacy-script IPC adapter, and service overrides. The session prepends
+`~/.local/bin` to PATH so existing desktop scripts use the adapter.
+
+Waybar 0.15 sends removed Hyprland commands directly from its workspace module.
+The local build keeps the original empty/occupied styling and fixes activation.
+With Waybar's build dependencies, Meson, Ninja, and `glib2-devel` installed, run
+`~/scripts/build-waybar-hypr57.sh`, then `systemctl --user daemon-reload` and
+`systemctl --user restart waybar.service`. The versioned source checksum and
+patch are tracked; the binary is installed under `~/.local/libexec`. The launcher
+falls back to the distro binary if the local build is absent. Rebuild after a
+library ABI upgrade; remove the override when the distro module supports Lua IPC.
+
+`crontab_knaught` includes the local-tool PATH, user runtime directory, and D-Bus
+address. These paths are specific to knaught/UID 1000; adjust them when restoring
+another account. Install with `crontab ~/dotfiles/crontab_knaught`. Newsboat's
+scheduled refresh uses the same patched binary as the desktop and records its
+result in `~/.local/state/newsboat/refresh.log` and `last-refresh-success`.
+
 #### Moonlight game streaming
 
 The [Moonlight Stow package](moonlight/README.md) restores the **Play on PC**

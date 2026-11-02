@@ -1,9 +1,16 @@
 #!/bin/bash
+set -o pipefail
+# A download may last beyond the next cron tick; never run two copies.
+exec 9>"${XDG_RUNTIME_DIR:-/tmp}/starred-download-${UID}.lock"
+flock -n 9 || exit 0
 
 # ==============================================================================
 # CONFIGURATION
 # ==============================================================================
 source "$HOME/.newsboat/miniflux_creds"
+# Accept either a server URL or the /v1 API URL used by the saved credentials.
+MINIFLUX_API="${MINIFLUX_URL%/}"
+MINIFLUX_API="${MINIFLUX_API%/v1}/v1"
 
 VIDEO_DIR="$HOME/Videos/newsboat/starred-downloads"
 LOG_FILE="$HOME/.newsboat/auto-download.log"
@@ -53,8 +60,8 @@ mkdir -p "$VIDEO_DIR"
 write_status " " "Fetching starred videos..."
 
 # 2. Get Starred Data
-STARRED_DATA=$(curl -s -u "$MINIFLUX_USER:$MINIFLUX_PASS" \
-  "${MINIFLUX_URL}/v1/entries?starred=true&limit=1000" |
+STARRED_DATA=$(curl --fail --silent --show-error --max-time 30 -u "$MINIFLUX_USER:$MINIFLUX_PASS" \
+  "${MINIFLUX_API}/entries?starred=true&limit=1000" |
   jq -r '.entries[] | select(.url | test("youtube\\.com/watch|youtu\\.be/")) | "\(.url)||\(.title)"')
 
 # Check if curl failed to fetch data
@@ -64,7 +71,7 @@ if [ $? -ne 0 ]; then
   exit 1 # EXIT trap will run cleanup
 fi
 
-TOTAL=$(echo "$STARRED_DATA" | wc -l)
+TOTAL=$(printf '%s\n' "$STARRED_DATA" | sed '/^$/d' | wc -l)
 CURRENT=0
 DOWNLOADED=0
 

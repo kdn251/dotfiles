@@ -41,10 +41,10 @@ pacman -Qem | awk '{print $1}' |
 # =========================================================
 cd "$REPO_DIR" || exit 1
 
-if [[ -n $(git status --porcelain) ]]; then
+if ! git diff --quiet HEAD -- "$AUR_FILE" "$PACMAN_FILE"; then
   git add "$AUR_FILE" "$PACMAN_FILE"
   COMMIT_MSG="Auto-update package lists: $(date +'%Y-%m-%d %H:%M')"
-  git commit -m "$COMMIT_MSG"
+  git commit --only -m "$COMMIT_MSG" -- "$AUR_FILE" "$PACMAN_FILE"
 
   if git push origin main; then
     echo "[$(date)] SUCCESS: Changes pushed to GitHub." >>"$LOG_FILE"
