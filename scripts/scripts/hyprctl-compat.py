@@ -106,30 +106,41 @@ def translate(command):
     if kind=='keyword': return keyword(name,arg)
     raise ValueError('Unsupported mixed batch command: '+kind)
 
+def translate_batch(batch):
+    # Shell loops commonly leave a final '; '. It is a separator, not part
+    # of the final window selector. Preserve semicolons inside exec commands.
+    chunks = [part.strip() for part in re.split(r';\s*(?=(?:dispatch|keyword)\s|$)', batch) if part.strip()]
+    return '; '.join(translate(part) for part in chunks)
+
+def legacy_json(node):
+    if isinstance(node, list):
+        for item in node: legacy_json(item)
+    elif isinstance(node, dict):
+        if 'id' not in node and 'address' in node and 'type' in node and 'name' in node:
+            node['id'] = -(1000 + zlib.crc32(node['name'].encode())) if node['type']=='special' else 0
+        if 'option' in node:
+            if 'css' in node: node.setdefault('custom', node['css'])
+            if 'bool' in node: node.setdefault('int', int(node['bool']))
+        for value in list(node.values()): legacy_json(value)
+    return node
+
 def main():
     args=sys.argv[1:]
     if '--batch' in args:
-        i=args.index('--batch'); batch=' '.join(args[i+1:]); chunks=re.split(r';\s*(?=(?:dispatch|keyword)\s)',batch)
-        if all(c.strip().startswith(('dispatch ','keyword ')) for c in chunks):
-            args=args[:i]+['eval','; '.join(translate(c.strip()) for c in chunks)]
+        i=args.index('--batch'); batch=' '.join(args[i+1:]); chunks=re.split(r';\s*(?=(?:dispatch|keyword)\s|$)',batch)
+        if all(c.strip().startswith(('dispatch ','keyword ')) for c in chunks if c.strip()):
+            args=args[:i]+['eval',translate_batch(batch)]
     else:
         for i,a in enumerate(args):
             if a in ('dispatch','keyword') and i+1<len(args):
                 # Already-modern Lua dispatch goes directly to Hyprland.
                 if a=='dispatch' and args[i+1].startswith('hl.'): break
                 args=args[:i]+['eval',translate(' '.join(args[i:]))]; break
-    if '-j' in args and any(a in args for a in ('clients','monitors','workspaces','activeworkspace','activewindow')):
+    if '-j' in args and any(a in args for a in ('clients','monitors','workspaces','activeworkspace','activewindow','getoption')):
         result=subprocess.run([REAL,*args],capture_output=True,text=True)
-        def ids(node):
-            if isinstance(node,list):
-                for item in node: ids(item)
-            elif isinstance(node,dict):
-                if 'id' not in node and 'address' in node and 'type' in node and 'name' in node:
-                    node['id'] = -(1000 + zlib.crc32(node['name'].encode())) if node['type']=='special' else 0
-                for value in list(node.values()): ids(value)
         if result.returncode == 0:
             try:
-                data=json.loads(result.stdout); ids(data); print(json.dumps(data)); return
+                data=legacy_json(json.loads(result.stdout)); print(json.dumps(data)); return
             except json.JSONDecodeError: pass
         sys.stdout.write(result.stdout); sys.stderr.write(result.stderr); sys.exit(result.returncode)
     os.execv(REAL,[REAL,*args])

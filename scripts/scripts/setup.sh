@@ -317,9 +317,21 @@ if ! command -v stow &>/dev/null; then
   sudo pacman -S --noconfirm stow
 fi
 
-# Remove conflicting config files before stowing
-print_status "Removing conflicting config files..."
-rm -f "$ACTUAL_HOME/.config/hypr/hyprland.conf"
+# Preserve existing configs while removing conflicts with the stowed files.
+# Hyprland 0.57 generates hyprland.lua, which otherwise blocks the real setup.
+print_status "Preparing Hyprland config files for stow..."
+for config_name in hyprland.conf hyprland.lua; do
+  config_path="$ACTUAL_HOME/.config/hypr/$config_name"
+  config_source="$ACTUAL_HOME/dotfiles/hypr/.config/hypr/$config_name"
+  if [ -e "$config_path" ] || [ -L "$config_path" ]; then
+    if [ -L "$config_path" ] && [ "$(readlink -f "$config_path")" = "$(readlink -f "$config_source")" ]; then
+      continue
+    fi
+    config_backup=$(mktemp -d "$ACTUAL_HOME/.config/hypr/pre-stow.XXXXXXXX")
+    mv -- "$config_path" "$config_backup/$config_name"
+    print_status "Saved existing $config_name in $config_backup"
+  fi
+done
 
 # Try to stow all directories
 if stow */ 2>/dev/null; then
