@@ -1,6 +1,6 @@
 #include <hyprland/src/plugins/PluginAPI.hpp>
-#include <hyprland/src/desktop/view/Window.hpp>
-#include <hyprland/src/desktop/Workspace.hpp>
+#include <hyprland/src/desktop/view/window/Window.hpp>
+#include <hyprland/src/workspace/HLWorkspace.hpp>
 #include <hyprland/src/desktop/state/FocusState.hpp>
 #include <hyprland/src/desktop/state/WindowState.hpp>
 #include <hyprland/src/output/Monitor.hpp>
@@ -30,19 +30,19 @@ APICALL EXPORT PLUGIN_DESCRIPTION_INFO PLUGIN_INIT(HANDLE handle) {
             if ((owner >> workspaceID >> monitorID >> specialID) &&
                 monitorForChat->m_id == monitorID && specialID < 0) {
                 const auto special = monitorForChat->m_activeSpecialWorkspace;
-                if (workspace->m_id != workspaceID && special && special->m_id == specialID) {
+                if (workspace->numberedID().value_or(0) != workspaceID && special && special->addressableName() == "special:chatterino_chat") {
                     monitorForChat->setSpecialWorkspace(PHLWORKSPACE{});
                     // Closing a special workspace can retain its outgoing
                     // animation. It must be invisible on the destination's
                     // very first frame, not merely scheduled to fade out.
                     special->m_alpha->setValueAndWarp(0.f);
                     special->m_renderOffset->warp();
-                } else if (workspace->m_id == workspaceID && !special) {
+                } else if (workspace->numberedID().value_or(0) == workspaceID && !special) {
                     for (const auto& window : Desktop::windowState()->windows()) {
-                        if (window->m_isMapped && window->m_workspace &&
-                            window->m_workspace->m_id == specialID &&
-                            (window->m_class == "com.chatterino.chatterino" || window->m_class == "newsboat-live-chat")) {
-                            monitorForChat->setSpecialWorkspace(specialID);
+                        if (window->mapped() && window->m_workspace &&
+                            window->m_workspace->addressableName() == "special:chatterino_chat" &&
+                            (window->metadata().appID() == "com.chatterino.chatterino" || window->metadata().appID() == "newsboat-live-chat")) {
+                            monitorForChat->setSpecialWorkspace(window->m_workspace);
                             window->m_workspace->m_alpha->setValueAndWarp(1.f);
                             window->m_workspace->m_renderOffset->setValueAndWarp(Vector2D{});
                             break;
@@ -54,19 +54,19 @@ APICALL EXPORT PLUGIN_DESCRIPTION_INFO PLUGIN_INIT(HANDLE handle) {
         const auto active = focus->window();
         const auto monitor = focus->monitor();
         if (!workspace || !monitor || monitor->m_activeWorkspace != workspace ||
-            monitor->m_activeSpecialWorkspace || !active || active->m_class != "mpv" ||
-            !active->m_pinned || active->m_monitor != monitor)
+            monitor->m_activeSpecialWorkspace || !active || active->metadata().appID() != "mpv" ||
+            !(active->m_state & Desktop::View::WINDOW_STATE_PINNED) || active->m_monitor != monitor)
             return;
 
         // Ignore pinned MPV overlays when deciding whether the destination is empty.
         // Other floating windows and other pinned apps are real focus targets.
         for (const auto& window : Desktop::windowState()->windows()) {
-            if (!window->m_isMapped || window->isHidden())
+            if (!window->mapped() || window->isHidden())
                 continue;
-            if (window->m_pinned && window->m_class == "mpv")
+            if ((window->m_state & Desktop::View::WINDOW_STATE_PINNED) && window->metadata().appID() == "mpv")
                 continue;
             if (window->m_workspace == workspace ||
-                (window->m_pinned && window->m_monitor == monitor))
+                ((window->m_state & Desktop::View::WINDOW_STATE_PINNED) && window->m_monitor == monitor))
                 return;
         }
         focus->fullWindowFocus(nullptr, Desktop::FOCUS_REASON_WORKSPACE_CHANGE);

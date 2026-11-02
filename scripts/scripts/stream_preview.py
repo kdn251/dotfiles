@@ -13,6 +13,9 @@ from mpv_clip import Player
 from stream_player_identity import identity as player_identity
 
 SCRIPTS=Path(__file__).resolve().parent
+
+# Use Lua-compatible IPC even when a resident picker inherited an older PATH.
+HYPRCTL = [sys.executable, str(Path(__file__).with_name("hyprctl-compat.py"))]
 ROOT=Path(os.environ.get('XDG_RUNTIME_DIR',f'/run/user/{os.getuid()}'))/'stream-preview'
 HANDOFF=ROOT/'handoff.json'
 CANONICAL=Path('/tmp/mpv-twitch-ipc')
@@ -20,7 +23,7 @@ SESSION=Path('/tmp/twitch-session.id')
 
 
 def clients():
-    return json.loads(subprocess.check_output(['hyprctl','-j','clients'],text=True,timeout=2))
+    return json.loads(subprocess.check_output([*HYPRCTL,'-j','clients'],text=True,timeout=2))
 
 
 def already_watching(name, service):
@@ -92,7 +95,7 @@ class Preview:
                 window=next((c for c in clients() if c['pid']==self.process.pid),None)
                 if window:
                     x,y,w,h=self.bounds
-                    subprocess.run(['hyprctl','--batch',f'dispatch setfloating address:{window["address"]}; dispatch resizewindowpixel exact {w} {h},address:{window["address"]}; dispatch movewindowpixel exact {x} {y},address:{window["address"]}'],stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL,timeout=2)
+                    subprocess.run([*HYPRCTL,'--batch',f'dispatch setfloating address:{window["address"]}; dispatch resizewindowpixel exact {w} {h},address:{window["address"]}; dispatch movewindowpixel exact {x} {y},address:{window["address"]}'],stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL,timeout=2)
                     break
             url=resolve(self.name,self.service,self.channel)
             if self.cancelled.is_set():return
@@ -182,11 +185,11 @@ def adopt(name,title,marker,service,session,page):
             if old_geometry:
                 (x,y),(w,h)=old_geometry
             else:
-                monitors=json.loads(subprocess.check_output(['hyprctl','-j','monitors'],timeout=2))
+                monitors=json.loads(subprocess.check_output([*HYPRCTL,'-j','monitors'],timeout=2))
                 mon=next(m for m in monitors if m['id']==window['monitor'])
                 mw,mh=mon['width']/mon.get('scale',1),mon['height']/mon.get('scale',1)
                 w,h=round(mw*.38),round(mw*.21375);x,y=round(mon['x']+mw-w-13),round(mon['y']+mh-h-13)
-            subprocess.run(['hyprctl','--batch',f'dispatch resizewindowpixel exact {w} {h},address:{address}; dispatch movewindowpixel exact {x} {y},address:{address}'],stdout=subprocess.DEVNULL,timeout=2)
+            subprocess.run([*HYPRCTL,'--batch',f'dispatch resizewindowpixel exact {w} {h},address:{address}; dispatch movewindowpixel exact {x} {y},address:{address}'],stdout=subprocess.DEVNULL,timeout=2)
             from media_chat_fullscreen import place_player
             place_player(data['pid'])
             if was_fullscreen:

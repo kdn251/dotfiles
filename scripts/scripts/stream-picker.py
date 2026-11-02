@@ -8,6 +8,9 @@ os.environ.setdefault("GSK_RENDERER", "gl")
 import sys
 from pathlib import Path
 import stream_menu_metadata
+
+# Use Lua-compatible IPC even when a resident picker inherited an older PATH.
+HYPRCTL = [sys.executable, str(Path(__file__).with_name("hyprctl-compat.py"))]
 from stream_preview import Preview
 import stream_saved
 import stream_vods
@@ -162,7 +165,7 @@ class Picker(Gtk.Application):
         keys.connect('key-pressed', self.key_pressed)
         self.window.add_controller(keys)
         import subprocess
-        subprocess.run(['hyprctl','keyword','windowrule','float on, no_initial_focus on, opaque on, opacity 1.0 override 1.0 override, size 480 270, match:class ^(stream-preview)$'],stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)
+        subprocess.run([*HYPRCTL,'keyword','windowrule','float on, no_initial_focus on, opaque on, opacity 1.0 override 1.0 override, size 480 270, match:class ^(stream-preview)$'],stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)
         self.changed(self.entry)
         if self.resident:
             self.hold()
@@ -183,7 +186,7 @@ class Picker(Gtk.Application):
         try:
             import json
             import subprocess
-            current = json.loads(subprocess.check_output(['hyprctl', 'monitors', '-j'], timeout=1))
+            current = json.loads(subprocess.check_output([*HYPRCTL, 'monitors', '-j'], timeout=1))
             connector = next(item['name'] for item in current if item.get('focused'))
             monitor = next(monitors.get_item(i) for i in range(monitors.get_n_items())
                            if monitors.get_item(i).get_connector() == connector)
@@ -370,7 +373,7 @@ class Picker(Gtk.Application):
             bounds=self.preview_bounds
             try:
                 import json,subprocess
-                layers=json.loads(subprocess.check_output(['hyprctl','-j','layers'],timeout=1))
+                layers=json.loads(subprocess.check_output([*HYPRCTL,'-j','layers'],timeout=1))
                 panel=next(layer for monitor in layers.values() for level in monitor['levels'].values() for layer in level
                            if layer.get('namespace')=='stream-picker' and layer.get('pid')==os.getpid())
                 mx,my,mw,mh=self.preview_monitor
