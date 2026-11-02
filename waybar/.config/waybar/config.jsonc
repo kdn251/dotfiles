@@ -1,5 +1,7 @@
 {
   "margin-top": 5,
+  // Hyprland's gaps_out supplies the gap below the bar; don't add another margin.
+  "margin-bottom": 0,
   "margin-left": 9,
   "margin-right": 9,
   "height": 32,

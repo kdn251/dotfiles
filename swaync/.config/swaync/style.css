@@ -33,9 +33,9 @@
   border: 1px solid #e7a58d;
 }
 
-/* Match Hyprland's 9px outer gaps. The popup layer starts below Waybar. */
+/* Match Hyprland's outer gaps: 6px below Waybar, 9px from the right edge. */
 .floating-notifications .notification-row .notification-background {
-  padding: 9px;
+  padding: 6px 9px 9px 9px;
 }
 
 .floating-notifications .notification-row .notification-background .notification {

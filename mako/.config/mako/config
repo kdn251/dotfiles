@@ -13,7 +13,9 @@ sort=-time
 font=monospace 10
 width=300
 height=100
-margin=10
+# Match tiled application edges below Waybar (top, right, bottom, left).
+anchor=top-right
+margin=6,9,9,9
 padding=10
 border-size=1
 border-radius=5
