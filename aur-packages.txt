@@ -9,6 +9,7 @@ cryptomator
 faugus-launcher
 google-chrome
 handy-bin
+handy-bin-debug
 herdr-bin
 localsend-bin
 neofetch
