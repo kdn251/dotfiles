@@ -62,7 +62,12 @@ def dispatcher(name, arg):
         return call('window.fullscreen_state',opts)
     if name=='togglespecialworkspace': return call('workspace.toggle_special',arg.removeprefix('special:'))
     if name=='changegroupactive': return call('group.'+('prev' if arg=='b' else 'next')) if arg in ('f','b') else call('group.active',{'index':int(arg)})
-    if name=='cyclenext': return call('window.cycle_next',{'next':'prev' not in arg,'tiled':'tiled' in arg,'floating':'floating' in arg})
+    if name=='cyclenext':
+        opts={'next':'prev' not in arg.split()}
+        # Omitted filters mean all windows; false is an explicit exclusion.
+        for kind in ('tiled','floating'):
+            if kind in arg.split(): opts[kind]=True
+        return call('window.cycle_next',opts)
     if name=='layoutmsg': return call('layout',arg)
     if name=='dpms':
         parts=arg.split(); opts={'action':parts[0]}

@@ -5,7 +5,7 @@ After=hyprland-session.target
 
 [Service]
 ExecStart=/usr/bin/python3 %h/scripts/moonlight-cursor.py
-ExecStopPost=-/usr/bin/hyprctl keyword cursor:inactive_timeout 0
+ExecStopPost=-/usr/bin/hyprctl eval hl.config({cursor={inactive_timeout=0}})
 Restart=on-failure
 RestartSec=2
 

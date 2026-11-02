@@ -22,7 +22,7 @@ set -u
 # Serialize resume and keyboard recovery; never leave a hung hyprctl blocking it.
 exec 9>"${XDG_RUNTIME_DIR:?}/display-lock-recover.lock"
 flock -n 9 || exit 0
-hyprctl() { timeout 5s /usr/bin/hyprctl "$@"; }
+hyprctl() { timeout 5s python3 "$HOME/scripts/hyprctl-compat.py" "$@"; }
 systemctl --user start kanshi.service
 
 force=0
