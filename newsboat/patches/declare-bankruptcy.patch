@@ -1,0 +1,44 @@
+--- a/src/view.cpp
++++ b/src/view.cpp
+@@ -294,6 +294,20 @@
+ 		LOG(Level::DEBUG, "View::run: event = %s", event);
+ 
+ 		const auto key_combination = KeyCombination::from_bindkey(event);
++        if (!have_macroprefix && key_sequence.empty() && key_combination == KeyCombination::from_bindkey("B")) {
++            const auto home = std::dynamic_pointer_cast<FeedListFormAction>(fa);
++            if (home && home->is_home()) {
++                if (confirm("Declare bankruptcy? Delete Downloads + clear Queue; keep playlists and VODs? (y/N) ", "yn") == 'y') {
++                    const auto previous = cfg->get_configvalue("browser");
++                    cfg->set_configvalue("browser", "python3 ~/scripts/newsboat-bankruptcy.py --confirmed >/dev/null 2>&1 & : %u");
++                    open_in_browser("", "", "", "", false);
++                    cfg->set_configvalue("browser", previous);
++                    get_statusline().show_message("Clearing Downloads and Queue; playlists and VODs are protected");
++                }
++                fa->set_redraw(true);
++                continue;
++            }
++        }
+         if (!have_macroprefix && key_sequence.empty() &&
+             (key_combination == KeyCombination("p") || key_combination == KeyCombination::from_bindkey("P"))) {
+             const auto home = std::dynamic_pointer_cast<FeedListFormAction>(fa);
+--- a/src/formaction.cpp
++++ b/src/formaction.cpp
+@@ -1,4 +1,5 @@
+ #include "formaction.h"
++#include "feedlistformaction.h"
+ 
+ #include <cassert>
+ #include <chrono>
+@@ -86,6 +87,12 @@
+     auto hint = StflRichText::from_plaintext_with_style("7", "<key>");
+     hint.append(StflRichText::from_plaintext_with_style(":", "<colon>"));
+     hint.append(StflRichText::from_plaintext_with_style("🍀 Random Starred  ", "<desc>"));
++    const auto home = dynamic_cast<const FeedListFormAction*>(this);
++    if (home && home->is_home()) {
++        hint.append(StflRichText::from_plaintext_with_style("B", "<key>"));
++        hint.append(StflRichText::from_plaintext_with_style(":", "<colon>"));
++        hint.append(StflRichText::from_plaintext_with_style("Declare bankruptcy  ", "<desc>"));
++    }
+     hint.append(v.get_keymap()->prepare_keymap_hint(get_keymap_hint(), id()));
+     set_value("help", hint.stfl_quoted());
+ }

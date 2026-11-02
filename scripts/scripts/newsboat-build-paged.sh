@@ -129,6 +129,8 @@ patch -p1 < "$repo/newsboat/patches/playlist-publication-dates.patch"
 patch -p1 < "$repo/newsboat/patches/open-read-feeds.patch"
 patch -p1 < "$repo/newsboat/patches/playthroughs-shortcut.patch"
 patch -p1 < "$repo/newsboat/patches/recent-saved-libraries.patch"
+patch -p1 < "$repo/newsboat/patches/declare-bankruptcy.patch"
+patch -p1 < "$repo/newsboat/patches/home-visible-row-numbers.patch"
 make -j"${NEWSBOAT_BUILD_JOBS:-4}" WARNFLAGS="-Werror -Wall -Wextra -Wunreachable-code -Wno-error=unused-function" newsboat
 install -m 755 newsboat "$install_dir/newsboat.new"
 mv "$install_dir/newsboat.new" "$install_dir/newsboat"

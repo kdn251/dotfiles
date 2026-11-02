@@ -195,6 +195,10 @@ def change(action,url='',token='',*extra):
                 return items
             rows=move(rows)
             media.atomic_write(root/'queue-navigation.json',json.dumps(move(history),ensure_ascii=False))
+        elif action=='clear':
+            rows=[]
+            media.atomic_write(root/'queue-navigation.json','[]')
+            (root/'queue-current.json').unlink(missing_ok=True)
         elif action=='restore':
             rows=restore(rows,url,token)
         elif action=='refresh':

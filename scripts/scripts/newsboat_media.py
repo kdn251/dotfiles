@@ -322,7 +322,7 @@ def rebuild():
         return rebuild_unlocked()
 
 
-def delete(url, refresh=True):
+def delete(url, refresh=True, protect=None):
     parsed = urlparse(url)
     if parsed.scheme == 'newsboat-playthroughs' or (
             parsed.hostname in {'youtube.com', 'www.youtube.com'} and parsed.path == '/playlist'):
@@ -332,6 +332,8 @@ def delete(url, refresh=True):
     if not key:
         raise ValueError('Could not identify the selected download')
     with library_lock(), contextlib.ExitStack() as locks:
+        if protect is not None and protect(key):
+            return 0
         # Prevent recovery from starting a queued worker while we delete it.
         for state_path, job in records():
             if library_identity(job['url']) != key:

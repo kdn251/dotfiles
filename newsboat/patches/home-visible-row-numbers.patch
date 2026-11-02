@@ -1,0 +1,26 @@
+--- a/src/feedlistformaction.cpp
++++ b/src/feedlistformaction.cpp
+@@ -949,7 +949,7 @@
+         const auto title_field = format.find("%t");
+         if (std::getenv("NEWSBOAT_THUMBNAILS") && !feed.first->is_query_feed() &&
+             title_field != std::string::npos) { format.insert(title_field, "   "); }
+-		return format_line(format, feed.first, feed.second, width);
++		return format_line(format, feed.first, is_home() ? line : feed.second, width);
+ 	};
+ 	list.invalidate_list_content(visible_feeds.size(), render_line);
+ 
+@@ -1367,6 +1367,14 @@
+ 
+ void FeedListFormAction::handle_cmdline_num(unsigned int idx)
+ {
++    if (is_home()) {
++        if (idx > 0 && idx <= visible_feeds.size()) {
++            list.set_position(idx - 1);
++        } else {
++            v.get_statusline().show_error(_("Invalid position!"));
++        }
++        return;
++    }
+ 	if (idx > 0 &&
+ 		idx <= (visible_feeds[visible_feeds.size() - 1].second + 1)) {
+ 		int i = get_pos(idx - 1);
