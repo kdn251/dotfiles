@@ -14,10 +14,9 @@ STREAMERS=(
   "xqc"
   "shroud"
   "jynxzi"
-  "dantes"
   "ohnePixel"
-  "Doublelift"
-  "GreekgodX"
+  "Atrioc"
+  "Bubbell"
 )
 
 # ==============================================================================
