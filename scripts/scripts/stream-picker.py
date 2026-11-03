@@ -534,6 +534,9 @@ class Picker(Gtk.Application):
             threading.Thread(target=load, daemon=True).start()
 
     def key_pressed(self, _controller, key, _code, modifiers):
+        # Gtk.Entry rings the error bell when deleting from an empty field.
+        if key == Gdk.KEY_BackSpace and not self.entry.get_text():
+            return True
         if key in (Gdk.KEY_Tab, Gdk.KEY_ISO_Left_Tab):
             self.toggle_vods(key == Gdk.KEY_ISO_Left_Tab)
             return True
