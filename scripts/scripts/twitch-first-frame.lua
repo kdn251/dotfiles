@@ -6,6 +6,22 @@ mp.set_property_native('user-data/stream-page', os.getenv('STREAM_PAGE_URL') or 
 local expected = nil
 local reported = false
 local fallback = os.getenv('TWITCH_FALLBACK_URL')
+local audible_volume = mp.get_property_number('volume', 100)
+if audible_volume <= 0 then audible_volume = 100 end
+mp.observe_property('volume', 'number', function(_, volume)
+    if volume and volume > 0 then
+        audible_volume = volume
+        mp.set_property_native('user-data/stream-audible-volume', volume)
+    end
+end)
+local function activate_stream()
+    mp.set_property_native('mute', false)
+    if mp.get_property_number('volume', 0) <= 0 then
+        mp.set_property_number('volume', audible_volume)
+    end
+    mp.set_property('vid', 'auto')
+end
+mp.register_script_message('stream-activate', activate_stream)
 mp.set_property_native('user-data/twitch-managed', 2)
 mp.set_property_native('user-data/stream-service', os.getenv('STREAM_TITLE_SERVICE') or 'Twitch')
 mp.set_property_native('user-data/stream-name', os.getenv('STREAM_TITLE_NAME') or os.getenv('TWITCH_STREAMER_USERNAME') or '')
@@ -24,6 +40,7 @@ mp.register_script_message('twitch-load', function(channel, title, url, marker, 
     mp.set_property('user-data/twitch-channel', channel)
     mp.set_property('force-media-title', title)
     mp.set_property_native('pause', false)
+    activate_stream()
     local options = {['user-agent']='Mozilla/5.0', referrer='', ['ytdl-format']='bestvideo[height<=?1080]+bestaudio/best[height<=?1080]/best'}
     if service == 'Kick' or service == 'Rumble' then options.referrer = 'https://' .. service:lower() .. '.com/' end
     mp.command_native({'loadfile', url, 'replace', 0, options})

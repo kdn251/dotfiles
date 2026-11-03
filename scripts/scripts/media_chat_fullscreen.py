@@ -59,10 +59,11 @@ def regular_workspace(player, state=None):
     if player.get('workspace', {}).get('id', 0) > 0:
         return player
     monitors = json.loads(hypr('-j', 'monitors'))
-    monitor = next((m for m in monitors if m['id'] == player.get('monitor')), None)
+    hidden = player.get('workspace', {}).get('name') == 'special:mpvhidden'
+    monitor = next((m for m in monitors if (m.get('focused') if hidden else m['id'] == player.get('monitor'))), None)
     if not monitor:
         return player
-    desired = (state or {}).get('player', {}).get('workspace', {}).get('id', 0)
+    desired = 0 if hidden else (state or {}).get('player', {}).get('workspace', {}).get('id', 0)
     if desired <= 0:
         desired = monitor.get('activeWorkspace', {}).get('id', 0)
     if desired <= 0:
@@ -70,6 +71,23 @@ def regular_workspace(player, state=None):
     hypr('dispatch', 'movetoworkspacesilent', f"{desired},address:{player['address']}")
     return next((c for c in json.loads(hypr('-j', 'clients'))
                  if c['address'] == player['address'] and c['pid'] == player['pid']), player)
+
+
+def reveal_player(pid):
+    """A new stream selection restores only its own Mod+H-hidden window."""
+    try:
+        player = next((c for c in json.loads(hypr('-j','clients')) if c.get('pid')==pid and c.get('class')=='mpv'),None)
+        if not player or player.get('workspace',{}).get('name')!='special:mpvhidden':return
+        address=player['address']
+        if player.get('pinned'):hypr('dispatch','pin','address:'+address)
+        player=regular_workspace(player)
+        saved=ROOT/'pip-hidden-pinned'
+        lines=saved.read_text().splitlines() if saved.exists() else []
+        if address in lines and not player.get('pinned'):
+            hypr('dispatch','pin','address:'+address)
+        if address in lines:
+            saved.write_text(''.join(line+'\n' for line in lines if line!=address))
+    except (OSError,ValueError,subprocess.SubprocessError):pass
 
 
 def place_player(pid):

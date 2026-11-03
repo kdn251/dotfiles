@@ -53,6 +53,7 @@ mp.register_script_message('preview-promote',function(session, page, title, mark
     mp.remove_key_binding('preview-accept')
     mp.set_property_native('mute',false)
     mp.set_property_native('pause',false)
+    mp.commandv('script-message','stream-activate')
     mp.set_property_native('user-data/stream-page',page)
     mp.set_property_native('user-data/stream-ready-session',session)
     mp.set_property('force-media-title',title)

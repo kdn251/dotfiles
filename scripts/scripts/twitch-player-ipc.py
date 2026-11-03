@@ -48,7 +48,16 @@ def reuse(name,title,url,marker,fallback="",service="Twitch",session="",page="")
     with client,client.makefile('rwb',buffering=0) as stream:
         if command(stream,'get_property','user-data/twitch-managed')!=2:
             raise ValueError('Player does not support stream switching')
+        # Also works for already-running players whose Lua predates this reset.
+        if command(stream,'get_property','volume') <= 0:
+            try:volume=command(stream,'get_property','user-data/stream-audible-volume')
+            except ValueError:volume=100
+            command(stream,'set_property','volume',volume if volume and volume > 0 else 100)
+        command(stream,'set_property','mute',False)
+        command(stream,'set_property','vid','auto')
         command(stream,'script-message','twitch-load',name,title,url,marker,fallback,service,session,page)
+    from media_chat_fullscreen import reveal_player
+    reveal_player(pid)
     return pid
 
 

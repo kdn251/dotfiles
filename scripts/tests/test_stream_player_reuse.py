@@ -32,6 +32,10 @@ class StreamReuseTests(unittest.TestCase):
                     connection, pid = reuse.connect()
                     with connection, connection.makefile('rwb', buffering=0) as stream:
                         reuse.command(stream, 'set_property', 'video-margin-ratio-right', .2)
+                        reuse.command(stream, 'set_property', 'volume', 37)
+                        time.sleep(.05)
+                        reuse.command(stream, 'set_property', 'volume', 0)
+                        reuse.command(stream, 'set_property', 'mute', True)
                     self.assertEqual(reuse.reuse('example', service, video, '', '', service, 'session-' + service, 'https://example.test/' + service), player.pid)
                     deadline = time.monotonic() + 3
                     while time.monotonic() < deadline:
@@ -43,6 +47,8 @@ class StreamReuseTests(unittest.TestCase):
                             except ValueError:
                                 position = None
                             margin = reuse.command(stream, 'get_property', 'video-margin-ratio-right')
+                            volume = reuse.command(stream, 'get_property', 'volume')
+                            muted = reuse.command(stream, 'get_property', 'mute')
                             page = reuse.command(stream, 'get_property', 'user-data/stream-page')
                             try:
                                 ready = reuse.command(stream, 'get_property', 'user-data/stream-ready-session')
@@ -56,6 +62,8 @@ class StreamReuseTests(unittest.TestCase):
                     self.assertEqual(ready, 'session-' + service)
                     self.assertIsNotNone(position)
                     self.assertEqual(margin, .2)
+                    self.assertEqual(volume, 37)
+                    self.assertFalse(muted)
                     self.assertEqual(pid, player.pid)
                 # If a preselected rendition fails, fall back without replacing MPV.
                 reuse.reuse('example', 'Fallback', str(Path(tmp)/'missing.m3u8'), '', video,

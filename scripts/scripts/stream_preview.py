@@ -158,7 +158,10 @@ def adopt(name,title,marker,service,session,page):
             try:
                 from media_chat_fullscreen import socket_for
                 previous=Player(socket_for(old),old['pid'])
-                volume=previous.get('volume');previous.close()
+                volume=previous.get('volume')
+                if volume is not None and volume <= 0:
+                    volume=previous.get('user-data/stream-audible-volume',100)
+                previous.close()
                 if volume is not None:p.command('set_property','volume',volume)
             except (OSError,ValueError,TypeError):pass
         old_geometry=(old['at'],old['size']) if old and not was_fullscreen else None
