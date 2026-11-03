@@ -275,9 +275,7 @@ class Picker(Gtk.Application):
             row.result = label + '\t' + identity
             row.vod = next((v for v in self.vods if v['url']==identity), None) if self.library_mode else None
             hover = Gtk.EventControllerMotion()
-            # Mapping the menu under a stationary pointer emits enter; keep
-            # the first result selected until the user actually moves it.
-            hover.connect('motion', lambda _controller, _x, _y, current=row: self.list.select_row(current))
+            hover.connect('motion', self.hover_row, row)
             row.add_controller(hover)
             content = Gtk.Box(spacing=10)
             avatar = RoundedAvatar(file=icon) if icon and Path(icon).is_file() else RoundedAvatar(icon_name="video-display-symbolic")
@@ -335,6 +333,14 @@ class Picker(Gtk.Application):
         self.scroll.set_max_content_height(height)
         self.scroll.set_min_content_height(height)
         self.list.select_row(self.list.get_row_at_index(0))
+
+    def hover_row(self, controller, _x, _y, row):
+        # GTK also synthesizes motion when layout/preview surfaces change.
+        # Those callbacks have no input event (timestamp 0) and can target a
+        # different row even with a stationary pointer. Only real movement
+        # should override the initial selection or keyboard navigation.
+        if controller.get_current_event_time():
+            self.list.select_row(row)
 
     def show_status(self, text):
         if getattr(self, 'status_timer', None):
