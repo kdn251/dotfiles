@@ -8,19 +8,44 @@ STATE_FILE="/tmp/waybar_record_state"
 RECORDING_STATUS_FILE="/tmp/recording.txt"
 OUTPUT_FILE="$RECORDING_DIR/recording_$(date +%Y%m%d_%H%M%S)"
 
-# Device specific settings
-# WEBCAM_DEVICE="/dev/video1"
-WEBCAM_DEVICE=$(v4l2-ctl --list-devices | grep -A 1 "MX Brio" | grep -o '/dev/video[0-9]\+' | head -n 1)
+# Prefer the desk camera; when undocked, explicitly use laptop video and audio.
+configure_capture_devices() {
+  local devices microphone
+  devices=$(v4l2-ctl --list-devices)
+  WEBCAM_DEVICE=$(printf '%s\n' "$devices" | grep -A 1 "MX Brio" | grep -o '/dev/video[0-9]\+' | head -n 1)
+  WEBCAM_AUDIO_SOURCE='default'
 
-# 2. Fallback to Laptop Webcam if MX Brio isn't connected
-if [ -z "$DEVICE" ]; then
-  echo "MX Brio not found. Searching for Laptop Webcam..."
-  DEVICE=$(v4l2-ctl --list-devices | grep -A 1 "Laptop Webcam" | grep -o '/dev/video[0-9]\+' | head -n 1)
-fi
+  if [ -z "$WEBCAM_DEVICE" ]; then
+    WEBCAM_DEVICE=$(printf '%s\n' "$devices" | grep -A 1 "Laptop Webcam" | grep -o '/dev/video[0-9]\+' | head -n 1)
+    if [ -z "$WEBCAM_DEVICE" ]; then
+      notify-send -u critical "Recording Error" "Neither MX Brio nor laptop webcam was found."
+      return 1
+    fi
+
+    # Select the internal microphone even if a headset is the system default.
+    microphone=$(pactl -f json list sources | python3 -c '
+import json, sys
+for source in json.load(sys.stdin):
+    for port in source.get("ports", []):
+        if port["name"] == "analog-input-internal-mic":
+            print(source["name"], port["name"])
+            sys.exit(0)
+sys.exit(1)
+')
+    if [ -z "$microphone" ]; then
+      notify-send -u critical "Recording Error" "The built-in microphone was not found."
+      return 1
+    fi
+    local microphone_port
+    read -r WEBCAM_AUDIO_SOURCE microphone_port <<<"$microphone"
+    if ! pactl set-source-port "$WEBCAM_AUDIO_SOURCE" "$microphone_port"; then
+      notify-send -u critical "Recording Error" "Could not select the built-in microphone."
+      return 1
+    fi
+  fi
+}
 
 WEBCAM_RESOLUTION="1920x1080"
-# Using 'default' is the safest choice for PulseAudio/PipeWire unless another source is required.
-WEBCAM_AUDIO_SOURCE='default'
 
 # Waybar Signal: Adjust +8 if necessary
 WAYBAR_SIGNAL="pkill -RTMIN+8 waybar"
@@ -61,7 +86,8 @@ if [ -f "$STATE_FILE" ]; then
 
 else
   # --- STARTING RECORDING (MKV specific flags) ---
-  echo "Starting new recording..."
+  configure_capture_devices || exit 1
+  echo "Starting new recording with $WEBCAM_DEVICE and $WEBCAM_AUDIO_SOURCE..."
 
   # Add recording status from tmp file so waybar updates
   echo "recording *" >"$RECORDING_STATUS_FILE"
