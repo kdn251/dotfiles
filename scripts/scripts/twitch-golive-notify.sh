@@ -21,10 +21,9 @@ NOTIFY_LIST="${NOTIFY_LIST:-$HOME/scripts/twitch_notify.txt}"
 STATE="${STATE:-$HOME/.cache/twitch_golive_seen}"
 LAST="${LAST:-$HOME/.cache/twitch_golive_last}"
 COOLDOWN="${COOLDOWN:-21600}"   # seconds; 6h
-# How long the notification waits for the Watch button. notify-send -A blocks
-# for this long, and once it returns the button is dead, so it is worth being
-# able to raise for a hands-on test.
-TIMEOUT_MS="${TIMEOUT_MS:-20000}"
+# Use the notification daemon's normal timeout (currently five seconds).
+# Allow an explicit override for hands-on testing of the Watch action.
+TIMEOUT_MS="${TIMEOUT_MS:--1}"
 
 mkdir -p "$(dirname "$STATE")"
 touch "$STATE" "$LAST"
