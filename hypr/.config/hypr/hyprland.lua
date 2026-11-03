@@ -28,6 +28,10 @@ hl.env("PATH", table.concat(path_parts, ":"))
 -- on this display, even with the per-monitor vrr,0 setting below.
 hl.config({ ["misc"] = { ["vrr"] = 0 } })
 
+-- Keep fullscreen video from switching monitor profiles/HDR modes. Those
+-- DRM modesets can blank the panel for seconds on fullscreen enter/exit.
+hl.config({ ["render"] = { ["send_content_type"] = false, ["cm_auto_hdr"] = 0 } })
+
 -- Render XWayland apps at native pixel resolution instead of upscaling (blur fix).
 -- XWayland apps must handle their own DPI scaling (e.g. GDK_SCALE=2 for Handy).
 hl.config({ ["xwayland"] = { ["force_zero_scaling"] = true } })
