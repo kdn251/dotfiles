@@ -20,6 +20,7 @@ local function tick_uptime()
     local seconds = clock_seconds + math.floor(mp.get_time() - clock_at)
     local clock = string.format('%d:%02d:%02d', math.floor(seconds / 3600),
         math.floor(seconds / 60) % 60, seconds % 60)
+    mp.set_property_native('user-data/stream-uptime', clock)
     local heading, tail = clock_title:match('^(.-)( | .*)$')
     heading, tail = heading or clock_title, tail or ''
     local title = heading:gsub('%d+:%d%d:%d%d$', clock) .. tail
@@ -50,20 +51,26 @@ refresh = function()
         if hours then
             clock_title, clock_seconds, clock_at = title, tonumber(hours)*3600 + tonumber(minutes)*60 + tonumber(seconds), mp.get_time()
             clock_channel, clock_service = channel, requested_service
+            tick_uptime()
+        else
+            mp.set_property_native('user-data/stream-uptime', '')
         end
         if title ~= '' and title ~= mp.get_property('force-media-title', '') then
             mp.set_property('force-media-title', title)
         end
     end)
 end
-mp.observe_property('user-data/stream-name', 'string', function()
+local function identity_changed()
     clock_title = nil
+    mp.set_property_native('user-data/stream-uptime', '')
     generation = generation + 1
     local version = generation
     mp.add_timeout(0.2, function()
         if version == generation then refresh() end
     end)
-end)
+end
+mp.observe_property('user-data/stream-name', 'string', identity_changed)
+mp.observe_property('user-data/stream-service', 'string', identity_changed)
 -- Fetch missing metadata asynchronously on startup and every stream switch.
 mp.add_timeout(0.2, refresh)
 mp.add_periodic_timer(60, refresh)

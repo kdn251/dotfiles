@@ -2347,6 +2347,12 @@ function osc_init()
     ne = new_element("tc_left", "button")
 
     ne.content = function ()
+        -- Live broadcasts show broadcaster uptime, not this player's position.
+        -- Unknown start times must not masquerade as time live.
+        if mp.get_property_native("user-data/stream-name", "") ~= "" then
+            local uptime = mp.get_property_native("user-data/stream-uptime", "")
+            return uptime ~= "" and uptime or "LIVE"
+        end
         if (state.tc_ms) then
             return (mp.get_property_osd("playback-time/full"))
         else
@@ -3085,6 +3091,9 @@ mp.observe_property("idle-active", "bool",
 mp.observe_property("pause", "bool", pause_state)
 mp.observe_property("demuxer-cache-state", "native", cache_state)
 mp.observe_property("vo-configured", "bool", function(name, val)
+    request_tick()
+end)
+mp.observe_property("user-data/stream-uptime", "native", function()
     request_tick()
 end)
 mp.observe_property("playback-time", "number", function(name, val)

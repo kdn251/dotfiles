@@ -37,6 +37,7 @@ mp = {
  get_property=function(k, default) return props[k] or default end,
  get_property_native=function(k, default) return props[k] or default end,
  set_property=function(k, v) props[k]=v end,
+ set_property_native=function(k, v) props[k]=v end,
  observe_property=function(k,t,cb) observe=cb end,
  add_timeout=function(t,cb) timers.first=cb end,
  get_time=function() return clock or 100 end,
@@ -63,9 +64,13 @@ callbacks[3](true,{status=0,stdout='Second — 1:59:59 | Title'})
 clock=101
 timers.tick()
 assert(props['force-media-title']=='Second — 2:00:00 | Title')
+assert(props['user-data/stream-uptime']=='2:00:00')
+props['pause']=true; clock=161; timers.tick()
+assert(props['user-data/stream-uptime']=='2:01:00')
 props['user-data/twitch-channel']='third'; observe()
 timers.tick()
-assert(props['force-media-title']=='Second — 2:00:00 | Title')
+assert(props['force-media-title']=='Second — 2:01:00 | Title')
+assert(props['user-data/stream-uptime']=='')
 events.shutdown()
 """
         with tempfile.TemporaryDirectory() as tmp:
