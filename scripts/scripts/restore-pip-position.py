@@ -34,7 +34,7 @@ class Tracker:
         self.runtime = Path(runtime)
         self.windows = {}
 
-    def update(self, current):
+    def update(self, current, layout=None):
         live = set()
         for client in current:
             if not client.get('mapped') or not client.get('floating') or not is_pip(client):
@@ -64,6 +64,23 @@ class Tracker:
             except (OSError, ValueError, KeyError, TypeError):
                 pass
             fullscreen = client['fullscreen'] != 0
+            if layout and not fullscreen and not state['fs']:
+                from pip_geometry import bounds, align_default, bottom_right
+                monitors,gaps,border=layout
+                monitor=next((m for m in monitors if m['id']==client['monitor']),None)
+                if monitor:
+                    edges=bounds(monitor,gaps,border)
+                    previous=state.get('edges')
+                    saved=state['saved']
+                    at=client['at']
+                    if previous is None:
+                        at=align_default(client,monitor,gaps,border)
+                    elif previous!=edges and saved and abs(saved[0]+saved[2]-previous[2])<=2 and abs(saved[1]+saved[3]-previous[3])<=2:
+                        at=bottom_right(monitor,client['size'],gaps,border)
+                    if at!=client['at']:
+                        restore(address,(*at,*client['size']))
+                        client=dict(client,at=at)
+                    state['edges']=edges
             if not fullscreen and state['fs'] and state['saved'] is not None:
                 # Restore once on exit. Repeated corrections fight intentional
                 # dragging and corner shortcuts immediately after fullscreen.
@@ -76,9 +93,14 @@ class Tracker:
 
 def main():
     tracker = Tracker(os.environ.get('XDG_RUNTIME_DIR', '/tmp'))
+    layout=None;refresh_at=0
     while True:
         try:
-            tracker.update(clients())
+            if time.monotonic()>=refresh_at:
+                from pip_geometry import settings
+                monitors=json.loads(subprocess.check_output(['hyprctl','-j','monitors'],text=True,timeout=2))
+                layout=(monitors,*settings());refresh_at=time.monotonic()+2
+            tracker.update(clients(),layout)
         except (subprocess.SubprocessError, OSError, ValueError) as error:
             print(f'PiP position restore: {error}', flush=True)
         time.sleep(0.1)

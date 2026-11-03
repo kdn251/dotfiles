@@ -187,8 +187,10 @@ def adopt(name,title,marker,service,session,page):
             else:
                 monitors=json.loads(subprocess.check_output([*HYPRCTL,'-j','monitors'],timeout=2))
                 mon=next(m for m in monitors if m['id']==window['monitor'])
-                mw,mh=mon['width']/mon.get('scale',1),mon['height']/mon.get('scale',1)
-                w,h=round(mw*.38),round(mw*.21375);x,y=round(mon['x']+mw-w-13),round(mon['y']+mh-h-13)
+                from pip_geometry import monitor_size, bottom_right, settings
+                mw,mh=monitor_size(mon)
+                w,h=round(mw*.38),round(mw*.21375)
+                x,y=bottom_right(mon,(w,h),*settings())
             subprocess.run([*HYPRCTL,'--batch',f'dispatch resizewindowpixel exact {w} {h},address:{address}; dispatch movewindowpixel exact {x} {y},address:{address}'],stdout=subprocess.DEVNULL,timeout=2)
             from media_chat_fullscreen import place_player
             place_player(data['pid'])

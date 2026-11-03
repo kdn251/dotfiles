@@ -51,7 +51,7 @@ class PreviewTests(unittest.TestCase):
                     patch.object(preview,'CANONICAL',root/'canonical'),patch.object(preview,'Player',return_value=player), \
                     patch.object(preview,'clients',return_value=[window]), \
                     patch.object(preview.subprocess,'check_output',return_value=json.dumps([dict(id=0,x=0,y=0,width=1440,height=960,scale=1)])), \
-                    patch.object(preview.subprocess,'run'),patch('media_chat_fullscreen.place_player') as place:
+                    patch.object(preview.subprocess,'run'),patch('pip_geometry.settings',return_value=([12]*4,1)),patch('media_chat_fullscreen.place_player') as place:
                 self.assertIsNone(preview.adopt('Other','title','','Twitch','chosen','page'))
                 self.assertEqual(preview.adopt('Example','title','','Twitch','chosen','page'),123)
                 self.assertFalse(handoff.exists());self.assertTrue((root/'canonical').is_symlink())

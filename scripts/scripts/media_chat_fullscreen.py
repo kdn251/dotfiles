@@ -80,6 +80,13 @@ def place_player(pid):
             player = next((c for c in clients if c.get('pid') == pid and c.get('class') == 'mpv'), None)
             if player:
                 player = regular_workspace(player, read())
+                if not player.get('fullscreen'):
+                    from pip_geometry import settings, align_default
+                    monitor = next((m for m in json.loads(hypr('-j','monitors')) if m['id']==player['monitor']),None)
+                    if monitor:
+                        at = align_default(player,monitor,*settings())
+                        if at != player['at']:
+                            hypr('dispatch','movewindowpixel',f"exact {at[0]} {at[1]},address:{player['address']}")
                 # Pin only at startup: later manual unpinning stays respected.
                 # Fullscreen/theater uses its existing workspace handling.
                 if not player.get('fullscreen') and not player.get('pinned'):
