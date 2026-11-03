@@ -34,7 +34,7 @@ class PreviewTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory,patch.object(preview,'ROOT',Path(directory)), \
                 patch.object(preview,'resolve',side_effect=resolve),patch.object(preview.subprocess,'Popen',return_value=process), \
                 patch.object(preview,'clients',return_value=[dict(pid=123,address='preview')]), \
-                patch.object(preview.subprocess,'run'),patch.object(preview,'Player') as ipc:
+                patch.object(preview.subprocess,'run'),patch.object(preview.subprocess,'check_output',return_value='[]'),patch.object(preview,'Player') as ipc:
             player=preview.Preview('test','Twitch','https://twitch.tv/test',(0,0,400,225))
             thread=threading.Thread(target=player._run);thread.start();self.assertTrue(started.wait(1))
             player.stop();release.set();thread.join(2)
@@ -67,3 +67,21 @@ class PreviewTests(unittest.TestCase):
             with patch.object(preview,'HANDOFF',handoff),patch.object(preview,'SESSION',session),patch.object(preview,'Player',return_value=player):
                 self.assertIsNone(preview.adopt('Example','title','','Twitch','old','page'))
                 player.command.assert_not_called()
+
+    def test_enter_places_ready_preview_before_launcher_adoption(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root=Path(directory)
+            with patch.object(preview,'ROOT',root),patch.object(preview,'HANDOFF',root/'handoff'), \
+                    patch.object(preview,'Player') as ipc,patch.object(preview.subprocess,'run') as move, \
+                    patch.object(preview.threading.Thread,'start'):
+                item=preview.Preview('example','Twitch','https://twitch.tv/example',(0,0,400,225))
+                item.process=Mock(pid=123);item.process.poll.return_value=None
+                item.landing=('0x123',883,642,547,308)
+                ipc.return_value.get.return_value=True
+                self.assertTrue(item.handoff())
+                move.assert_called_once()
+                self.assertEqual(move.call_args.args[0][:2],['/usr/bin/hyprctl','eval'])
+                self.assertIn('x=883,y=642',move.call_args.args[0][2])
+                self.assertTrue(json.loads((root/'handoff').read_text())['landed'])
+                ipc.return_value.command.assert_not_called()
+                item.process.terminate.assert_not_called()

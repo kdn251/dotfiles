@@ -61,6 +61,7 @@ class Preview:
         self.process=None
         self.promoted=False
         self.error=None
+        self.landing=None
 
     def start(self):
         threading.Thread(target=self._run,daemon=True).start()
@@ -96,6 +97,17 @@ class Preview:
                 if window:
                     x,y,w,h=self.bounds
                     subprocess.run([*HYPRCTL,'--batch',f'dispatch setfloating address:{window["address"]}; dispatch resizewindowpixel exact {w} {h},address:{window["address"]}; dispatch movewindowpixel exact {x} {y},address:{window["address"]}'],stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL,timeout=2)
+                    # Prepare geometry while the stream is loading, not on Enter.
+                    try:
+                        from pip_geometry import monitor_size, bottom_right, settings
+                        monitors=json.loads(subprocess.check_output(['/usr/bin/hyprctl','-j','monitors'],timeout=2))
+                        mon=next(m for m in monitors if m['id']==window['monitor'])
+                        mw,mh=monitor_size(mon)
+                        width,height=round(mw*.38),round(mw*.21375)
+                        left,top=bottom_right(mon,(width,height),*settings())
+                        self.landing=(window['address'],left,top,width,height)
+                    except (OSError,ValueError,KeyError,StopIteration,subprocess.SubprocessError):
+                        pass
                     break
             url=resolve(self.name,self.service,self.channel)
             if self.cancelled.is_set():return
@@ -129,6 +141,20 @@ class Preview:
             data=dict(pid=self.process.pid,endpoint=self.endpoint,name=self.name,service=self.service,created=time.time())
             temp=HANDOFF.with_suffix('.tmp');temp.write_text(json.dumps(data));temp.chmod(0o600);temp.replace(HANDOFF)
             self.promoted=True
+            # The decoded preview can move immediately. Session/chat ownership
+            # still transfers through the launcher's normal guarded adoption.
+            if self.landing:
+                address,x,y,w,h=self.landing
+                target=json.dumps('address:'+address)
+                script=(f'hl.dispatch(hl.dsp.window.resize({{window={target},x={w},y={h},relative=false}})); '
+                        f'hl.dispatch(hl.dsp.window.move({{window={target},x={x},y={y},relative=false}}))')
+                try:
+                    subprocess.run(['/usr/bin/hyprctl','eval',script],check=True,
+                                   stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL,timeout=.5)
+                    data['landed']=True
+                    temp.write_text(json.dumps(data));temp.chmod(0o600);temp.replace(HANDOFF)
+                except (OSError,subprocess.SubprocessError):
+                    pass
         self.accepted.unlink(missing_ok=True)
         # Failed/cancelled launchers must not leave an orphan preview forever.
         def expire():
@@ -185,7 +211,10 @@ def adopt(name,title,marker,service,session,page):
             time.sleep(.025)
         if window:
             address=window['address']
-            if old_geometry:
+            if data.get('landed') and not was_fullscreen:
+                # Already placed on Enter; do not jump again after setup.
+                (x,y),(w,h)=window['at'],window['size']
+            elif old_geometry:
                 (x,y),(w,h)=old_geometry
             else:
                 monitors=json.loads(subprocess.check_output([*HYPRCTL,'-j','monitors'],timeout=2))
