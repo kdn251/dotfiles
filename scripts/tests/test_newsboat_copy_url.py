@@ -101,3 +101,41 @@ class CopyTests(unittest.TestCase):
             finally:
                 if process.poll() is None:process.terminate()
                 process.wait(timeout=5)
+
+    def test_global_ctrl_c_copies_current_stream_after_platform_switch(self):
+        import os,time,tempfile
+        from mpv_clip import Player
+        with tempfile.TemporaryDirectory() as directory:
+            root=Path(directory);bin=root/'bin';bin.mkdir();clipboard=root/'clipboard';ipc=root/'mpv.sock'
+            command=bin/'wl-copy'
+            command.write_text('#!/usr/bin/python3\nimport sys\nfrom pathlib import Path\nPath('+repr(str(clipboard))+').write_bytes(sys.stdin.buffer.read())\n');command.chmod(0o755)
+            config=root/'config';(config/'scripts').mkdir(parents=True)
+            source=SCRIPTS.parents[1]/'mpv/.config/mpv'
+            (config/'scripts/copy-url.lua').symlink_to(source/'scripts/copy-url.lua')
+            (config/'input.conf').write_text((source/'input.conf').read_text())
+            process=copy.subprocess.Popen(['mpv','--config-dir='+str(config),'--idle=yes','--vo=null','--ao=null',
+                '--input-ipc-server='+str(ipc)],env=dict(os.environ,PATH=str(bin)+':'+os.environ['PATH']),
+                stdout=copy.subprocess.DEVNULL,stderr=copy.subprocess.DEVNULL)
+            try:
+                deadline=time.monotonic()+5
+                while not ipc.exists() and time.monotonic()<deadline:time.sleep(.02)
+                player=Player(str(ipc),process.pid)
+                try:
+                    deadline=time.monotonic()+3
+                    while time.monotonic()<deadline:
+                        bindings=player.get('input-bindings',[])
+                        if any(b.get('key')=='Ctrl+c' and b.get('owner')=='copy_url' for b in bindings):break
+                        time.sleep(.02)
+                    for url in ['https://www.twitch.tv/example','https://kick.com/example',
+                                'https://www.youtube.com/watch?v=abcdefghijk','https://rumble.com/c/example']:
+                        clipboard.unlink(missing_ok=True)
+                        player.command('set_property','user-data/stream-page',url)
+                        player.command('keypress','Ctrl+c')
+                        deadline=time.monotonic()+3
+                        while not clipboard.exists() and time.monotonic()<deadline:time.sleep(.02)
+                        self.assertEqual(clipboard.read_text(),url)
+                        self.assertIsNone(process.poll(),'Copying a stream link must not quit MPV')
+                        time.sleep(.05)
+                finally:player.close()
+            finally:
+                process.terminate();process.wait(timeout=5)
