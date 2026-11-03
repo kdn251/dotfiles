@@ -560,9 +560,13 @@ class Picker(Gtk.Application):
             return True
         if key in (Gdk.KEY_Down, Gdk.KEY_Up):
             row = self.list.get_selected_row()
-            index = row.get_index() if row else -1
             step = -1 if key == Gdk.KEY_Up else 1
-            target = self.list.get_row_at_index(max(0, index + step))
+            last = self.list.get_last_child()
+            if last is None:
+                return True
+            count = last.get_index() + 1
+            index = row.get_index() if row else (0 if step < 0 else -1)
+            target = self.list.get_row_at_index((index + step) % count)
             if target:
                 self.list.select_row(target)
                 # Keep typing in the search entry after keyboard navigation.
