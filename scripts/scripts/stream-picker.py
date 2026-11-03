@@ -275,7 +275,9 @@ class Picker(Gtk.Application):
             row.result = label + '\t' + identity
             row.vod = next((v for v in self.vods if v['url']==identity), None) if self.library_mode else None
             hover = Gtk.EventControllerMotion()
-            hover.connect('enter', lambda _controller, _x, _y, current=row: self.list.select_row(current))
+            # Mapping the menu under a stationary pointer emits enter; keep
+            # the first result selected until the user actually moves it.
+            hover.connect('motion', lambda _controller, _x, _y, current=row: self.list.select_row(current))
             row.add_controller(hover)
             content = Gtk.Box(spacing=10)
             avatar = RoundedAvatar(file=icon) if icon and Path(icon).is_file() else RoundedAvatar(icon_name="video-display-symbolic")
