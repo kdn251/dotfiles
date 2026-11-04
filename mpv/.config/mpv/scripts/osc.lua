@@ -1812,11 +1812,14 @@ function bar_layout(direction)
 
     local lo, geo
 
+    -- Make one extra compact row only when the video supplies chapters.
+    local has_chapter = direction < 0 and mp.get_property_number('chapters', 0) > 0
     -- Background bar
     new_element("bgbox", "box")
     lo = add_layout("bgbox")
 
-    lo.geometry = osc_geo
+    lo.geometry = has_chapter and {x=osc_geo.x,y=osc_geo.y-22,an=osc_geo.an,
+                                  w=osc_geo.w,h=osc_geo.h+22} or osc_geo
     lo.layer = 10
     lo.style = osc_styles.box
     lo.alpha[1] = user_opts.boxalpha
@@ -1854,6 +1857,13 @@ function bar_layout(direction)
         osc_styles.vidtitleBar,
         geo.x, geo.y-geo.h, geo.x+geo.w, geo.y+geo.h)
 
+
+    if has_chapter then
+        lo = add_layout("chaptername")
+        lo.geometry = {x=t_l, y=line1-22, an=4, w=osc_geo.w-t_l-padX, h=18}
+        lo.style = string.format("{\\an4\\fs18\\bord0\\shad0\\1c&HC8D8D8&\\clip(%f,%f,%f,%f)}",
+            t_l,line1-34,osc_geo.w-padX,line1-10)
+    end
 
     -- Playback control buttons
     geo = { x = osc_geo.x + padX + padwc_l, y = line2, an = 4,
@@ -2407,10 +2417,22 @@ function osc_init()
     ne.eventresponder["mbtn_left_up"] =
         function () state.rightTC_trem = not state.rightTC_trem end
 
+    ne = new_element("chaptername", "button")
+    ne.content = function()
+        local chapters = mp.get_property_native('chapter-list', {})
+        local index = mp.get_property_number('chapter', -1) + 1
+        local chapter = chapters[index]
+        if not chapter then return '' end
+        local title = tostring(chapter.title or ('Chapter ' .. index)):gsub('[\r\n]', ' '):gsub('{','\\{')
+        return string.format('%d/%d · %s', index, #chapters, title)
+    end
+
     -- cache
     ne = new_element("cache", "button")
 
     ne.content = function ()
+        local status = mp.get_property_native('user-data/newsboat/playback-status', '')
+        if status ~= '' then return status end
         local cache_state = state.cache_state
         if not (cache_state and cache_state["seekable-ranges"] and
             #cache_state["seekable-ranges"] > 0) then
@@ -3117,6 +3139,8 @@ end)
 mp.observe_property("user-data/stream-uptime", "native", function()
     request_tick()
 end)
+mp.observe_property('user-data/newsboat/playback-status', 'native', request_tick)
+mp.observe_property('chapter', 'number', request_tick)
 mp.observe_property("playback-time", "number", function(name, val)
     request_tick()
 end)

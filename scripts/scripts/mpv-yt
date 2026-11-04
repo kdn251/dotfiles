@@ -211,10 +211,12 @@ else
       if ! python3 "$MEDIA_HELPER" find "$URL" >/dev/null 2>&1; then
         # Long videos can exceed 3 GB; allow their partial download to finish.
         # Keep downloads and merging at low CPU/I/O priority.
+        printf '{"pid":%s}\n' "$BASHPID" >"$cache/$vid.download.json"
         nice -n 10 ionice -c 2 -n 7 "$YTDL" -q --no-warnings \
           -f "bestvideo[height<=?1080]+bestaudio/best[height<=?1080]/best" \
           --merge-output-format mp4 \
           -o "$cache/$vid.%(ext)s" "$URL" >/dev/null 2>&1
+        rm -f "$cache/$vid.download.json"
       fi
       # Only swap if it actually landed AND mpv is still up: closing the window
       # mid-download must not resurrect it.

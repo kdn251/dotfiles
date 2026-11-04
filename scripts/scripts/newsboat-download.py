@@ -369,7 +369,8 @@ def download(url, title='', worker_token=None):
                 raise RuntimeError('The URL did not resolve to a video')
             job.update(title=info.get('title') or title or 'Video',
                        creator=info.get('channel') or info.get('uploader') or platform,
-                       video_id=str(info['id']), icon=creator_icon(platform, info))
+                       video_id=str(info['id']), icon=creator_icon(platform, info),
+                       chapters=info.get('chapters') or [])
             # Keep manually requested Twitch videos outside the cron pruner's
             # top-level VOD directory, so it cannot remove an active download.
             folder = VIDEOS / ('downloaded-videos' if platform == 'youtube' else 'twitch-vods/manual')
