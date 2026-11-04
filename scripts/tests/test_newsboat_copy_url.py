@@ -16,6 +16,18 @@ class CopyTests(unittest.TestCase):
             self.assertNotIn('shell',run.call_args.kwargs)
             self.assertEqual(run.call_args.args[0][0],'wl-copy')
 
+    def test_youtube_timestamp_replaces_old_offset_and_preserves_playlist(self):
+        with patch.object(copy.subprocess,'run') as run:
+            copy.copy_url('https://www.youtube.com/watch?v=abcdefghijk&t=4&list=PL123#t=4',125.9)
+            self.assertEqual(run.call_args.kwargs['input'],b'https://www.youtube.com/watch?v=abcdefghijk&list=PL123&t=125s')
+
+    def test_short_urls_and_shorts_use_browser_watch_link(self):
+        for url in ('https://youtu.be/abcdefghijk','https://www.youtube.com/shorts/abcdefghijk'):
+            self.assertEqual(copy.timestamped_url(url,0),'https://www.youtube.com/watch?v=abcdefghijk&t=0s')
+        url='https://example.org/watch?v=abcdefghijk'
+        self.assertEqual(copy.timestamped_url(url,30),url)
+        self.assertEqual(copy.timestamped_url('https://youtube.com/@creator',30),'https://youtube.com/@creator')
+
     def test_rejects_non_web_placeholders(self):
         with patch.object(copy.subprocess,'run') as run:
             for url in ['', 'newsboat-vods://empty', 'file:///tmp/file', 'https://example.org\nmore']:

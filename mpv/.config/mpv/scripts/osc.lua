@@ -301,7 +301,34 @@ end
 
 -- get value at current mouse position
 function get_slider_value(element)
-    return get_slider_value_at(element, get_virt_mouse_pos())
+    local mouse_x = get_virt_mouse_pos()
+    local value = get_slider_value_at(element, mouse_x)
+    if element.name ~= 'seekbar' then return value end
+    local duration = mp.get_property_number('duration', 0)
+    local scale = get_virt_scale_factor()
+    if duration <= 0 or scale <= 0 then
+        element.state.chapter_snap = nil
+        return value
+    end
+    local nearest, distance
+    local held = element.state.chapter_snap
+    for _, chapter in ipairs(mp.get_property_native('chapter-list', {})) do
+        if chapter.time >= 0 and chapter.time <= duration then
+            local percent = chapter.time / duration * 100
+            local x = scale_value(element.slider.min.value, element.slider.max.value,
+                element.slider.min.glob_pos, element.slider.max.glob_pos, percent)
+            local pixels = math.abs(mouse_x - x) / scale
+            -- A slightly wider release radius prevents flicker at the boundary.
+            if held == chapter.time and pixels <= 16 then
+                return percent
+            end
+            if pixels <= 10 and (not distance or pixels < distance) then
+                nearest, distance = chapter.time, pixels
+            end
+        end
+    end
+    element.state.chapter_snap = nearest
+    return nearest and (nearest / duration * 100) or value
 end
 
 function countone(val)
@@ -1017,6 +1044,21 @@ function render_elements(master_ass)
                 if mouse_hit(element) then
                     local sliderpos = get_slider_value(element)
                     local tooltiplabel = element.slider.tooltipF(sliderpos)
+                    -- Show the snapped hover target even before a click/drag.
+                    -- This is separate from the actual playback playhead.
+                    if element.name == 'seekbar' and element.state.chapter_snap then
+                        local x = scale_value(element.slider.min.value, element.slider.max.value,
+                            element.slider.min.glob_pos, element.slider.max.glob_pos, sliderpos)
+                        local y = (element.hitbox.y1 + element.hitbox.y2) / 2
+                        local sx, sy = get_virt_scale_factor()
+                        local rx, ry = 4 * sx, 4 * sy
+                        elem_ass:new_event()
+                        elem_ass:pos(0, 0)
+                        elem_ass:append('{\\an7\\bord0\\shad0\\1c&HFFFFFF&}')
+                        elem_ass:draw_start()
+                        elem_ass:round_rect_cw(x-rx, y-ry, x+rx, y+ry, math.min(rx, ry))
+                        elem_ass:draw_stop()
+                    end
 
                     local an = slider_lo.tooltip_an
 
@@ -1029,6 +1071,11 @@ function render_elements(master_ass)
                     end
 
                     local tx = get_virt_mouse_pos()
+                    if element.state.chapter_snap then
+                        tx = scale_value(element.slider.min.value, element.slider.max.value,
+                            element.slider.min.glob_pos, element.slider.max.glob_pos, sliderpos)
+                        tooltiplabel = tooltiplabel .. ' · Chapter'
+                    end
                     local thumb_tx = tx
                     if (slider_lo.adjust_tooltip) then
                         if (an == 2) then
@@ -2341,7 +2388,7 @@ function osc_init()
             if (element.state.lastseek == nil) or
                 (not (element.state.lastseek == seekto)) then
                     local flags = "absolute-percent"
-                    if not user_opts.seekbarkeyframes then
+                    if element.state.chapter_snap or not user_opts.seekbarkeyframes then
                         flags = flags .. "+exact"
                     end
                     mp.commandv("seek", seekto, flags)
@@ -2353,7 +2400,7 @@ function osc_init()
         function (element) mp.commandv("seek", get_slider_value(element),
             "absolute-percent", "exact") end
     ne.eventresponder["reset"] =
-        function (element) element.state.lastseek = nil end
+        function (element) element.state.lastseek = nil; element.state.chapter_snap = nil end
 
     if user_opts.scrollcontrols then
         ne.eventresponder["wheel_up_press"] =

@@ -11,9 +11,17 @@ mp.add_forced_key_binding('Ctrl+c', 'newsboat-copy-url', function()
         mp.osd_message('No video URL available to copy', 2)
         return
     end
+    local args = {'python3', helper, url}
+    local position = mp.get_property_number('time-pos')
+    -- Managed broadcasts use absolute live timestamps, not video offsets.
+    if mp.get_property_native('user-data/stream-page', '') == '' and
+       mp.get_property_native('user-data/stream-name', '') == '' and
+       mp.get_property_number('duration', 0) > 0 and position and position >= 0 then
+        args[#args+1] = tostring(position)
+    end
     copying = true
     mp.command_native_async({name='subprocess', playback_only=false,
-        args={'python3', helper, url}}, function(success, result)
+        args=args}, function(success, result)
         copying = false
         if success and result and result.status == 0 then
             mp.osd_message('Link copied', 2)
