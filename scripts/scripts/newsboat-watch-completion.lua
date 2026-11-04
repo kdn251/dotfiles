@@ -57,7 +57,8 @@ mp.register_event('shutdown', save_progress)
 mp.observe_property('eof-reached', 'bool', function(_, eof)
     if eof and loaded then save_progress(true) end
 end)
-mp.register_event('file-loaded', function()
+-- Resume before decoder setup, rather than loading and then seeking again.
+mp.add_hook('on_preloaded', 50, function()
     local next_url = mp.get_property_native('user-data/newsboat/url', '')
     if next_url ~= '' and next_url ~= url then
         url = next_url; restored = false
@@ -71,8 +72,12 @@ mp.register_event('file-loaded', function()
         local result = mp.command_native({name='subprocess', playback_only=false,
             capture_stdout=true, args={'python3', helper, 'resume', url, tostring(total)}})
         local resume = result and result.status == 0 and tonumber(result.stdout) or -1
-        if resume and resume >= 0 then mp.commandv('seek', tostring(resume), 'absolute+exact') end
+        if resume and resume >= 0 then
+            mp.set_property('file-local-options/start', tostring(resume))
+        end
     end
+end)
+mp.register_event('file-loaded', function()
     loaded = true
     position = mp.get_property_number('time-pos')
     duration = mp.get_property_number('duration')

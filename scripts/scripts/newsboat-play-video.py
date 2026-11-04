@@ -10,6 +10,9 @@ from newsboat_last_opened import mark
 
 
 def play(args):
+    from newsboat_player_reuse import reuse
+    if reuse(args[0], ' '.join(args[1:])):
+        return 0
     with tempfile.TemporaryDirectory(prefix='newsboat-play-') as directory:
         ready = Path(directory) / 'ready'
         env = dict(os.environ, NEWSBOAT_PLAY_READY=str(ready))

@@ -79,7 +79,9 @@ if [ -n "$DOWNLOADED" ]; then
   TITLE="${TITLE:-${YT_TITLE:-}}"
   [ -n "$TITLE" ] && READY_OPTS+=("--force-media-title=$TITLE")
   [ "${NEWSBOAT_REUSE_PLAYER:-}" = 1 ] && exit 0
-  mpv "${READY_OPTS[@]}" "$YTDL_OPT" --cache=no --force-window=no --save-position-on-quit --really-quiet "$DOWNLOADED" >/dev/null 2>&1 &
+  # Avoid auto-safe probing other GPU backends before VA-API on local opens.
+  # Unsupported codecs still fall back to software decoding in MPV.
+  mpv "${READY_OPTS[@]}" "$YTDL_OPT" --hwdec=vaapi --cache=no --force-window=no --save-position-on-quit --really-quiet "$DOWNLOADED" >/dev/null 2>&1 &
   exit 0
 fi
 

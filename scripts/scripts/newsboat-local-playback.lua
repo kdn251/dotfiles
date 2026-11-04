@@ -7,7 +7,7 @@ mp.register_script_message('switch', function(source, path, position, title, ico
     pending = {path=path, title=title, icon=icon, badge=badge}
     local display_title = title ~= '' and title or mp.get_property('media-title', '')
     if display_title ~= '' then mp.set_property('force-media-title', display_title) end
-    mp.commandv('loadfile', path, 'replace', '0', 'start=' .. position)
+    mp.command_native({'loadfile', path, 'replace', 0, {start=position, hwdec='vaapi'}})
 end)
 
 mp.register_event('playback-restart', function()

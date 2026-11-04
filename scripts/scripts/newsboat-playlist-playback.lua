@@ -3,10 +3,8 @@ local utils = require('mp.utils')
 local directory = utils.split_path(debug.getinfo(1, 'S').source:sub(2))
 local current = os.getenv('NEWSBOAT_MEDIA_URL')
 if not current then return end
-local result = mp.command_native({name='subprocess', playback_only=false, capture_stdout=true,
-    args={'python3', directory .. 'newsboat_autoplay.py', 'plan', current}})
-local plan = result and result.status == 0 and utils.parse_json(result.stdout)
-if not plan then return end
+-- Build navigation alongside demux/decoder initialization, not before it.
+local function initialize(plan)
 local startup_queue_token = plan.current_queue_token
 -- Completed videos leave the live queue. Retain this player's completed count
 -- so a three-video run advances 1/3, 2/3, 3/3 rather than 1/3, 1/2, 1/1.
@@ -141,6 +139,27 @@ end
 local snooze_watcher = mp.add_periodic_timer(.25, check_snooze)
 check_snooze()
 local queue_menu
+local external_request
+local function apply_target(target, should_play)
+    mp.commandv('write-watch-later-config')
+    if plan_job then mp.abort_async_command(plan_job); plan_job = nil end
+    if thumbnail_job then mp.abort_async_command(thumbnail_job); thumbnail_job = nil end
+    hide_thumbnail(); thumbnail, thumbnail_requested = nil, nil
+    current, plan = target.url, target.plan
+    startup_queue_token = plan.current_queue_token
+    reported_playing, reported_finished = false, false
+    stop_after_retired = false
+    switched_in_place = true
+    mp.set_property_native('user-data/newsboat/url', current)
+    mp.set_property('force-window', 'yes')
+    mp.set_property('idle', 'yes')
+    mp.set_property('force-media-title', target.title or '')
+    mp.set_property('cache', target['local'] and 'no' or 'yes')
+    mp.set_property('ytdl-format', 'bestvideo[height<=?1080]+bestaudio/best[height<=?1080]/best')
+    play_on_load = should_play
+    local options = target['local'] and {hwdec='vaapi'} or {}
+    mp.command_native({'loadfile', target.path, 'replace', 0, options})
+end
 local function advance(row, automatic)
     if queue_menu then queue_menu.close(true) end
     if check_snooze() then return end
@@ -163,25 +182,29 @@ local function advance(row, automatic)
             mp.osd_message('Could not load the next video', 4)
             return
         end
-        mp.commandv('write-watch-later-config')
-        if plan_job then mp.abort_async_command(plan_job); plan_job = nil end
-        if thumbnail_job then mp.abort_async_command(thumbnail_job); thumbnail_job = nil end
-        hide_thumbnail(); thumbnail, thumbnail_requested = nil, nil
-        current, plan = target.url, target.plan
-        startup_queue_token = plan.current_queue_token
-        reported_playing, reported_finished = false, false
-        stop_after_retired = false
-        switched_in_place = true
-        mp.set_property_native('user-data/newsboat/url', current)
-        mp.set_property('force-window', 'yes')
-        mp.set_property('idle', 'yes')
-        mp.set_property('force-media-title', target.title or '')
-        mp.set_property('cache', target['local'] and 'no' or 'yes')
-        mp.set_property('ytdl-format', 'bestvideo[height<=?1080]+bestaudio/best[height<=?1080]/best')
-        play_on_load = should_play
-        mp.commandv('loadfile', target.path, 'replace')
+        apply_target(target, should_play)
     end)
 end
+-- Only the normal Newsboat launcher uses this endpoint. Resolve the new plan
+-- in that worker, then retain this window, GPU context, and script instances.
+mp.register_script_message('open-local', function(payload)
+    local target = utils.parse_json(payload)
+    if not target or not target['local'] or not target.plan or not target.path then return end
+    if queue_menu then queue_menu.close(true) end
+    if switch_job then mp.abort_async_command(switch_job); switch_job = nil end
+    cancel()
+    timed_out, stopped_at_marker = false, false
+    completed_queue = {}
+    autoplay = target.plan.enabled
+    external_request = target.request
+    mp.set_property_native('user-data/newsboat/open-request', {id=external_request, state='loading'})
+    moving = true
+    loading_title = target.title or target.url
+    apply_target(target, true)
+end)
+mp.set_property_native('user-data/newsboat/reusable', {
+    version=1, context=os.getenv('NEWSBOAT_PLAYLIST_CONTEXT') or '',
+    random=os.getenv('NEWSBOAT_RANDOM_LIFECYCLE') or ''})
 local function prompt()
     local title = (plan.next.title or plan.next.url):gsub('[\r\n]', ' ')
     local next_label = episode_label(true)
@@ -256,9 +279,13 @@ local function refresh_queue()
         end)
 end
 queue_watcher = mp.add_periodic_timer(.5, refresh_queue)
-mp.register_event('playback-restart', function()
+local function playback_started()
     if reported_playing then return end
     reported_playing = true
+    if external_request then
+        mp.set_property_native('user-data/newsboat/open-request', {id=external_request, state='playing'})
+        external_request = nil
+    end
     if switched_in_place then
         moving = false; loading_title = nil
         mp.set_property('idle', original_idle)
@@ -271,7 +298,10 @@ mp.register_event('playback-restart', function()
             args={'python3', directory .. 'newsboat_queue.py', 'started', current, startup_queue_token}},
             function() refresh_queue() end)
     end
-end)
+end
+mp.register_event('playback-restart', playback_started)
+-- A tiny local file may already be playing when asynchronous setup finishes.
+if mp.get_property_number('time-pos') then playback_started() end
 mp.add_forced_key_binding('A', 'newsboat-toggle-autoplay', function()
     autoplay = not autoplay
     if autoplay then stopped_at_marker = false; timed_out = false end
@@ -333,6 +363,10 @@ end)
 mp.register_event('end-file', function(event)
     if event.reason == 'eof' then finish_queue_item(true) else cancel() end
     if event.reason == 'error' then
+        if external_request then
+            mp.set_property_native('user-data/newsboat/open-request', {id=external_request, state='failed'})
+            external_request = nil
+        end
         play_on_load = false
         moving = false; loading_title = nil
         mp.osd_message('Could not load video — use < or > to choose another', 6)
@@ -362,3 +396,11 @@ mp.register_event('file-loaded', function()
     if not loading_title then mp.osd_message((episode_label() and episode_label() .. ' · ' or '') .. 'Autoplay: ' .. (autoplay and 'ON' or 'OFF') .. ' · Shift+A to toggle', 3) end
 end)
 configure()
+
+end
+mp.command_native_async({name='subprocess', playback_only=false, capture_stdout=true,
+    args={'python3', directory .. 'newsboat_autoplay.py', 'plan', current}},
+    function(success, result)
+        local plan = success and result.status == 0 and utils.parse_json(result.stdout)
+        if plan then initialize(plan) end
+    end)
