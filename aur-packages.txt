@@ -11,6 +11,7 @@ google-chrome
 handy-bin
 handy-bin-debug
 herdr-bin
+hex-bin
 localsend-bin
 neofetch
 openai-codex-bin
