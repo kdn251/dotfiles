@@ -73,6 +73,7 @@ class PreviewTests(unittest.TestCase):
             root=Path(directory)
             with patch.object(preview,'ROOT',root),patch.object(preview,'HANDOFF',root/'handoff'), \
                     patch.object(preview,'Player') as ipc,patch.object(preview.subprocess,'run') as move, \
+                    patch.object(preview,'clients',return_value=[]), \
                     patch.object(preview.threading.Thread,'start'):
                 item=preview.Preview('example','Twitch','https://twitch.tv/example',(0,0,400,225))
                 item.process=Mock(pid=123);item.process.poll.return_value=None
@@ -85,3 +86,38 @@ class PreviewTests(unittest.TestCase):
                 self.assertTrue(json.loads((root/'handoff').read_text())['landed'])
                 ipc.return_value.command.assert_not_called()
                 item.process.terminate.assert_not_called()
+
+    def test_fullscreen_handoff_never_lands_in_corner(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root=Path(directory)
+            with patch.object(preview,'ROOT',root),patch.object(preview,'HANDOFF',root/'handoff'),                     patch.object(preview,'Player') as ipc,patch.object(preview.subprocess,'run') as move,                     patch.object(preview,'clients',return_value=[dict(pid=456,fullscreen=2,**{'class':'mpv'})]),                     patch.object(preview.threading.Thread,'start'):
+                item=preview.Preview('example','Twitch','https://twitch.tv/example',(0,0,400,225))
+                item.process=Mock(pid=123);item.process.poll.return_value=None
+                item.landing=('0x123',883,642,547,308)
+                ipc.return_value.get.return_value=True
+                self.assertTrue(item.handoff())
+                move.assert_not_called()
+                self.assertNotIn('landed',json.loads((root/'handoff').read_text()))
+
+    def test_fullscreen_adoption_saves_return_geometry_without_showing_it(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root=Path(directory);handoff=root/'handoff';session=root/'session';session.write_text('chosen')
+            handoff.write_text(json.dumps(dict(name='Example',service='Twitch',created=preview.time.time(),pid=123,endpoint=str(root/'preview.sock'))))
+            player=Mock();player.get.return_value=True
+            window=dict(pid=123,address='p',monitor=0,at=[10,10],size=[480,270],fullscreen=0,**{'class':'mpv'})
+            old=dict(pid=456,address='old',fullscreen=2,**{'class':'mpv'})
+            toggle=Mock(side_effect=lambda *args: window.update(fullscreen=2))
+            with patch.object(preview,'HANDOFF',handoff),patch.object(preview,'SESSION',session),                     patch.object(preview,'CANONICAL',root/'canonical'),patch.object(preview,'Player',return_value=player),                     patch.object(preview,'clients',return_value=[old,window]),                     patch.object(preview.os,'pidfd_open',side_effect=lambda pid: self.retire_after_fullscreen(window, pid)),                     patch('media_chat_fullscreen.socket_for',return_value='old.sock'),                     patch.object(preview.subprocess,'check_output',return_value=json.dumps([dict(id=0,x=0,y=0,width=1440,height=960,scale=1)])),                     patch.object(preview.subprocess,'run') as move,patch('pip_geometry.settings',return_value=([12]*4,1)),                     patch('media_chat_fullscreen.place_player') as place,                     patch.object(preview.runpy,'run_path',return_value={'toggle':toggle}):
+                self.assertEqual(preview.adopt('Example','title','','Twitch','chosen','page'),123)
+                move.assert_not_called()
+                toggle.assert_called_once()
+                saved=toggle.call_args.args[0]
+                self.assertNotEqual(saved['at'],window['at'])
+                self.assertEqual(saved['size'],[547,308])
+                place.assert_called_once_with(123,align=False)
+
+    def retire_after_fullscreen(self, window, pid):
+        self.assertEqual(pid,456)
+        self.assertEqual(window['fullscreen'],2,
+                         'Previous stream closed before replacement covered desktop')
+        raise ProcessLookupError

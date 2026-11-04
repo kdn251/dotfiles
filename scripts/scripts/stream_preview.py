@@ -3,6 +3,7 @@ import json
 import os
 from pathlib import Path
 import signal
+import runpy
 import socket
 import subprocess
 import sys
@@ -143,7 +144,12 @@ class Preview:
             self.promoted=True
             # The decoded preview can move immediately. Session/chat ownership
             # still transfers through the launcher's normal guarded adoption.
-            if self.landing:
+            try:
+                fullscreen = any(c.get('class') == 'mpv' and c.get('fullscreen')
+                                 for c in clients() if c.get('pid') != self.process.pid)
+            except (OSError, ValueError, subprocess.SubprocessError):
+                fullscreen = True  # Avoid a misplaced flash if layout lookup fails.
+            if self.landing and not fullscreen:
                 address,x,y,w,h=self.landing
                 target=json.dumps('address:'+address)
                 script=(f'hl.dispatch(hl.dsp.window.resize({{window={target},x={w},y={h},relative=false}})); '
@@ -191,13 +197,6 @@ def adopt(name,title,marker,service,session,page):
                 if volume is not None:p.command('set_property','volume',volume)
             except (OSError,ValueError,TypeError):pass
         old_geometry=(old['at'],old['size']) if old and not was_fullscreen else None
-        # The launcher already owns the session before the previous player exits.
-        if old:
-            try:
-                fd=os.pidfd_open(old['pid']);signal.pidfd_send_signal(fd,signal.SIGTERM)
-                import select
-                select.select([fd],[],[],2);os.close(fd)
-            except ProcessLookupError:pass
         canonical=CANONICAL
         canonical.unlink(missing_ok=True);canonical.symlink_to(data['endpoint'])
         p.command('set_property','options/wayland-app-id','mpv')
@@ -223,10 +222,37 @@ def adopt(name,title,marker,service,session,page):
                 mw,mh=monitor_size(mon)
                 w,h=round(mw*.38),round(mw*.21375)
                 x,y=bottom_right(mon,(w,h),*settings())
-            subprocess.run([*HYPRCTL,'--batch',f'dispatch resizewindowpixel exact {w} {h},address:{address}; dispatch movewindowpixel exact {x} {y},address:{address}'],stdout=subprocess.DEVNULL,timeout=2)
             from media_chat_fullscreen import place_player
-            place_player(data['pid'])
             if was_fullscreen:
-                subprocess.run([str(SCRIPTS/'toggle-pip-fullscreen.sh'),'--pid',str(data['pid'])],stdout=subprocess.DEVNULL,timeout=4)
+                if not window.get('fullscreen'):
+                    # Save the intended windowed return geometry without ever
+                    # displaying it. Enter fullscreen directly from the preview.
+                    restore = dict(window, at=[x,y], size=[w,h], floating=True)
+                    toggle = runpy.run_path(str(SCRIPTS/'toggle-pip-fullscreen.py'))['toggle']
+                    toggle(restore, Path(os.environ.get('XDG_RUNTIME_DIR', '/tmp')))
+                place_player(data['pid'], align=False)
+            else:
+                subprocess.run([*HYPRCTL,'--batch',f'dispatch resizewindowpixel exact {w} {h},address:{address}; dispatch movewindowpixel exact {x} {y},address:{address}'],stdout=subprocess.DEVNULL,timeout=2)
+                place_player(data['pid'])
+        # Keep the old decoded frame covering the desktop until the compositor
+        # has installed the replacement fullscreen window. Killing it before
+        # promotion leaves a visible gap even when the preview is already ready.
+        covered = not was_fullscreen
+        if was_fullscreen and window:
+            for _ in range(40):
+                current = next((c for c in clients() if c.get('pid') == data['pid']), None)
+                if current and current.get('mapped', True) and current.get('fullscreen') == 2:
+                    covered = True
+                    break
+                time.sleep(.025)
+        if old and covered:
+            try:
+                fd=os.pidfd_open(old['pid'])
+                try:
+                    signal.pidfd_send_signal(fd,signal.SIGTERM)
+                finally:
+                    os.close(fd)
+            except ProcessLookupError:
+                pass
         return data['pid']
     finally:p.close()
