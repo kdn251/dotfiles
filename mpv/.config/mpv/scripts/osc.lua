@@ -766,10 +766,6 @@ local function hide_portrait()
     portrait.keys = {}
 end
 local function refresh_portrait()
-    portrait.generation = portrait.generation + 1
-    local generation = portrait.generation
-    portrait.path = nil
-    hide_portrait()
     local service = mp.get_property_native('user-data/stream-service', '')
     local name = mp.get_property_native('user-data/stream-name', '')
     if service == '' or name == '' then
@@ -777,11 +773,23 @@ local function refresh_portrait()
         if name == '' then name = os.getenv('NEWSBOAT_MEDIA_URL') or '' end
         service = 'Newsboat'
     end
+    local identity = service .. '\n' .. name
+    -- All three observers fire at startup, often for the same creator. Keep
+    -- one request in flight instead of repeating the image/network lookup.
+    if portrait.identity == identity and (portrait.job or portrait.path) then return end
+    portrait.generation = portrait.generation + 1
+    local generation = portrait.generation
+    portrait.identity = identity
+    portrait.path = nil
+    hide_portrait()
+    if portrait.job then mp.abort_async_command(portrait.job); portrait.job = nil end
     if name == '' then return end
-    mp.command_native_async({name='subprocess', playback_only=false,
+    portrait.job = mp.command_native_async({name='subprocess', playback_only=false,
         args={'python3', os.getenv('HOME') .. '/scripts/stream-title-avatar.py', service, name},
         capture_stdout=true, capture_stderr=true}, function(ok, result)
-        if generation ~= portrait.generation or not ok or not result or result.status ~= 0 then return end
+        if generation ~= portrait.generation then return end
+        portrait.job = nil
+        if not ok or not result or result.status ~= 0 then return end
         local path = (result.stdout or ''):gsub('%s+$', '')
         portrait.path = path ~= '' and path or nil
         request_tick()

@@ -157,7 +157,7 @@ local function apply_target(target, should_play)
     mp.set_property('cache', target['local'] and 'no' or 'yes')
     mp.set_property('ytdl-format', 'bestvideo[height<=?1080]+bestaudio/best[height<=?1080]/best')
     play_on_load = should_play
-    local options = target['local'] and {hwdec='vaapi'} or {}
+    local options = {hwdec='vaapi'}
     mp.command_native({'loadfile', target.path, 'replace', 0, options})
 end
 local function advance(row, automatic)

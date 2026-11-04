@@ -26,6 +26,10 @@ TITLE="${*:2}"
 # dies with HTTP 403.
 YTDL="$HOME/.local/bin/yt-dlp"
 [ -x "$YTDL" ] || YTDL=$(command -v yt-dlp 2>/dev/null)
+# The installed zipapp spends ~0.25s decompressing imports on every launch.
+# Cache that exact version unpacked; automatically rebuild after updates.
+export NEWSBOAT_YTDL_SOURCE="$YTDL"
+YTDL="$(dirname "$(readlink -f "$0")")/newsboat-yt-dlp.py"
 export PATH="$HOME/.local/bin:$PATH"
 YTDL_OPT="--script-opts=ytdl_hook-ytdl_path=$YTDL"
 
@@ -254,9 +258,9 @@ else
       done
     fi
   ) >/dev/null 2>&1 &
-  # Optimization:
-  # 1. We remove the 0.5s readahead (let it buffer 10-30s for smooth seeking).
-  # 2. We use --ytdl-raw-options to favor fast-starting streams.
+  # Start YouTube decoding with the same working VA-API backend as local
+  # videos. hwdec=auto probes unavailable GPU drivers first (~2s measured).
+  # Keep normal extraction and full quality; unsupported codecs fall back to software.
   [ "${NEWSBOAT_REUSE_PLAYER:-}" = 1 ] && exit 0
   exec mpv "${READY_OPTS[@]}" \
     "$YTDL_OPT" \
@@ -266,7 +270,7 @@ else
     --demuxer-max-bytes=128M \
     --demuxer-readahead-secs=20 \
     --force-window=immediate \
-    --hwdec=auto \
+    --hwdec=vaapi \
     --vo=gpu \
     --gpu-api=opengl \
     "$URL" >/dev/null 2>&1 &
