@@ -3,6 +3,8 @@ import json
 import os
 from pathlib import Path
 import uuid
+import subprocess
+import sys
 from mpv_clip import Player
 
 
@@ -29,6 +31,13 @@ def reuse(url, title='', endpoint='/tmp/mpv-yt-ipc'):
                       local=True, plan=plan(url), request=uuid.uuid4().hex)
         player.command('script-message-to', 'newsboat_playlist_playback', 'open-local', json.dumps(target))
         submitted = True
+        # Reopening in an existing window must restore the same pinned default
+        # as a fresh player, without moving a window the user positioned.
+        pid = player.get('pid')
+        if isinstance(pid, int) and pid > 0:
+            subprocess.Popen([sys.executable, str(Path(__file__).with_name('media_chat_fullscreen.py')),
+                              'pin', str(pid)], stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
+                             stderr=subprocess.DEVNULL, start_new_session=True)
         # Once delivered, never kill the player just because a slow disk takes
         # longer to decode. Its normal error handling owns this request.
         return True

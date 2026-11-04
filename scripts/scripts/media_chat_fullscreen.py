@@ -90,7 +90,7 @@ def reveal_player(pid):
     except (OSError,ValueError,subprocess.SubprocessError):pass
 
 
-def place_player(pid):
+def place_player(pid, align=True):
     deadline = time.monotonic() + 8
     while time.monotonic() < deadline:
         try:
@@ -98,14 +98,14 @@ def place_player(pid):
             player = next((c for c in clients if c.get('pid') == pid and c.get('class') == 'mpv'), None)
             if player:
                 player = regular_workspace(player, read())
-                if not player.get('fullscreen'):
+                if align and not player.get('fullscreen'):
                     from pip_geometry import settings, align_default
                     monitor = next((m for m in json.loads(hypr('-j','monitors')) if m['id']==player['monitor']),None)
                     if monitor:
                         at = align_default(player,monitor,*settings())
                         if at != player['at']:
                             hypr('dispatch','movewindowpixel',f"exact {at[0]} {at[1]},address:{player['address']}")
-                # Pin only at startup: later manual unpinning stays respected.
+                # Pin on explicit opens; later manual unpinning stays respected.
                 # Fullscreen/theater uses its existing workspace handling.
                 if not player.get('fullscreen') and not player.get('pinned'):
                     if not player.get('floating'):
@@ -475,5 +475,7 @@ if __name__ == '__main__':
         prepare_transition(*sys.argv[2:])
     elif sys.argv[1] == 'place':
         place_player(int(sys.argv[2]))
+    elif sys.argv[1] == 'pin':
+        place_player(int(sys.argv[2]), align=False)
     elif sys.argv[1] == 'resume':
         resume_transition(sys.argv[2])

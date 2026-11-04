@@ -1,0 +1,104 @@
+--- a/include/listmovementcontrol.h
++++ b/include/listmovementcontrol.h
+@@ -176,8 +176,21 @@
+ 
+     std::uint32_t get_scroll_offset() const { return current_scroll_offset; }
+ 
++    // Refreshes can insert rows above the selection. Preserve its screen row
++    // until the user navigates again, including subsequent redraws.
++    void restore_viewport(std::uint32_t pos, std::uint32_t screen_row)
++    {
++        current_position = pos;
++        const auto height = Backend::get_height();
++        screen_row = height ? std::min(screen_row, height - 1) : 0;
++        current_scroll_offset = std::min(pos > screen_row ? pos - screen_row : 0, max_offset());
++        preserve_viewport = true;
++        Backend::update_position(current_position, current_scroll_offset);
++    }
++
+ 	void set_position(std::uint32_t pos)
+ 	{
++        preserve_viewport = false;
+ 		// TODO: Check if in valid range?
+ 		current_position = pos;
+ 		current_scroll_offset = std::min(get_new_scroll_offset(pos), max_offset());
+@@ -196,7 +209,11 @@
+ 			}
+ 		} else {
+ 			// Make sure position and scroll_offset are both correct after list changes/resizes
+-			set_position(current_position);
++            if (preserve_viewport) {
++                restore_viewport(current_position, current_position - current_scroll_offset);
++            } else {
++                set_position(current_position);
++            }
+ 		}
+ 	}
+ 
+@@ -274,6 +291,7 @@
+ private:
+ 	std::uint32_t num_context_lines {};
+ 
++    bool preserve_viewport = false;
+ 	std::uint32_t current_position {};
+ 	std::uint32_t current_scroll_offset {};
+ };
+--- a/include/itemlistformaction.h
++++ b/include/itemlistformaction.h
+@@ -170,6 +170,7 @@
+ 	std::mutex redraw_mtx;
+ 
+ 	std::optional<std::string> restore_selection_guid;
++    std::optional<std::pair<std::string, unsigned int>> refresh_anchor;
+ 
+ 	RegexManager& rxman;
+ 
+--- a/src/itemlistformaction.cpp
++++ b/src/itemlistformaction.cpp
+@@ -1612,7 +1612,21 @@
+ 			new_i++;
+ 		}
+ 	}
+-	list.set_position(new_pos);
++    if (feed->rssurl().find("query:📬 New:") == 0 && pos < visible_items.size()) {
++        const auto guid = visible_items[pos].first->guid();
++        for (unsigned int i = 0; i < new_visible_items.size(); ++i) {
++            if (new_visible_items[i].first->guid() == guid) {
++                if (i != pos && !refresh_anchor) {
++                    refresh_anchor = std::make_pair(guid, pos - list.get_scroll_offset());
++                }
++                new_pos = i;
++                break;
++            }
++        }
++    }
++	if (new_pos != pos || feed->rssurl().find("query:📬 New:") != 0) {
++        list.set_position(new_pos);
++    }
+ 
+ 	visible_items = new_visible_items;
+ }
+@@ -1922,6 +1936,15 @@
+ 		feed->rssurl());
+ 
+ 	restore_selection();
++    if (refresh_anchor) {
++        for (unsigned int i = 0; i < visible_items.size(); ++i) {
++            if (visible_items[i].first->guid() == refresh_anchor->first) {
++                list.restore_viewport(i, refresh_anchor->second);
++                break;
++            }
++        }
++        refresh_anchor.reset();
++    }
+ }
+ 
+ std::string ItemListFormAction::item_badges(const ItemPtrPosPair& item) const
+@@ -2105,6 +2128,7 @@
+ 
+ void ItemListFormAction::init()
+ {
++    refresh_anchor.reset();
+ 	recalculate_widget_dimensions();
+ 	list.set_position(0);
+ 	set_status("");

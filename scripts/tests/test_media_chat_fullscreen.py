@@ -24,12 +24,21 @@ class FullscreenChatTests(unittest.TestCase):
     def test_new_stream_is_pinned_once_unless_fullscreen_or_already_pinned(self):
         for pinned, fullscreen, expected in [(False, 0, True), (True, 0, False), (False, 2, False)]:
             player = dict(self.player, pinned=pinned, fullscreen=fullscreen, floating=True)
-            with patch.object(layout, 'hypr', return_value=json.dumps([player])) as hypr, \
+            with patch.object(layout, 'hypr', side_effect=lambda *args: json.dumps([player]) if args == ('-j', 'clients') else '[]') as hypr, \
                     patch.object(layout, 'regular_workspace', return_value=player), \
                     patch.object(layout, 'read', return_value=None):
                 layout.place_player(player['pid'])
                 calls = [c.args for c in hypr.call_args_list if c.args[:2] == ('dispatch', 'pin')]
                 self.assertEqual(calls, [('dispatch', 'pin', 'address:p')] if expected else [])
+
+    def test_reopened_video_is_pinned_without_repositioning(self):
+        player = dict(self.player, pinned=False, fullscreen=0, floating=True)
+        with patch.object(layout, 'hypr', return_value=json.dumps([player])) as hypr, \
+                patch.object(layout, 'regular_workspace', return_value=player), \
+                patch.object(layout, 'read', return_value=None):
+            layout.place_player(player['pid'], align=False)
+        self.assertEqual([c.args for c in hypr.call_args_list],
+                         [('-j', 'clients'), ('dispatch', 'pin', 'address:p')])
 
     def test_cross_platform_handoff_keeps_canvas_and_original_settings(self):
         for service in ('Kick', 'YouTube', 'Rumble', 'Twitch'):

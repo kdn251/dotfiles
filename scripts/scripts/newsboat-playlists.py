@@ -17,6 +17,7 @@ import sys
 import tempfile
 import xml.etree.ElementTree as ET
 import newsboat_youtube_playlists as library
+import newsboat_playlist_changes as changes
 from newsboat_media import atomic_write
 from newsboat_loading import Renderer, nested_view_environment
 
@@ -86,13 +87,14 @@ def loading(kind, url, force=False):
 def prepare_view(directory, data):
     directory=Path(directory);is_playlist=data['kind']=='playlist'
     rss=ET.Element('rss',version='2.0');channel=ET.SubElement(rss,'channel')
-    title=('Playlist · ' if is_playlist else 'Playlists · ')+data['name']
+    title=('Playlist · ' if is_playlist else 'Playlists · ')+data['name']+changes.suffix(data.get('new_urls', []))
     for key,value in [('title',title),('link','https://www.youtube.com'),('description','YouTube playlists')]:
         ET.SubElement(channel,key).text=value
     for index,row in enumerate(data['rows'],1):
         item=ET.SubElement(channel,'item')
         # GUID order preserves YouTube's sequence without inventing publication dates.
         display_title = f"Episode {index} of {len(data['rows'])} · {row['title']}" if is_playlist else row['title']
+        if row['url'] in data.get('new_urls', []):display_title='NEW · '+display_title
         values={'title':display_title,'link':row['url'],'guid':f'{index:09d}',
                 'author':(' '+row.get('source','')) if is_playlist else '',
                 'description':row['title']}
@@ -138,6 +140,7 @@ def prepare_view(directory, data):
     else:
         lines.append('macro d set browser '+json.dumps(command('download-playlist'))+' ; open-in-browser-noninteractively -- "Download this whole playlist to Playthroughs"')
         lines.append('macro D set browser '+json.dumps(str(SCRIPT.with_name('delete-downloaded.sh'))+' %u')+' ; open-in-browser-noninteractively -- "Delete this playlist’s downloaded videos"')
+    if data.get('new_urls'):lines.append('highlight article "NEW ·" default default bold')
     config=directory/'config';config.write_text('\n'.join(lines)+'\n')
     binary=Path.home()/'.local/lib/newsboat-paged/newsboat'
     return [str(binary) if binary.exists() else 'newsboat','-q','-C',str(config),'-u',str(directory/'urls'),'-c',str(directory/'cache.db')],config
@@ -147,8 +150,10 @@ def show(kind, url):
     if url=='newsboat-playlists://empty':return 0
     # Reopening a creator or playlist is an explicit request for its current
     # catalog. extract() still falls back to saved metadata when offline.
+    before=changes.previous(url) if kind=='playlist' else None
     data=loading(kind,url,force=True)
     if data is None:return 0
+    if kind=='playlist':data['new_urls']=changes.additions(data['rows'],before)
     with tempfile.TemporaryDirectory(prefix='newsboat-playlists-') as directory:
         cmd,config=prepare_view(directory,data)
         env=nested_view_environment(directory)
@@ -170,10 +175,12 @@ def show(kind, url):
                     # for episode titles alongside the image pane.
                     out.write('articlelist-format "%4i  %-9p %11J %t"\n')
                     channel = data.get('channel') or next((r.get('source') for r in data['rows'] if r.get('source')), '')
-                    title = ' Playlist · '+data['name']+(' — '+channel if channel else '')
+                    title = ' Playlist · '+data['name']+(' — '+channel if channel else '')+changes.suffix(data.get('new_urls', []))
                     out.write('articlelist-title-format '+json.dumps(title.replace('%','%%'),ensure_ascii=False)+'\n')
         from newsboat_thumbnails import run
-        return run(cmd,env)
+        result=run(cmd,env)
+        if kind=='playlist' and result==0:changes.remember(url,data['rows'])
+        return result
 
 
 def background(args):

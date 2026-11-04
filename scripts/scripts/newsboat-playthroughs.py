@@ -9,6 +9,7 @@ import sys
 import tempfile
 import newsboat_media as media
 import newsboat_playthroughs as library
+import newsboat_playlist_changes as changes
 from newsboat_loading import nested_view_environment
 
 SCRIPTS=Path(__file__).resolve().parent
@@ -16,7 +17,7 @@ spec=importlib.util.spec_from_file_location('playlist_ui',SCRIPTS/'newsboat-play
 ui=importlib.util.module_from_spec(spec);spec.loader.exec_module(ui)
 
 
-def prepare_view(directory, ident=None):
+def prepare_view(directory, ident=None, before=None):
     groups=library.groups()
     if ident:
         group=next((g for g in groups if g['id']==ident),None)
@@ -24,8 +25,8 @@ def prepare_view(directory, ident=None):
             group=next((g for g in library.read_groups() if g['id']==ident),None)
             if group:group=dict(group,rows=[])
         if group is None:raise ValueError('This playthrough is no longer available')
-        data=dict(kind='playlist',name=group['name'],rows=group['rows'])
-        title='🎮 '+group['name']+' — '+group['channel']
+        data=dict(kind='playlist',name=group['name'],rows=group['rows'],new_urls=changes.additions(group['rows'],before))
+        title='🎮 '+group['name']+' — '+group['channel']+changes.suffix(data['new_urls'])
     else:
         group=None
         data=dict(kind='show',name=library.TITLE,rows=[dict(
@@ -64,6 +65,8 @@ def prepare_view(directory, ident=None):
 
 
 def show(ident=None):
+    saved=next((g for g in library.read_groups() if g['id']==ident),None) if ident else None
+    before=changes.previous(saved['url'],saved['rows']) if saved else None
     if ident and os.environ.get('NEWSBOAT_OFFLINE') != '1':
         group=next((g for g in library.read_groups() if g['id']==ident),None)
         if group is not None:
@@ -74,7 +77,7 @@ def show(ident=None):
             if fresh is None:return 0  # User cancelled the loading screen.
             library.record_rows(fresh,selected=[])
     with tempfile.TemporaryDirectory(prefix='newsboat-playthroughs-') as directory:
-        command,config,group=prepare_view(directory,ident)
+        command,config,group=prepare_view(directory,ident,before)
         env=nested_view_environment(directory)
         env.pop('NEWSBOAT_THUMBNAILS',None)
         for key in ('NEWSBOAT_LIVE_QUERIES','NEWSBOAT_NESTED_VIEWS','NEWSBOAT_STARRED_VIEW','NEWSBOAT_STARRED_REMOVALS','NEWSBOAT_VODS_VIEW_DIR','NEWSBOAT_PLAYLIST_CONTEXT'):
@@ -92,7 +95,9 @@ def show(ident=None):
         subprocess.run(command+['-x','reload'],env=env,capture_output=True,check=True,timeout=15)
         with config.open('a') as out:out.write('run-on-startup open\n')
         from newsboat_thumbnails import run
-        return run(command,env)
+        result=run(command,env)
+        if group and result==0:changes.remember(group['url'],group['rows'])
+        return result
 
 
 if __name__=='__main__':
