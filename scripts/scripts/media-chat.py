@@ -27,7 +27,17 @@ def video_url(clients, focused):
     for client in players:
         try:
             env=dict(part.split(b'=',1) for part in Path(f"/proc/{int(client['pid'])}/environ").read_bytes().split(b'\0') if b'=' in part)
-            url=env.get(b'NEWSBOAT_MEDIA_URL',b'').decode()
+            try:
+                endpoint=fullscreen_chat.socket_for(client)
+                if not endpoint:
+                    args=Path(f"/proc/{int(client['pid'])}/cmdline").read_bytes().split(b'\0')
+                    endpoint=next((arg.decode().split('=',1)[1] for arg in args
+                                   if arg.startswith(b'--input-ipc-server=')),None)
+                url=fullscreen_chat.ipc({'socket':endpoint,'player':client},
+                                        'get_property','user-data/newsboat/url') if endpoint else None
+            except (OSError,ValueError):
+                url=None
+            url=url or env.get(b'NEWSBOAT_MEDIA_URL',b'').decode()
             key=identity(url)
             if key and key[0]=='youtube':return 'https://www.youtube.com/watch?v='+key[1]
             if client.get('address')==focused:return None
@@ -90,11 +100,20 @@ def twitch_player(clients):
 
 
 def main():
+    preload='--preload' in sys.argv
     clients=json.loads(hypr('-j','clients'))
-    if '--handoff' not in sys.argv and fullscreen_chat.close(clients):return
-    active=json.loads(hypr('-j','activewindow'))
+    if preload:
+        pid=int(sys.argv[sys.argv.index('--preload')+1])
+        target=next((c for c in clients if c.get('pid')==pid and c.get('class')=='mpv'),None)
+        if not target:return
+        clients=[c for c in clients if c.get('class')!='mpv' or c.get('pid')==pid]
+        active=target
+    else:
+        if '--handoff' not in sys.argv and fullscreen_chat.close(clients):return
+        active=json.loads(hypr('-j','activewindow'))
     live=live_target(clients,active.get('address'))
     if live and not live['url']:
+        if preload:return
         subprocess.run(['notify-send','-a','Streams',live['title'],'Chat details are unavailable. Reopen the stream from Mod+Shift+T.'])
         return
     url=live['url'] if live else video_url(clients,active.get('address'))
@@ -102,6 +121,8 @@ def main():
     if not url and active.get('class') in (CLASS,LIVE_CLASS) and not any(c.get('class','').lower()=='mpv' for c in clients):
         hypr('dispatch','togglespecialworkspace',WORKSPACE);return
     if not url:
+        # Twitch's launcher already preloads Chatterino asynchronously.
+        if preload:return
         close_panels(clients,CLASS)
         close_panels(clients,LIVE_CLASS)
         player=twitch_player(clients)
@@ -136,6 +157,7 @@ def main():
     try:previous=json.loads(STATE.read_text()).get('url')
     except (OSError,ValueError):previous=None
     if panels and previous==url:
+        if preload:return
         if switched or fullscreen_chat.begin(clients):show_workspace()
         else:hypr('dispatch','togglespecialworkspace',WORKSPACE)
         return
@@ -143,19 +165,22 @@ def main():
     STATE.write_text(json.dumps({'url':url}));STATE.chmod(0o600)
     command=([sys.executable,str(Path(__file__).with_name('media-live-chat.py')),url,live['title']] if live else
              [sys.executable,str(Path(__file__).with_name('newsboat-youtube-comments.py')),url])
-    subprocess.Popen(command,
+    environment=dict(os.environ)
+    if preload:environment['MEDIA_CHAT_PLAYER_PID']=str(pid)
+    subprocess.Popen(command,env=environment,
                      stdin=subprocess.DEVNULL,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL,start_new_session=True)
     for _ in range(80):
         if any(c.get('class')==panel_class for c in json.loads(hypr('-j','clients'))):
-            show_workspace()
+            if not preload:show_workspace()
             return
         time.sleep(.1)
+    if preload:return
     subprocess.run(['notify-send','-a','Newsboat',live['title'] if live else 'YouTube comments','The chat/comments window could not open.'])
 
 
 if __name__=='__main__':
     with STATE.with_suffix('.lock').open('a') as lock:
-        try:fcntl.flock(lock,fcntl.LOCK_EX | fcntl.LOCK_NB)
+        try:fcntl.flock(lock,fcntl.LOCK_EX | (fcntl.LOCK_NB if '--preload' in sys.argv or '--close-youtube' in sys.argv else 0))
         except BlockingIOError:sys.exit(0)
         if sys.argv[1:]==['--close-youtube']:
             clients=json.loads(hypr('-j','clients'))

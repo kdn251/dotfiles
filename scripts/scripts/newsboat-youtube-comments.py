@@ -54,6 +54,8 @@ def main(url):
     key=identity(url)
     if not key or key[0]!='youtube':raise ValueError('Expected a YouTube video')
     app=QApplication([sys.argv[0]])
+    from media_chat_live import watch_preload_owner
+    watch_preload_owner(app)
     app.setDesktopFileName('newsboat-youtube-comments')
     app.setApplicationName('newsboat-youtube-comments')
     window=QMainWindow();window.setWindowTitle('YouTube comments')

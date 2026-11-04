@@ -27,6 +27,8 @@ def main(url, title):
     from PyQt6.QtWebEngineWidgets import QWebEngineView
     from PyQt6.QtWebEngineCore import QWebEnginePage, QWebEngineProfile, QWebEngineScript
     app=QApplication([sys.argv[0]])
+    from media_chat_live import watch_preload_owner
+    watch_preload_owner(app)
     app.setDesktopFileName('newsboat-live-chat');app.setApplicationName('newsboat-live-chat')
     window=QMainWindow();window.setWindowTitle(title)
     view=QWebEngineView()

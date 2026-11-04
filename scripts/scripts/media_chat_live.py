@@ -46,3 +46,22 @@ def live_target(clients, focused):
             url=f'https://kick.com/popout/{slug}/chat'
         return dict(service=service,title=('YouTube' if service=='youtube' else service.title())+' live chat',url=url if valid_chat_url(url) else None)
     except (OSError,ValueError,KeyError,TypeError):return None
+
+
+def watch_preload_owner(app):
+    """Discard a background-loaded panel when its player exits."""
+    import os
+    pid=os.environ.get('MEDIA_CHAT_PLAYER_PID','')
+    if not pid.isdigit():return
+    from PyQt6.QtCore import QTimer
+    process=Path('/proc')/pid/'stat'
+    try:started=process.read_text().rsplit(')',1)[1].split()[19]
+    except (OSError,IndexError):
+        QTimer.singleShot(0,app.quit)
+        return
+    def check():
+        try:alive=process.read_text().rsplit(')',1)[1].split()[19]==started
+        except (OSError,IndexError):alive=False
+        if not alive:app.quit()
+    timer=QTimer(app);timer.setInterval(1000);timer.timeout.connect(check);timer.start()
+    app._preload_owner_timer=timer

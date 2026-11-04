@@ -61,3 +61,23 @@ class ChatTests(unittest.TestCase):
                     hypr.assert_any_call('dispatch','closewindow','address:'+closed)
                     self.assertFalse(any(c.args[:2]==('dispatch','togglespecialworkspace') for c in hypr.call_args_list))
                     spawn.assert_not_called()
+
+    def test_preload_stays_hidden_and_reuses_loaded_panel(self):
+        import json
+        player={'class':'mpv','pid':123,'address':'player'}
+        panel={'class':chat.CLASS,'address':'comments'}
+        for already_loaded in (False,True):
+            with self.subTest(already_loaded=already_loaded),tempfile.TemporaryDirectory() as d:
+                state=Path(d)/'state';state.write_text(json.dumps({'url':URL}))
+                responses=[json.dumps([player,panel] if already_loaded else [player])]
+                if not already_loaded:responses.append(json.dumps([player,panel]))
+                with patch.object(chat,'STATE',state),patch.object(chat.sys,'argv',['media-chat','--preload','123']),                         patch.object(chat,'video_url',return_value=URL),patch.object(chat,'live_target',return_value=None),                         patch.object(chat,'hypr',side_effect=responses) as hypr,patch.object(chat,'show_workspace') as show,                         patch.object(chat.subprocess,'Popen') as spawn:
+                    chat.main()
+                    show.assert_not_called()
+                    self.assertEqual(spawn.call_count,0 if already_loaded else 1)
+                    self.assertTrue(all(c.args==('-j','clients') for c in hypr.call_args_list))
+
+    def test_reused_player_comments_follow_current_ipc_url(self):
+        new_url='https://www.youtube.com/watch?v=xyz123DEF45'
+        with patch.object(Path,'read_bytes',return_value=b'NEWSBOAT_MEDIA_URL='+URL.encode()+b'\0'),                 patch.object(chat.fullscreen_chat,'socket_for',return_value='/tmp/player'),                 patch.object(chat.fullscreen_chat,'ipc',return_value=new_url):
+            self.assertEqual(chat.video_url([{'class':'mpv','pid':123,'address':'a'}],'a'),new_url)
