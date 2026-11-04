@@ -65,12 +65,14 @@ clock=101
 timers.tick()
 assert(props['force-media-title']=='Second — 2:00:00 | Title')
 assert(props['user-data/stream-uptime']=='2:00:00')
+assert(math.abs(props['user-data/stream-started-at'] - (os.time()-7199)) <= 1)
 props['pause']=true; clock=161; timers.tick()
 assert(props['user-data/stream-uptime']=='2:01:00')
 props['user-data/twitch-channel']='third'; observe()
 timers.tick()
 assert(props['force-media-title']=='Second — 2:01:00 | Title')
 assert(props['user-data/stream-uptime']=='')
+assert(props['user-data/stream-started-at']==0)
 events.shutdown()
 """
         with tempfile.TemporaryDirectory() as tmp:

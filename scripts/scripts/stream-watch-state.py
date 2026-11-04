@@ -51,7 +51,7 @@ def main():
             choice=selected['name']+(' ('+selected['service']+')' if selected['service']!='Twitch' else '')
             subprocess.Popen([str(SCRIPTS/'twitch-launcher.sh'),choice],stdin=subprocess.DEVNULL,
                              stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL,start_new_session=True)
-            print('Switching to '+selected['name'])
+            print(json.dumps(dict(selected,message='Switching to '+selected['name'])))
         else:print('No '+('earlier' if int(sys.argv[2])<0 else 'later')+' stream in history')
 
 

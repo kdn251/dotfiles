@@ -9,6 +9,7 @@ import sys
 from pathlib import Path
 from urllib.parse import urljoin
 from urllib.request import Request, urlopen
+from stream_quality_switch import switch
 
 
 def ipc(path, command):
@@ -50,11 +51,9 @@ def next_quality(current, available):
 def cycle(service, path, context_path):
     context = json.loads(context_path.read_text())
     url = context['url']
-    options = {}
     if service == 'youtube':
         quality = next_quality(context.get('quality', 'best'), ['best', '720p', '480p', '360p'])
         height = {'best': 1080, '720p': 720, '480p': 480, '360p': 360}[quality]
-        options['ytdl-format'] = f'bestvideo[height<={height}]+bestaudio/best[height<={height}]'
         target = url
     else:
         with urlopen(Request(url, headers={'User-Agent': 'Mozilla/5.0', 'Referer': f'https://{service}.com/'}), timeout=15) as response:
@@ -65,10 +64,15 @@ def cycle(service, path, context_path):
         labels = ['best'] + [f'{h}p' for h in heights[1:]]
         quality = next_quality(context.get('quality', 'best'), labels)
         target = choices[heights[labels.index(quality)]]
-    # Stay at the live edge; never reuse an absolute DVR timestamp as a seek.
-    paused = ipc(path, ['get_property', 'pause'])
-    options['pause'] = 'yes' if paused else 'no'
-    ipc(path, ['loadfile', target, 'replace', 0, options])
+    if service == 'youtube':
+        # video-add needs the actual media URL, not the YouTube watch page.
+        downloader=Path.home()/'.local/bin/yt-dlp'
+        result=subprocess.run([str(downloader),'--ignore-config','--no-playlist',
+            '--socket-timeout','10','--retries','1','--get-url',
+            '-f',f'bestvideo[height<={height}]/best[height<={height}]',url],
+            capture_output=True,text=True,timeout=45,check=True)
+        target=result.stdout.strip().splitlines()[0]
+    switch(path,target,quality)
     context['quality'] = quality
     context_path.write_text(json.dumps(context))
     ipc(path, ['show-text', f'Quality: {quality}', 2500])

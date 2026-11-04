@@ -1,3 +1,5 @@
+-- Shared broadcast timestamps keep external quality video aligned with audio.
+mp.set_property_native('rebase-start-time', false)
 -- A reusable Twitch player updates chat identity and first-frame readiness
 -- together when switching streams, rather than relying on startup environment.
 local path = os.getenv('TWITCH_FIRST_FRAME')

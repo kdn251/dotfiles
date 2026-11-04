@@ -50,10 +50,12 @@ refresh = function()
         clock_title = nil
         if hours then
             clock_title, clock_seconds, clock_at = title, tonumber(hours)*3600 + tonumber(minutes)*60 + tonumber(seconds), mp.get_time()
+            mp.set_property_native('user-data/stream-started-at', os.time() - clock_seconds)
             clock_channel, clock_service = channel, requested_service
             tick_uptime()
         else
             mp.set_property_native('user-data/stream-uptime', '')
+            mp.set_property_native('user-data/stream-started-at', 0)
         end
         if title ~= '' and title ~= mp.get_property('force-media-title', '') then
             mp.set_property('force-media-title', title)
@@ -63,6 +65,7 @@ end
 local function identity_changed()
     clock_title = nil
     mp.set_property_native('user-data/stream-uptime', '')
+    mp.set_property_native('user-data/stream-started-at', 0)
     generation = generation + 1
     local version = generation
     mp.add_timeout(0.2, function()

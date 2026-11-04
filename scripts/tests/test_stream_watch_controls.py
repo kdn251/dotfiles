@@ -31,6 +31,7 @@ class WatchTests(unittest.TestCase):
 
     def test_live_stream_navigation_bindings(self):
         harness=r'''
+package.preload['mp.utils']=function() return {parse_json=function() return nil end} end
 local props={['user-data/stream-ready-session']='s1',['user-data/stream-name']='one',['keep-open']='no'}
 local keys, observers, timers, requests, commands={},{},{},{},{}
 mp={

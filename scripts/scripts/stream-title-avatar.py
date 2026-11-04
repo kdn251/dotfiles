@@ -13,6 +13,18 @@ from urllib.request import Request, urlopen
 
 
 def prepare(service, name):
+    if service == 'Newsboat':
+        from newsboat_creator_images import fetch
+        data = fetch(name)
+        if not data: return ''
+        source = Path.home()/'.cache/mpv-newsboat-portraits'/(hashlib.sha256(data).hexdigest()+'.png')
+        if not source.exists():
+            source.parent.mkdir(parents=True, exist_ok=True)
+            with tempfile.NamedTemporaryFile(dir=source.parent, delete=False) as output:
+                output.write(data)
+                temporary = Path(output.name)
+            temporary.replace(source)
+        return render(source)
     if service not in ('Twitch', 'Kick', 'YouTube', 'Rumble') or not name:
         return ''
     if service == 'Twitch':
@@ -40,6 +52,10 @@ def prepare(service, name):
                     data = selected
             except (OSError, ValueError): pass
         source = Path(data.get('icon') or '/nonexistent')
+    return render(source)
+
+
+def render(source):
     if not source.is_file(): return ''
     fingerprint = f'{source}:{source.stat().st_mtime_ns}:rounded-v1'
     target = Path.home()/'.cache/mpv-stream-portraits'/(hashlib.sha256(fingerprint.encode()).hexdigest()+'.bgra')

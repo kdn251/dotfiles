@@ -1,4 +1,5 @@
 -- Loaded only by the managed live-stream player, never Newsboat video players.
+local utils = require 'mp.utils'
 local helper = os.getenv('HOME') .. '/scripts/stream-watch-state.py'
 local moving = false
 local function identity()
@@ -24,7 +25,11 @@ local function navigate(direction)
     if mp.get_property_native('user-data/stream-ready-session','')=='' then return end
     moving=true
     run({'step',tostring(direction)},function(message)
-        if message~='' then mp.osd_message(message,2) end
+        local destination=utils.parse_json(message)
+        if destination and destination.name then
+            mp.commandv('script-message','stream-switch-card',destination.service,destination.name,
+                        direction<0 and 'Previous stream' or 'Next stream')
+        elseif message~='' then mp.osd_message(message,2) end
         mp.add_timeout(2,function() moving=false end)
     end)
 end

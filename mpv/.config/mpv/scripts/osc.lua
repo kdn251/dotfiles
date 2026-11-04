@@ -729,11 +729,14 @@ function get_chapter(possec)
 end
 
 -- Stream portraits share the title's visibility and geometry, not video space.
-local portrait = {generation=0, path=nil, shown=false, key=nil}
+local portrait = {generation=0, path=nil, shown=false, keys={}}
 local function hide_portrait()
-    if portrait.shown then mp.commandv('overlay-remove', 43) end
+    if portrait.shown then
+        mp.commandv('overlay-remove', 43)
+        mp.commandv('overlay-remove', 45)
+    end
     portrait.shown = false
-    portrait.key = nil
+    portrait.keys = {}
 end
 local function refresh_portrait()
     portrait.generation = portrait.generation + 1
@@ -742,7 +745,12 @@ local function refresh_portrait()
     hide_portrait()
     local service = mp.get_property_native('user-data/stream-service', '')
     local name = mp.get_property_native('user-data/stream-name', '')
-    if service == '' or name == '' then return end
+    if service == '' or name == '' then
+        name = mp.get_property_native('user-data/newsboat/url', '')
+        if name == '' then name = os.getenv('NEWSBOAT_MEDIA_URL') or '' end
+        service = 'Newsboat'
+    end
+    if name == '' then return end
     mp.command_native_async({name='subprocess', playback_only=false,
         args={'python3', os.getenv('HOME') .. '/scripts/stream-title-avatar.py', service, name},
         capture_stdout=true, capture_stderr=true}, function(ok, result)
@@ -752,12 +760,14 @@ local function refresh_portrait()
         request_tick()
     end)
 end
+mp.observe_property('user-data/newsboat/url', 'native', refresh_portrait)
 mp.observe_property('user-data/stream-name', 'native', refresh_portrait)
 mp.observe_property('user-data/stream-service', 'native', refresh_portrait)
 mp.register_event('shutdown', hide_portrait)
 
 local function portrait_title(element, ass)
-    if element.name ~= 'title' or not portrait.path then return element end
+    if (element.name ~= 'title' and element.name ~= 'wctitle') or not portrait.path then return element end
+    local overlay_id = element.name == 'wctitle' and 45 or 43
     local geo = element.layout.geometry
     local size = math.max(18, geo.h * 1.25)
     if geo.w < size + 60 then hide_portrait(); return element end
@@ -769,9 +779,9 @@ local function portrait_title(element, ass)
     local x, y = math.floor(left*sx), math.floor((top+(geo.h-size)/2)*sy)
     local w, h = math.max(1, math.floor(size*sx)), math.max(1, math.floor(size*sy))
     local key = portrait.path .. ':' .. x .. ':' .. y .. ':' .. w .. ':' .. h
-    if portrait.key ~= key then
-        mp.command_native({'overlay-add', 43, x, y, portrait.path, 0, 'bgra', 96, 96, 384, w, h})
-        portrait.key = key
+    if portrait.keys[overlay_id] ~= key then
+        mp.command_native({'overlay-add', overlay_id, x, y, portrait.path, 0, 'bgra', 96, 96, 384, w, h})
+        portrait.keys[overlay_id] = key
         portrait.shown = true
     end
     local copy, layout = {}, {}
@@ -2350,6 +2360,10 @@ function osc_init()
         -- Live broadcasts show broadcaster uptime, not this player's position.
         -- Unknown start times must not masquerade as time live.
         if mp.get_property_native("user-data/stream-name", "") ~= "" then
+            local started = mp.get_property_native("user-data/stream-started-at", 0)
+            if state.stream_start_time and started > 0 then
+                return os.date("%I:%M %p", started):gsub("^0", "")
+            end
             local uptime = mp.get_property_native("user-data/stream-uptime", "")
             return uptime ~= "" and uptime or "LIVE"
         end
@@ -2360,7 +2374,11 @@ function osc_init()
         end
     end
     ne.eventresponder["mbtn_left_up"] = function ()
-        state.tc_ms = not state.tc_ms
+        if mp.get_property_native("user-data/stream-name", "") ~= "" then
+            state.stream_start_time = not state.stream_start_time
+        else
+            state.tc_ms = not state.tc_ms
+        end
         request_init()
     end
 

@@ -81,14 +81,14 @@ if [[ "$MODE" == "twitch" ]]; then
     exit 1
   fi
 
-  # Prefer in-place URL swap via mpv IPC — same path twitch-launcher.sh
-  # uses for its low→best upgrade. No flicker, keeps the same window.
+  # Prepare and select only replacement video; retain the current live audio.
   if [ -S "$MPV_SOCKET" ]; then
-    IPC_CMD=$(jq -cn --arg url "$NEW_URL" '{"command": ["loadfile", $url, "replace"]}')
-    if echo "$IPC_CMD" | socat - "$MPV_SOCKET" >/dev/null 2>&1; then
+    if ERROR=$(python3 "$HOME/scripts/stream_quality_switch.py" "$MPV_SOCKET" "$NEW_URL" "$NEXT" 2>&1); then
       echo "$NEXT" >"$QUALITY_FILE"
       exit 0
     fi
+    notify-send -a Quality -t 5000 "Quality change failed" "$ERROR"
+    exit 1
   fi
 
   # Fallback: IPC unavailable. Kill the previous twitch mpv specifically

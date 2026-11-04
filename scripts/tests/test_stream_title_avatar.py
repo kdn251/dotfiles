@@ -50,3 +50,14 @@ class AvatarTests(unittest.TestCase):
                 (cache/f'{service.lower()}-live-player.json').write_text(json.dumps({'name':'NotSaved','icon':str(image)}))
                 self.assertTrue(Path(avatar.prepare(service, 'NotSaved')).is_file())
                 self.assertEqual(avatar.prepare(service, 'Different'), '')
+
+    def test_newsboat_video_uses_existing_creator_image_and_same_portrait_style(self):
+        with tempfile.TemporaryDirectory() as tmp, patch.object(avatar.Path,'home',return_value=Path(tmp)):
+            image=io.BytesIO();Image.new('RGB',(70,70),'red').save(image,format='PNG')
+            with patch('newsboat_creator_images.fetch',return_value=image.getvalue()) as fetch:
+                result=Path(avatar.prepare('Newsboat','https://www.youtube.com/watch?v=example1234'))
+                fetch.assert_called_once_with('https://www.youtube.com/watch?v=example1234')
+                data=result.read_bytes()
+                self.assertEqual(len(data),96*96*4)
+                self.assertEqual(data[3],0)
+                self.assertEqual(data[(48*96+48)*4+3],255)
