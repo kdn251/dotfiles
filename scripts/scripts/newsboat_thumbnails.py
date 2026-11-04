@@ -95,6 +95,9 @@ def video_key(url):
     if key:
         return key[1] if key[0] == 'youtube' else ':'.join(key)
     parsed = urlparse(url)
+    if parsed.scheme == 'newsboat-series':
+        from newsboat_detected_series import series_id
+        if ident := series_id(url):return 'playlist:'+ident
     if parsed.scheme == 'newsboat-playthroughs' and re.fullmatch(r'[A-Za-z0-9_-]+', parsed.netloc):
         return 'playlist:'+parsed.netloc
     if parsed.hostname in {'youtube.com','www.youtube.com','m.youtube.com'} and parsed.path == '/playlist':

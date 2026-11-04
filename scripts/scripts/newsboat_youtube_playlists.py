@@ -29,6 +29,9 @@ def video_url(url):
 
 
 def playlist_url(url):
+    from newsboat_detected_series import series_id
+    if ident := series_id(url):
+        return 'newsboat-series://playlist?list='+ident
     p = urlparse(url)
     value = parse_qs(p.query).get('list', [''])[0]
     if p.hostname not in {'youtube.com', 'www.youtube.com', 'm.youtube.com'} or not re.fullmatch(r'[A-Za-z0-9_-]+', value):
@@ -55,6 +58,10 @@ def remember(row):
 
 
 def extract(url, force=False):
+    from newsboat_detected_series import series_id, metadata
+    if series_id(url):
+        import sys
+        return metadata(sys.modules[__name__],url,force)
     path = LIBRARY/'metadata'/(hashlib.sha256(url.encode()).hexdigest()+'.json')
     cached = None
     try:
@@ -114,6 +121,8 @@ def browse_playlist_url(url):
         if not re.fullmatch(r'[A-Za-z0-9_-]+', ident):
             raise ValueError('Invalid local playlist')
         return 'https://www.youtube.com/playlist?list='+ident
+    if url.startswith('newsboat-series://'):
+        return playlist_url(url)
     parsed = urlparse(url)
     if parsed.path == '/playlist' and parsed.hostname in {'youtube.com', 'www.youtube.com', 'm.youtube.com'}:
         return playlist_url(url)
@@ -185,6 +194,15 @@ def playlists(url, force=False):
                     (LIBRARY/'thumbnails'/('playlist:'+ident+suffix+'.png')).unlink(missing_ok=True)
         rows.append(dict(url=link, title=entry.get('title') or 'Untitled playlist',
                          source=data.get('channel') or '', channel_id=data.get('channel_id')))
+    # Inferred episodes supplement official playlists; a channel may have many
+    # official playlists without grouping this particular series.
+    try:
+        import sys
+        from newsboat_detected_series import detect
+        detected=detect(sys.modules[__name__],url,channel,data,force)
+        if detected:rows.insert(0,detected)
+    except (OSError,ValueError,sqlite3.Error,subprocess.TimeoutExpired):
+        pass  # A failed series search must not hide official playlists.
     return data.get('channel') or data.get('title','Creator'), rows
 
 
