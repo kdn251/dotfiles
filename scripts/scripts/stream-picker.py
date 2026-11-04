@@ -553,7 +553,11 @@ class Picker(Gtk.Application):
             self.save_streamer(None)
             return True
         if key == Gdk.KEY_Escape:
-            self.finish('')
+            if self.entry.get_text():
+                self.entry.set_text('')
+                self.entry.grab_focus()
+            else:
+                self.finish('')
             return True
         if key in (Gdk.KEY_Return, Gdk.KEY_KP_Enter) and modifiers & Gdk.ModifierType.SHIFT_MASK:
             self.finish(self.entry.get_text())
