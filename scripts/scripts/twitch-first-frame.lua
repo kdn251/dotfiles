@@ -73,3 +73,6 @@ mp.register_event('end-file', function(event)
     current_path = target
     mp.commandv('loadfile', target, 'replace')
 end)
+
+-- Stream-only back/forward navigation.
+dofile((os.getenv('HOME') or '') .. '/scripts/stream-watch-controls.lua')

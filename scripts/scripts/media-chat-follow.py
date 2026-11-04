@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Keep live chat beside a floating MPV, inside the monitor's usable edges."""
 import fcntl
+import importlib.util
 import json
 import os
 from pathlib import Path
@@ -10,8 +11,16 @@ import media_chat_fullscreen as fullscreen_chat
 
 CHAT_CLASSES={'com.chatterino.chatterino','newsboat-live-chat','newsboat-youtube-comments'}
 
+# Translate in this resident process instead of starting Python for each IPC.
+_spec=importlib.util.spec_from_file_location('hypr_compat',Path(__file__).with_name('hyprctl-compat.py'))
+_compat=importlib.util.module_from_spec(_spec);_spec.loader.exec_module(_compat)
+
 def hypr(*args):
-    return subprocess.check_output(['hyprctl',*args],text=True,timeout=2)
+    if args[0]=='--batch':args=('eval',_compat.translate_batch(args[1]))
+    result=subprocess.check_output(['/usr/bin/hyprctl',*args],text=True,timeout=2)
+    if '-j' in args:
+        return json.dumps(_compat.legacy_json(json.loads(result)))
+    return result
 
 def placement(player, chat, monitor, gaps, border):
     width,height=monitor['width'],monitor['height']
@@ -60,7 +69,8 @@ def run():
             delay=.75
             try:
                 clients=json.loads(hypr('-j','clients'))
-                if fullscreen_chat.maintain(clients):
+                theater_needed=fullscreen_chat.STATE.exists() or any(c.get('class')=='mpv' and c.get('fullscreen') for c in clients)
+                if theater_needed and fullscreen_chat.maintain(clients):
                     time.sleep(.12)
                     continue
                 chats=[c for c in clients if c.get('class') in CHAT_CLASSES and c.get('floating')
@@ -68,7 +78,7 @@ def run():
                 players=[c for c in clients if c.get('class','').lower()=='mpv' and c.get('floating') and not c.get('fullscreen')]
                 players.sort(key=lambda c:c.get('focusHistoryID',999))
                 if chats and players:
-                    delay=.12
+                    delay=.02
                     if time.monotonic()>=cached_until:
                         monitors=json.loads(hypr('-j','monitors'))
                         option=json.loads(hypr('-j','getoption','general:gaps_out'))
