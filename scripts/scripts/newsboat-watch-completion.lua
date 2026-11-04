@@ -57,24 +57,65 @@ mp.register_event('shutdown', save_progress)
 mp.observe_property('eof-reached', 'bool', function(_, eof)
     if eof and loaded then save_progress(true) end
 end)
--- Resume before decoder setup, rather than loading and then seeking again.
-mp.add_hook('on_preloaded', 50, function()
-    local next_url = mp.get_property_native('user-data/newsboat/url', '')
-    if next_url ~= '' and next_url ~= url then
+-- Fetch resume state while MPV resolves/opens the media, rather than starting
+-- another Python process after the network work has finished.
+local resume_job, resume_request, resume_result, resume_waiter
+local resume_generation = 0
+local function current_url()
+    local value = mp.get_property_native('user-data/newsboat/url', '')
+    return value ~= '' and value or url
+end
+local function prefetch_resume()
+    local next_url = current_url()
+    if (restored and next_url == url) or resume_request == next_url then return end
+    if resume_job then mp.abort_async_command(resume_job) end
+    resume_request, resume_result = next_url, nil
+    resume_generation = resume_generation + 1
+    local generation = resume_generation
+    resume_job = mp.command_native_async({name='subprocess', playback_only=false,
+        capture_stdout=true, capture_stderr=true, args={'python3', helper, 'resume-spec', next_url}},
+        function(ok, result)
+            if generation ~= resume_generation then return end
+            resume_job = nil
+            resume_result = {ok=ok and result and result.status == 0,
+                spec=result and (result.stdout or ''):gsub('%s+$', '') or ''}
+            if resume_waiter then local finish=resume_waiter; resume_waiter=nil; finish() end
+        end)
+end
+mp.add_hook('on_load', 5, prefetch_resume)
+mp.add_hook('on_preloaded', 50, function(hook)
+    local next_url = current_url()
+    if next_url ~= url then
         url = next_url; restored = false
         position, duration, last_position, last_duration = nil, nil, nil, nil
     end
-    -- Only the first load resumes from storage. A streaming-to-local handoff
-    -- supplies its own current position and must not jump backwards.
-    if not restored then
+    -- A streaming-to-local handoff supplies its own position.
+    if restored then return end
+    prefetch_resume()
+    local function apply_resume()
         restored = true
         local total = mp.get_property_number('duration', 0)
-        local result = mp.command_native({name='subprocess', playback_only=false,
-            capture_stdout=true, args={'python3', helper, 'resume', url, tostring(total)}})
-        local resume = result and result.status == 0 and tonumber(result.stdout) or -1
+        local resume
+        if resume_result and resume_result.ok then
+            local spec = resume_result.spec
+            local percent = spec:match('^([%d.]+)%%$')
+            resume = percent and tonumber(percent) * total / 100 or tonumber(spec)
+        else
+            -- Compatibility/error fallback; normal startup uses the prefetched result.
+            local result = mp.command_native({name='subprocess', playback_only=false,
+                capture_stdout=true, args={'python3', helper, 'resume', url, tostring(total)}})
+            resume = result and result.status == 0 and tonumber(result.stdout)
+        end
         if resume and resume >= 0 then
+            if total > 0 then resume = math.min(resume, math.max(0, total - .5)) end
             mp.set_property('file-local-options/start', tostring(resume))
         end
+    end
+    if resume_job then
+        hook:defer()
+        resume_waiter = function() apply_resume(); hook:cont() end
+    else
+        apply_resume()
     end
 end)
 mp.register_event('file-loaded', function()

@@ -52,7 +52,7 @@ def chapters(url):
     job=read(STATE/(hashlib.sha256(url.encode()).hexdigest()[:24]+'.json'))
     raw=job.get('chapters')
     if raw is None:
-        executable=Path.home()/'.local/bin/yt-dlp'
+        executable=Path(__file__).with_name('newsboat-yt-dlp.py')
         result=subprocess.run([str(executable) if executable.exists() else 'yt-dlp','--ignore-config',
             '--no-playlist','--skip-download','--socket-timeout','8','--retries','0','--extractor-retries','0',
             '--print','%(chapters)j','--',url],capture_output=True,text=True,timeout=35,check=True)

@@ -60,25 +60,44 @@ def record(url, position, duration, sampled_at=None):
     return True
 
 
-def resume_position(url, duration=0, missing=0):
-    """Resolve the last position by video identity, across stream/local paths."""
+def resume_record(url):
     key = media.identity(url)
     if not key:
-        return missing
+        return None
     path = STATE/'watch-progress.db'
     try:
         with closing(sqlite3.connect(path.as_uri()+'?mode=ro',uri=True,timeout=.2)) as db:
             db.row_factory = sqlite3.Row
             row = db.execute('SELECT * FROM progress WHERE identity=?',(':'.join(key),)).fetchone()
-        if row is None:
-            return missing
-        if row['fraction'] >= .999:
-            return 0
-        position = row['position'] if 'position' in row.keys() else None
-        if position is None:
-            position = row['fraction'] * duration
-        if not math.isfinite(position) or position < 0:
-            return 0
-        return min(position,max(0,duration-.5)) if duration>0 else position
+        return dict(row) if row is not None else None
     except sqlite3.Error:
+        return None
+
+
+def resume_spec(url):
+    """Read resume state before media duration is known (while URLs resolve)."""
+    row = resume_record(url)
+    if row is None:
+        return ''
+    fraction = row.get('fraction', 0)
+    if not math.isfinite(fraction) or fraction < 0 or fraction >= .999:
+        return '0'
+    position = row.get('position')
+    if position is None:
+        return f'{fraction * 100}%'
+    return str(position if math.isfinite(position) and position >= 0 else 0)
+
+
+def resume_position(url, duration=0, missing=0):
+    """Resolve the last position by video identity, across stream/local paths."""
+    row = resume_record(url)
+    if row is None:
         return missing
+    if row['fraction'] >= .999:
+        return 0
+    position = row.get('position')
+    if position is None:
+        position = row['fraction'] * duration
+    if not math.isfinite(position) or position < 0:
+        return 0
+    return min(position,max(0,duration-.5)) if duration>0 else position

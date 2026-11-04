@@ -60,6 +60,8 @@ local original_keep_open = mp.get_property('keep-open', 'no')
 local thumbnail_id = 61
 local thumbnail, thumbnail_job, thumbnail_requested
 local thumbnail_visible = false
+local media_playing = mp.get_property_number('time-pos') ~= nil
+mp.register_event('start-file', function() media_playing = false end)
 local function hide_thumbnail()
     if thumbnail_visible then mp.commandv('overlay-remove', thumbnail_id) end
     thumbnail_visible = false
@@ -77,7 +79,7 @@ local function show_thumbnail()
     thumbnail_visible = true
 end
 local function prepare_thumbnail()
-    if thumbnail_requested or not autoplay or not plan.next then return end
+    if not media_playing or thumbnail_requested or not autoplay or not plan.next then return end
     thumbnail_requested = true
     thumbnail_job = mp.command_native_async({name='subprocess', playback_only=false, capture_stdout=true,
         args={'python3', directory .. 'newsboat-up-next-thumbnail.py', plan.next.url, plan.next.title or '', plan.next.source or ''}},
@@ -280,6 +282,8 @@ local function refresh_queue()
 end
 queue_watcher = mp.add_periodic_timer(.5, refresh_queue)
 local function playback_started()
+    media_playing = true
+    prepare_thumbnail()
     if reported_playing then return end
     reported_playing = true
     if external_request then

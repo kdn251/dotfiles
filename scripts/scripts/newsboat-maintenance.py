@@ -40,6 +40,10 @@ def main():
                                sampled_at=snapshot.stat().st_mtime_ns/1e9) else 1
         finally:
             snapshot.unlink(missing_ok=True)
+    if sys.argv[1:2] == ['resume-spec']:
+        from newsboat_watch_progress import resume_spec
+        print(resume_spec(sys.argv[2]))
+        return 0
     if sys.argv[1:2] == ['resume']:
         from newsboat_watch_progress import resume_position
         print(resume_position(sys.argv[2],float(sys.argv[3]) if len(sys.argv)>3 else 0, missing=-1))

@@ -43,7 +43,7 @@ class ReuseTests(unittest.TestCase):
             (root/'newsboat_autoplay.py').write_text('import json\nprint(json.dumps(dict(enabled=False)))\n')
             (root/'newsboat-up-next-thumbnail.py').write_text('raise SystemExit(1)\n')
             (root/'newsboat-playback-started.py').write_text('pass\n')
-            (root/'maintenance.py').write_text('import sys\nif sys.argv[1]=="resume":print(20)\n')
+            (root/'maintenance.py').write_text('import sys\nif sys.argv[1] in ("resume","resume-spec"):print(20)\n')
             media = root/'sample.wav'
             with wave.open(str(media),'wb') as f:
                 f.setnchannels(1);f.setsampwidth(2);f.setframerate(8000);f.writeframes(b'\0'*8000*2*60)
