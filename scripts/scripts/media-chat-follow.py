@@ -8,7 +8,7 @@ import subprocess
 import time
 import media_chat_fullscreen as fullscreen_chat
 
-CHAT_CLASSES={'com.chatterino.chatterino','newsboat-live-chat'}
+CHAT_CLASSES={'com.chatterino.chatterino','newsboat-live-chat','newsboat-youtube-comments'}
 
 def hypr(*args):
     return subprocess.check_output(['hyprctl',*args],text=True,timeout=2)
@@ -28,6 +28,27 @@ def placement(player, chat, monitor, gaps, border):
     elif after+cw<=x1:x=after
     else:x=before if px-x0>=x1-(px+pw) else after
     return [round(max(x0,min(x,max(x0,x1-cw)))),round(max(y0,min(py,max(y0,y1-ch))))]
+
+def follow_geometry(player, chat, monitor, gaps, border):
+    # Stream chats retain their configured compact widths, even if a previous
+    # theater layout or application minimum left a wider window behind.
+    width=chat['size'][0]
+    if chat.get('class') in {'com.chatterino.chatterino','newsboat-live-chat'}:
+        from pip_geometry import monitor_size
+        monitor_width,_=monitor_size(monitor)
+        title=chat.get('title','').lower()
+        ratio=.25 if title=='youtube live chat' else .125 if title=='kick live chat' else .1
+        width=round(monitor_width*ratio)
+    size=[width,player['size'][1]]
+    at=placement(player,dict(chat,size=size),monitor,gaps,border)
+    commands=[]
+    if size!=chat['size']:
+        commands.append(f"dispatch resizewindowpixel exact {size[0]} {size[1]},address:{chat['address']}")
+    if at!=chat['at']:
+        commands.append(f"dispatch movewindowpixel exact {at[0]} {at[1]},address:{chat['address']}")
+    if commands:
+        hypr('--batch','; '.join(commands))
+
 
 def run():
     runtime=Path(os.environ.get('XDG_RUNTIME_DIR','/tmp'))
@@ -50,7 +71,8 @@ def run():
                     delay=.12
                     if time.monotonic()>=cached_until:
                         monitors=json.loads(hypr('-j','monitors'))
-                        raw=json.loads(hypr('-j','getoption','general:gaps_out')).get('custom','12 12 12 12')
+                        option=json.loads(hypr('-j','getoption','general:gaps_out'))
+                        raw=option.get('css',option.get('custom','12 12 12 12'))
                         values=[int(v) for v in raw.split()]
                         if len(values)==4:gaps=values
                         border=json.loads(hypr('-j','getoption','general:border_size')).get('int',1)
@@ -59,9 +81,7 @@ def run():
                     monitor=next((m for m in monitors if m['id']==player['monitor']),None)
                     if monitor:
                         for chat in chats:
-                            at=placement(player,chat,monitor,gaps,border)
-                            if at!=chat['at']:
-                                hypr('dispatch','movewindowpixel',f"exact {at[0]} {at[1]},address:{chat['address']}")
+                            follow_geometry(player,chat,monitor,gaps,border)
             except (OSError,ValueError,KeyError,subprocess.SubprocessError):pass
             time.sleep(delay)
 

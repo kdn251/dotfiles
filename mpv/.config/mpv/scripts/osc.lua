@@ -2859,12 +2859,15 @@ function process_event(source, what)
         state.mouse_in_window = true
 
         local mouseX, mouseY = get_virt_mouse_pos()
-        if (user_opts.minmousemove == 0) or
+        -- Reveal controls only in the bottom fifth of the video. Moving
+        -- across the picture or title area must not summon the overlays.
+        local near_bottom = mouseY >= osc_param.playresy * 0.8
+        if near_bottom and ((user_opts.minmousemove == 0) or
             (not ((state.last_mouseX == nil) or (state.last_mouseY == nil)) and
                 ((math.abs(mouseX - state.last_mouseX) >= user_opts.minmousemove)
                     or (math.abs(mouseY - state.last_mouseY) >= user_opts.minmousemove)
                 )
-            ) then
+            )) then
             show_osc()
         end
         state.last_mouseX, state.last_mouseY = mouseX, mouseY

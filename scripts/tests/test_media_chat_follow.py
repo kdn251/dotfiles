@@ -1,6 +1,7 @@
 import importlib.util
 from pathlib import Path
 import unittest
+from unittest.mock import patch
 spec=importlib.util.spec_from_file_location('follow',Path(__file__).parents[1]/'scripts/media-chat-follow.py')
 follow=importlib.util.module_from_spec(spec);spec.loader.exec_module(follow)
 
@@ -16,3 +17,26 @@ class PlacementTests(unittest.TestCase):
         self.assertEqual(self.place(-1427,monitor=monitor),[-878,42])
     def test_changed_gaps(self):
         self.assertEqual(follow.placement(dict(at=[20,10],size=[547,308]),dict(size=[144,308]),self.monitor,[30]*4,2),[571,61])
+
+    def test_resize_matches_player_height_and_repositions_together(self):
+        player=dict(at=[880,439],size=[547,508])
+        chat=dict(address='0x123',at=[734,639],size=[144,308])
+        with patch.object(follow,'hypr') as hypr:
+            follow.follow_geometry(player,chat,self.monitor,[12]*4,1)
+            hypr.assert_called_once_with('--batch',
+                'dispatch resizewindowpixel exact 144 508,address:0x123; '
+                'dispatch movewindowpixel exact 734 439,address:0x123')
+
+    def test_matched_chat_does_not_trigger_repeated_resizes(self):
+        with patch.object(follow,'hypr') as hypr:
+            follow.follow_geometry(dict(at=[880,439],size=[547,508]),
+                dict(address='0x123',at=[734,439],size=[144,508]),self.monitor,[12]*4,1)
+            hypr.assert_not_called()
+
+    def test_stream_chat_restores_configured_width(self):
+        for title,expected in [('Twitch',144),('Kick live chat',180),('YouTube live chat',360)]:
+            with self.subTest(title=title),patch.object(follow,'hypr') as hypr:
+                chat=dict(address='0x123',at=[400,439],size=[520,508],title=title,
+                          **{'class':'com.chatterino.chatterino' if title=='Twitch' else 'newsboat-live-chat'})
+                follow.follow_geometry(dict(at=[880,439],size=[547,508]),chat,self.monitor,[12]*4,1)
+                self.assertIn(f'resizewindowpixel exact {expected} 508',hypr.call_args.args[1])
