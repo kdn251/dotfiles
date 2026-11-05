@@ -86,3 +86,31 @@ class SidebarTests(unittest.TestCase):
                 self.assertEqual(props[PROPERTY],{})
             update(command,123,'right',0,stale)
             self.assertEqual(props['video-margin-ratio-left'],0)
+
+    def test_switch_transfers_only_an_open_sidebar(self):
+        import json
+        import stream_sidebar
+        from unittest.mock import patch
+        player={'class':'mpv','pid':123}
+        for opened in (True,False):
+            with self.subTest(opened=opened), \
+                    patch('subprocess.check_output',return_value=json.dumps([player]).encode()), \
+                    patch('media_chat_fullscreen.socket_for',return_value='/tmp/test.sock'), \
+                    patch('media_chat_fullscreen.ipc',return_value=opened), \
+                    patch('subprocess.Popen') as launch:
+                stream_sidebar.prepare_transfer('session','Kick','example')
+                self.assertEqual(launch.call_count,int(opened))
+                if opened:self.assertEqual(launch.call_args.args[0][-4:],['session','Kick','example','123'])
+
+    def test_transfer_cancels_if_sidebar_was_explicitly_closed(self):
+        import json
+        from stream_sidebar import transfer
+        from unittest.mock import patch
+        player={'class':'mpv','pid':123,'fullscreen':2}
+        with patch('pathlib.Path.read_text',return_value='session'), \
+                patch('subprocess.check_output',return_value=json.dumps([player]).encode()), \
+                patch('media_chat_fullscreen.socket_for',return_value='/tmp/test.sock'), \
+                patch('media_chat_fullscreen.ipc',return_value=False), \
+                patch('subprocess.Popen') as launch:
+            transfer('session','Kick','example',123)
+            launch.assert_not_called()

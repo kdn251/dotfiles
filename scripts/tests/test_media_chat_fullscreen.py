@@ -8,6 +8,10 @@ import media_chat_fullscreen as layout
 
 class FullscreenChatTests(unittest.TestCase):
     def setUp(self):
+        sidebar=patch('stream_sidebar.prepare_transfer')
+        sidebar.start();self.addCleanup(sidebar.stop)
+        cover=patch.object(layout,'cover_chat')
+        cover.start();self.addCleanup(cover.stop)
         tmp = tempfile.TemporaryDirectory()
         self.addCleanup(tmp.cleanup)
         owner = patch.object(layout, 'OWNER', Path(tmp.name)/'owner')

@@ -56,10 +56,16 @@ def main(url, title):
         try:frame=next(frames)
         except StopIteration:frames=itertools.cycle('⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏');frame=next(frames)
         cover.setText(frame+' Loading '+title+'…')
+    import os
+    from pathlib import Path
+    ready=Path(os.environ.get("XDG_RUNTIME_DIR","/tmp"))/f"media-chat-ready-{os.getpid()}"
+    app.aboutToQuit.connect(lambda:ready.unlink(missing_ok=True))
     def started():
+        ready.unlink(missing_ok=True)
         cover.show();stack.setCurrentWidget(cover);spin();spinner.start()
     def finished(ok):
         spinner.stop()
+        QTimer.singleShot(100,ready.touch)
         if ok:cover.hide();stack.setCurrentWidget(view)
         else:cover.setText('Chat could not load. Press Ctrl+R to retry.')
     from PyQt6.QtGui import QShortcut, QKeySequence

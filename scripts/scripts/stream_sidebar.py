@@ -42,3 +42,58 @@ class VideoSpace:
         from media_panel_layout import update
         try:update(self.command,self.pid,'left',0)
         except (OSError,ValueError):pass
+
+
+def prepare_transfer(session,service,name):
+    """Snapshot whether the list is open before the launcher replaces MPV."""
+    import json,subprocess,sys
+    from media_chat_fullscreen import ipc,socket_for
+    try:
+        clients=json.loads(subprocess.check_output(['/usr/bin/hyprctl','-j','clients'],timeout=1))
+        for player in clients:
+            if player.get('class')!='mpv':continue
+            try:
+                state={'player':player,'socket':socket_for(player)}
+                if not state['socket'] or not ipc(state,'get_property','user-data/stream-sidebar-open'):continue
+                subprocess.Popen([sys.executable,__file__,session,service,name,str(player['pid'])],
+                    stdin=subprocess.DEVNULL,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL,start_new_session=True)
+                return
+            except (OSError,ValueError):continue
+    except (OSError,ValueError,subprocess.SubprocessError):pass
+
+
+def transfer(session,service,name,old_pid):
+    import json,subprocess,sys,os,fcntl
+    from media_chat_fullscreen import ipc,socket_for
+    from stream_player_identity import identity
+    deadline=time.monotonic()+60
+    runtime=Path(os.environ.get('XDG_RUNTIME_DIR','/tmp'))
+    while time.monotonic()<deadline:
+        try:
+            if Path('/tmp/twitch-session.id').read_text().strip()!=session:return
+            clients=json.loads(subprocess.check_output(['/usr/bin/hyprctl','-j','clients'],timeout=1))
+            old=next((c for c in clients if c.get('pid')==old_pid),None)
+            if old:
+                try:
+                    if ipc({'player':old,'socket':socket_for(old)},'get_property','user-data/stream-sidebar-open') is False:return
+                except (OSError,ValueError):pass
+            for player in clients:
+                if player.get('class')!='mpv' or not player.get('fullscreen'):continue
+                current=identity(player)
+                if not current or (current[0],current[1].casefold())!=(service,name.casefold()):continue
+                # A reused player keeps its existing menu. A replacement player
+                # waits for the old menu to exit before opening its own.
+                with (runtime/'stream-sidebar.lock').open('a+') as lock:
+                    try:fcntl.flock(lock,fcntl.LOCK_EX|fcntl.LOCK_NB)
+                    except BlockingIOError:
+                        if player['pid']==old_pid:return
+                        continue
+                subprocess.Popen([sys.executable,str(Path(__file__).with_name('stream-sidebar.py')),str(player['pid'])],
+                    stdin=subprocess.DEVNULL,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL,start_new_session=True)
+                return
+        except (OSError,ValueError,subprocess.SubprocessError):pass
+        time.sleep(.05)
+
+if __name__=='__main__':
+    import sys
+    transfer(*sys.argv[1:4],int(sys.argv[4]))

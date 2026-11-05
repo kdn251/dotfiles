@@ -78,6 +78,7 @@ class Sidebar(Gtk.Application):
         if endpoint:
             self.connection=Player(endpoint,self.pid)
             self.connection.socket.settimeout(.4)
+            self.connection.command("set_property","user-data/stream-sidebar-open",True)
             self.start_events(endpoint)
             existing=chat_layout()
             fallback=existing.get('properties') if existing and existing.get('player',{}).get('pid')==self.pid else None
@@ -210,6 +211,9 @@ class Sidebar(Gtk.Application):
         return False
     def dismiss(self,*_):
         self.closing=True
+        if self.connection:
+            try:self.connection.command("set_property","user-data/stream-sidebar-open",False)
+            except (OSError,ValueError):pass
         # Unmap immediately; restore before returning focus to the video.
         if hasattr(self,'window'):self.window.set_visible(False)
         self.release_video()
@@ -228,6 +232,8 @@ class Sidebar(Gtk.Application):
         if self.pidfd is not None:
             os.close(self.pidfd);self.pidfd=None
     def refresh(self):
+        try:self.current=identity(self.player) or self.current
+        except (OSError,ValueError):pass
         catalog=rows(current=self.current)
         if catalog==self.catalog:return True
         selected=self.list.get_selected_row()
@@ -291,11 +297,9 @@ class Sidebar(Gtk.Application):
     def choose(self,_,row):
         if not row or not hasattr(row,'data'):return
         data=row.data
-        self.release_video()
         if not (self.current and self.current[0]==data['service'] and self.current[1].casefold()==data['name'].casefold()):
             subprocess.Popen([str(SCRIPTS/'twitch-launcher.sh'),choice(data)],stdin=subprocess.DEVNULL,
                              stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL,start_new_session=True)
-        self.quit()
     def key(self,_,key,code,modifiers):
         if key in (Gdk.KEY_Tab,Gdk.KEY_ISO_Left_Tab,Gdk.KEY_Escape):
             self.dismiss();return True

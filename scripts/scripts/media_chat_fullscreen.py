@@ -401,7 +401,30 @@ def maintain(clients):
         return True
 
 
+def cover_chat(state,session,monitors):
+    """Capture before hiding; wait for the cover to map before tearing chat down."""
+    import uuid
+    monitor=next((m for m in monitors if m['id']==state['player']['monitor']),None)
+    if not monitor or monitor.get('specialWorkspace',{}).get('name')!='special:'+WORKSPACE:return
+    bounds=layout(monitor,state.get('service')=='YouTube')
+    base=ROOT/('media-chat-cover-'+uuid.uuid4().hex)
+    image=str(base)+'.png';ready=str(base)+'.ready';request=str(base)+'.json'
+    x,y=bounds['at'];w,h=bounds['size']
+    try:
+        subprocess.run(['grim','-g',f'{x},{y} {w}x{h}',image],check=True,timeout=2,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)
+        Path(request).write_text(json.dumps(dict(session=session,monitor=monitor,bounds=bounds,
+            workspace=state['player']['workspace']['id'],image=image,ready=ready)))
+        subprocess.Popen(['python3',str(Path(__file__).with_name('media-chat-cover.py')),request],
+            stdin=subprocess.DEVNULL,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL,start_new_session=True)
+        deadline=time.monotonic()+1
+        while time.monotonic()<deadline and not Path(ready).exists():time.sleep(.01)
+    except (OSError,subprocess.SubprocessError):
+        for name in (image,ready,request):Path(name).unlink(missing_ok=True)
+
+
 def prepare_transition(session, service, name):
+    from stream_sidebar import prepare_transfer
+    prepare_transfer(session,service,name)
     with STATE.with_suffix('.lock').open('a') as lock:
         fcntl.flock(lock, fcntl.LOCK_EX)
         state = read()
@@ -410,8 +433,10 @@ def prepare_transition(session, service, name):
         # New chats inherit the normal floating window rules. Stage them in
         # the hidden special workspace until adopt_chat has applied the full
         # height geometry. Disable automatic workspace re-show during staging.
+        monitors=json.loads(hypr('-j','monitors'))
+        cover_chat(state,session,monitors)
         OWNER.unlink(missing_ok=True)
-        hide_workspace(json.loads(hypr('-j', 'monitors')))
+        hide_workspace(monitors)
         state['transition'] = {'session': session, 'service': service,
                                'name': name, 'deadline': time.monotonic() + 60}
         STATE.write_text(json.dumps(state))
