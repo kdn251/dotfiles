@@ -142,7 +142,7 @@ class PreviewTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             root=Path(directory);handoff=root/'handoff';session=root/'session';session.write_text('chosen')
             handoff.write_text(json.dumps(dict(name='Example',service='Twitch',created=preview.time.time(),pid=123,endpoint=str(root/'preview.sock'),landed=True)))
-            player=Mock();player.get.side_effect=lambda key,*args: False if key=='user-data/stream-sidebar-open' else True
+            player=Mock();player.get.side_effect=lambda key,*args: False if key in ('user-data/stream-sidebar-open','fullscreen') else True
             window=dict(pid=123,address='p',monitor=0,at=[883,642],size=[547,308],fullscreen=0,**{'class':'mpv'})
             old=dict(pid=456,address='old',fullscreen=0,at=[45,67],size=[800,450],**{'class':'mpv'})
             with patch.object(preview,'HANDOFF',handoff),patch.object(preview,'SESSION',session),                     patch.object(preview,'CANONICAL',root/'canonical'),patch.object(preview,'Player',return_value=player),                     patch.object(preview,'clients',return_value=[old,window]),                     patch.object(preview.os,'pidfd_open',side_effect=ProcessLookupError),                     patch('media_chat_fullscreen.socket_for',return_value='old.sock'),                     patch.object(preview.subprocess,'run') as move,                     patch('media_chat_fullscreen.place_player') as place:

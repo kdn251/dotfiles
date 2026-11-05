@@ -291,6 +291,7 @@ class Sidebar(Gtk.Application):
         except (OSError,ValueError):pass
         catalog=rows(current=self.current)
         if catalog==self.catalog:return True
+        focused=self.window.get_focus() is not None
         selected=self.list.get_selected_row()
         selected_key=choice(selected.data) if selected and hasattr(selected,'data') else None
         self.catalog=catalog
@@ -323,7 +324,12 @@ class Sidebar(Gtk.Application):
         if not catalog:
             empty=Gtk.Label(label='No live channels in the current cache',wrap=True)
             self.list.append(empty)
-        self.list.select_row(preferred or self.list.get_row_at_index(0))
+        selected=preferred or self.list.get_row_at_index(0)
+        self.list.select_row(selected)
+        # Rebuilding removes the focused GtkListBoxRow. Selection alone does
+        # not install a keyboard target, leaving the exclusive layer eating F.
+        if focused and self.window.get_visible():
+            (selected or self.list).grab_focus()
         return True
     def check_player(self):
         if self.closing:return False
@@ -349,6 +355,7 @@ class Sidebar(Gtk.Application):
             if visible and not self.window.get_visible():
                 self.reserve_video()
                 self.window.present()
+                self.list.grab_focus()
             elif not visible and self.window.get_visible():
                 self.window.set_visible(False)
         except (OSError,ValueError,subprocess.SubprocessError):
@@ -359,7 +366,8 @@ class Sidebar(Gtk.Application):
         if not row or not hasattr(row,'data'):return
         data=row.data
         if not (self.current and self.current[0]==data['service'] and self.current[1].casefold()==data['name'].casefold()):
-            subprocess.Popen([str(SCRIPTS/'twitch-launcher.sh'),choice(data)],stdin=subprocess.DEVNULL,
+            subprocess.Popen([str(SCRIPTS/'twitch-launcher.sh'),choice(data)],
+                             env=dict(os.environ,STREAM_SWITCH_SOURCE_PID=str(self.pid)),stdin=subprocess.DEVNULL,
                              stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL,start_new_session=True)
     def key(self,_,key,code,modifiers):
         if key in (Gdk.KEY_Tab,Gdk.KEY_ISO_Left_Tab,Gdk.KEY_Escape):

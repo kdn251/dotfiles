@@ -220,7 +220,7 @@ def stage(name,title,url,marker,fallback,service,session,page,old_pid):
                 try:ready=player.get('user-data/preview-ready')
                 finally:player.close()
                 if ready:
-                    data=dict(pid=process.pid,endpoint=endpoint,name=name,service=service,created=time.time(),staged=True)
+                    data=dict(pid=process.pid,endpoint=endpoint,name=name,service=service,created=time.time(),staged=True,source_pid=old_pid)
                     tmp=HANDOFF.with_suffix('.tmp');tmp.write_text(json.dumps(data));tmp.chmod(0o600);tmp.replace(HANDOFF)
                     result=adopt(name,title,marker,service,session,page)
                     if result:promoted=True;return result
@@ -267,10 +267,16 @@ def adopt(name,title,marker,service,session,page):
         if not p.get('user-data/preview-ready'):return None
         if SESSION.read_text().strip()!=session:return None
         windows=clients()
-        old=next((c for c in windows if c.get('class')=='mpv' and c['pid']!=data['pid']),None)
+        source_pid=data.get('source_pid') or int(os.environ.get('STREAM_SWITCH_SOURCE_PID','0'))
+        candidates=[c for c in windows if c.get('class')=='mpv' and c['pid']!=data['pid']]
+        old=next((c for c in candidates if c['pid']==source_pid),None) if source_pid else next(iter(candidates),None)
+        if source_pid and not old:raise StageFailed('Player closed')
         was_fullscreen=bool(old and old.get('fullscreen'))
         if old:
             previous=Player(socket_for(old),old['pid'])
+            # MPV owns the requested mode; compositor geometry may lag a transition.
+            requested_fullscreen=previous.get('fullscreen')
+            if isinstance(requested_fullscreen,bool):was_fullscreen=requested_fullscreen
             volume=previous.get('volume')
             if volume is not None and volume<=0:volume=previous.get('user-data/stream-audible-volume',100)
             if volume is not None:p.command('set_property','volume',volume)
@@ -344,7 +350,21 @@ def adopt(name,title,marker,service,session,page):
                     try:
                         if player_identity(stale):retire_player(stale)
                     except (OSError,ValueError):pass
+        # Retiring the old fullscreen surface can cause a late compositor
+        # configure to window the replacement. Reconcile after that surface is
+        # gone, before placement would pin it as a windowed player.
+        if was_fullscreen:
+            current=next((c for c in clients() if c.get('pid')==data['pid']),None)
+            if not current or current.get('fullscreen')!=2 or p.get('fullscreen') is False:
+                p.command('set_property','fullscreen',True)
+                deadline=time.monotonic()+2
+                while time.monotonic()<deadline:
+                    current=next((c for c in clients() if c.get('pid')==data['pid']),None)
+                    if current and current.get('fullscreen')==2:break
+                    time.sleep(.025)
+                else:raise StageFailed('Stream loaded but fullscreen restoration failed')
         place_player(data['pid'],align=not bool(old or was_fullscreen or data.get('landed')))
+        p.command('set_property','user-data/stream-handoff-complete',session)
         return data['pid']
     except (OSError,ValueError,subprocess.SubprocessError):
         if not committed:

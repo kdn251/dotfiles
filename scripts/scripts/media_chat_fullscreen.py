@@ -462,6 +462,12 @@ def replacement(state, clients):
             elif actual != endpoint or (service != 'Twitch' and player['pid'] == state['player']['pid']):
                 continue
             candidate = {'player': player, 'socket': actual}
+            # A staged player becomes class=mpv before its workspace and
+            # fullscreen transaction is finished. Chat must not move or
+            # fullscreen that window concurrently with the video handoff.
+            if player.get('initialClass') in ('stream-staging','stream-preview') and player['pid']!=state['player']['pid']:
+                if ipc(candidate,'get_property','user-data/stream-handoff-complete')!=transition.get('session'):
+                    continue
             if service == 'Twitch':
                 if ipc(candidate, 'get_property', 'user-data/twitch-channel').lower() != transition['name'].lower():
                     continue
@@ -476,6 +482,29 @@ def replacement(state, clients):
         except (OSError, ValueError, AttributeError):
             continue
     return None
+
+
+def restore_transition_fullscreen(player):
+    """Chat teardown can change fullscreen; never trust its earlier snapshot."""
+    current=next((c for c in json.loads(hypr('-j','clients'))
+                  if c.get('pid')==player['pid'] and c.get('address')==player['address']),None)
+    if not current:raise ValueError('Replacement player closed')
+    state={'player':current,'socket':socket_for(current)}
+    requested=ipc(state,'get_property','fullscreen')
+    if current.get('fullscreen')!=2 and requested is True:
+        # A compositor-only exit may leave MPV's requested flag true. Clear
+        # that stale flag so setting it again emits a fresh Wayland request.
+        ipc(state,'set_property','fullscreen',False)
+    if current.get('fullscreen')!=2 or requested is not True:
+        ipc(state,'set_property','fullscreen',True)
+    deadline=time.monotonic()+2
+    while time.monotonic()<deadline:
+        current=next((c for c in json.loads(hypr('-j','clients'))
+                      if c.get('pid')==player['pid'] and c.get('address')==player['address']),None)
+        if not current:raise ValueError('Replacement player closed')
+        if current.get('fullscreen')==2:return current
+        time.sleep(.01)
+    raise ValueError('Replacement fullscreen did not settle')
 
 
 def resume_transition(session):
@@ -501,8 +530,7 @@ def resume_transition(session):
                     if not current or current.get('transition', {}).get('session') != session:
                         return
                     restore(current, clients)
-                if not player.get('fullscreen'):
-                    ipc({'player':player,'socket':socket_for(player)},'set_property','fullscreen',True)
+                player=restore_transition_fullscreen(player)
                 # The ordinary opener supplies the matching platform's chat and
                 # reapplies the fullscreen layout once its window is ready.
                 subprocess.run(['python3', str(Path(__file__).with_name('media-chat.py'))], timeout=20)

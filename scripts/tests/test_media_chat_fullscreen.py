@@ -233,6 +233,50 @@ class FullscreenChatTests(unittest.TestCase):
             ipc.side_effect = ['newstream']
             self.assertIsNone(layout.replacement(state, [self.player]))
 
+    def test_chat_waits_for_staged_handoff_commit(self):
+        for service in ('Twitch','YouTube','Kick','Rumble'):
+            with self.subTest(service=service):
+                state={'player':self.player,'transition':{'service':service,'name':'next','session':'selected'}}
+                new=dict(self.player,pid=11,address='new',initialClass='stream-staging',fullscreen=0)
+                properties={'user-data/twitch-channel':'next','time-pos':12}
+                with patch('stream_player_identity.identity',return_value=(service,'next')), \
+                        patch.object(layout,'socket_for',return_value='private.sock'), \
+                        patch.object(Path,'read_text',return_value='next'), \
+                        patch.object(layout,'ipc',side_effect=lambda state,op,key:properties.get(key)):
+                    self.assertIsNone(layout.replacement(state,[new,self.chat]))
+                    properties['user-data/stream-handoff-complete']='older-session'
+                    self.assertIsNone(layout.replacement(state,[new,self.chat]))
+                    properties['user-data/stream-handoff-complete']='selected'
+                    self.assertEqual(layout.replacement(state,[new,self.chat]),new)
+
+    def test_chat_cleanup_rechecks_fullscreen_instead_of_stale_snapshot(self):
+        current=dict(self.player,fullscreen=0)
+        def ipc(state,action,key,*args):
+            if action=='set_property':current['fullscreen']=2
+            else:return bool(current['fullscreen'])
+        with patch.object(layout,'hypr',side_effect=lambda *args:json.dumps([current])), \
+                patch.object(layout,'socket_for',return_value='player.sock'), \
+                patch.object(layout,'ipc',side_effect=ipc) as command:
+            result=layout.restore_transition_fullscreen(dict(self.player,fullscreen=2))
+            self.assertEqual(result['fullscreen'],2)
+            self.assertTrue(any(c.args[1:]==('set_property','fullscreen',True) for c in command.call_args_list))
+
+    def test_chat_cleanup_renews_stale_mpv_fullscreen_request(self):
+        current=dict(self.player,fullscreen=0)
+        requested=True
+        changes=[]
+        def ipc(state,action,key,*args):
+            nonlocal requested
+            if action=='get_property':return requested
+            changes.append(args[0])
+            if requested!=args[0]:current['fullscreen']=2 if args[0] else 0
+            requested=args[0]
+        with patch.object(layout,'hypr',side_effect=lambda *args:json.dumps([current])), \
+                patch.object(layout,'socket_for',return_value='player.sock'), \
+                patch.object(layout,'ipc',side_effect=ipc):
+            self.assertEqual(layout.restore_transition_fullscreen(self.player)['fullscreen'],2)
+            self.assertEqual(changes,[False,True])
+
     def test_cross_platform_requires_new_player(self):
         state = {'player': self.player, 'transition': {'service':'Kick', 'name':'newstream'}}
         new = dict(self.player, pid=11, address='new', fullscreen=0)

@@ -14,9 +14,15 @@ SOCKET='/tmp/mpv-twitch-ipc'
 def connect():
     client=socket.socket(socket.AF_UNIX)
     client.settimeout(1)
-    client.connect(SOCKET)
+    endpoint=SOCKET
+    source=os.environ.get('STREAM_SWITCH_SOURCE_PID')
+    if source:
+        from media_chat_fullscreen import socket_for
+        endpoint=socket_for({'pid':int(source)})
+        if not endpoint:raise ValueError('Selected stream player closed')
+    client.connect(endpoint)
     pid,uid,_=struct.unpack('3i',client.getsockopt(socket.SOL_SOCKET,socket.SO_PEERCRED,12))
-    if uid!=os.getuid():
+    if uid!=os.getuid() or (source and pid!=int(source)):
         client.close()
         raise ValueError('Not our player')
     return client,pid

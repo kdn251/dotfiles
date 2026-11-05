@@ -8,6 +8,7 @@ SCRIPTS=Path(__file__).resolve().parents[1]/'scripts'
 MPV_SCRIPTS=Path(__file__).resolve().parents[2]/'mpv/.config/mpv/scripts'
 sys.path.insert(0,str(SCRIPTS))
 import stream_preview as preview
+import media_chat_fullscreen as chat
 from mpv_clip import Player
 legacy='--legacy' in sys.argv
 service=os.environ.get('TEST_SERVICE','Twitch')
@@ -22,7 +23,8 @@ def layers():
  data=json.loads(subprocess.check_output(['/usr/bin/hyprctl','-j','layers']))
  return [layer for m in data.values() for group in m['levels'].values() for layer in group if layer['namespace']=='stream-sidebar']
 with tempfile.TemporaryDirectory(dir=preview.ROOT) as tmp:
- root=Path(tmp);ps=[];sidebar_pid=None
+ root=Path(tmp);ps=[];sidebar_pid=None;chat_patches=[]
+ def test_clients():return [c for c in preview.clients() if c['pid'] in [p.pid for p in ps]]
  try:
   script=MPV_SCRIPTS/'stream-sidebar.lua'
   if legacy:
@@ -38,20 +40,42 @@ with tempfile.TemporaryDirectory(dir=preview.ROOT) as tmp:
   wait_for(lambda:len([c for c in preview.clients() if c['pid'] in (old.pid,new.pid)])==2)
   a=Player(str(root/'old.sock'),old.pid);b=Player(str(root/'new.sock'),new.pid)
   for player in (a,b):
-   player.command('set_property','user-data/stream-service',os.environ.get('TEST_FROM',service) if player is a else service);player.command('set_property','user-data/stream-name','test')
+   player.command('set_property','user-data/stream-service',os.environ.get('TEST_FROM',service) if player is a else service);player.command('set_property','user-data/stream-name','xqc' if player is b else 'shroud')
   a.command('set_property','fullscreen',True)
   wait_for(lambda:any(c['pid']==old.pid and c['fullscreen']==2 for c in preview.clients()))
-  time.sleep(.1);a.command('keypress','TAB')
+  time.sleep(.3);a.command('keypress','TAB')
   wait_for(lambda:a.get('user-data/stream-sidebar-open'))
   sidebar_pid=int((Path(os.environ['XDG_RUNTIME_DIR'])/'stream-sidebar.lock').read_text())
   wait_for(layers)
+  subprocess.run(['wtype','j'],check=True)
   b.command('set_property','user-data/preview-ready',True)
   handoff=root/'handoff';session=root/'session';session.write_text('test')
-  handoff.write_text(json.dumps(dict(pid=new.pid,endpoint=str(root/'new.sock'),name='test',service=service,created=time.time(),staged=True)))
+  handoff.write_text(json.dumps(dict(pid=new.pid,endpoint=str(root/'new.sock'),name='xqc',service=service,created=time.time(),staged=True)))
+  if '--chat' in sys.argv:
+   for key,value in [('STATE',root/'chat-state'),('OWNER',root/'chat-owner'),('PREFERENCE',root/'chat-preference')]:
+    item=patch.object(chat,key,value);item.start();chat_patches.append(item)
+   klass='com.chatterino.chatterino' if service=='Twitch' else 'newsboat-live-chat'
+   code="from PyQt6.QtWidgets import QApplication,QLabel;import sys;app=QApplication([]);app.setDesktopFileName(sys.argv[1]);w=QLabel('Chat handoff test');w.resize(250,400);w.show();app.exec()"
+   pane=subprocess.Popen(['python3','-c',code,klass],stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL);ps.append(pane)
+   wait_for(lambda:any(c['pid']==pane.pid for c in preview.clients()))
+   assert chat.begin(test_clients()), str([(c['pid'],c['fullscreen'],c['workspace']) for c in test_clients()])
+   monitors=json.loads(chat.hypr('-j','monitors'));monitor=next(m for m in monitors if m.get('focused'))
+   if monitor.get('specialWorkspace',{}).get('name')!='special:chatterino_chat':chat.toggle_on_monitor(monitor,monitors)
+   assert a.get('video-margin-ratio-right')>.1
   actual_clients=preview.clients
   def clients():return [c for c in actual_clients() if c['pid'] in (old.pid,new.pid)]
   with patch.object(preview,'HANDOFF',handoff),patch.object(preview,'SESSION',session),patch.object(preview,'CANONICAL',root/'canonical'),patch.object(preview,'clients',side_effect=clients):
-   assert preview.adopt('test','Test','',service,'test','')==new.pid
+   assert preview.adopt('xqc','Test','',service,'test','')==new.pid
+  if '--chat' in sys.argv:
+   assert b.get('user-data/stream-handoff-complete')=='test'
+   chat.restore(chat.read(),test_clients())
+   chat.restore_transition_fullscreen(next(c for c in test_clients() if c['pid']==new.pid))
+   assert chat.begin(test_clients()), str([(c['pid'],c['fullscreen'],c['workspace']) for c in test_clients()])
+   monitors=json.loads(chat.hypr('-j','monitors'));monitor=next(m for m in monitors if m.get('focused'))
+   if monitor.get('specialWorkspace',{}).get('name')!='special:chatterino_chat':chat.toggle_on_monitor(monitor,monitors)
+   assert b.get('video-margin-ratio-right')>.1
+   assert b.get('video-margin-ratio-left')>.05
+   assert b.get('fullscreen') is True
   time.sleep(.6)
   alive=Path(f'/proc/{sidebar_pid}').exists();visible=bool(layers());margin=b.get('video-margin-ratio-left')
   print(('OLD' if legacy else 'FIXED'),'MPV-owned launch:', 'sidebar alive',alive,'visible',visible,'left margin',margin,flush=True)
@@ -62,6 +86,7 @@ with tempfile.TemporaryDirectory(dir=preview.ROOT) as tmp:
    assert old.poll() is not None
    subprocess.run(['wtype','f'],check=True)
    wait_for(lambda:b.get('fullscreen') is False)
+   if '--chat' in sys.argv:chat.maintain(test_clients())
    wait_for(lambda:not layers())
    wait_for(lambda:any(c['pid']==new.pid and c.get('pinned') for c in clients()))
    assert len(clients())==1
@@ -74,6 +99,7 @@ with tempfile.TemporaryDirectory(dir=preview.ROOT) as tmp:
    print(service+': actual Tab launch, handoff, physical F, fullscreen return and Tab close PASS',flush=True)
   a.close();b.close()
  finally:
+  for item in reversed(chat_patches):item.stop()
   for p in ps:
    if p.poll() is None:p.terminate()
   for p in ps:
