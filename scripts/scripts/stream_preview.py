@@ -312,6 +312,20 @@ def adopt(name,title,marker,service,session,page):
                     saved=json.loads(saved.read_text())
                     if saved.get('pid')==old['pid']:(x,y),(w,h)=saved['at'],saved['size']
                 except (OSError,ValueError):pass
+        if was_fullscreen:
+            # Set fullscreen before changing the preview class: the mpv class
+            # has floating-size rules that would otherwise expose a small window.
+            saved=dict(window,at=[x,y],size=[w,h],floating=True,pinned=True)
+            prefix=Path(os.environ.get('XDG_RUNTIME_DIR','/tmp'))/f"pip-fullscreen-{os.getuid()}-{window['address']}"
+            Path(str(prefix)+'.geometry').write_text(json.dumps(saved))
+            Path(str(prefix)+'.geometry.return').write_text(json.dumps(saved))
+            p.command('set_property','fullscreen',True)
+            deadline=time.monotonic()+2
+            while time.monotonic()<deadline:
+                current=next((c for c in clients() if c.get('pid')==data['pid']),None)
+                if current and current.get('fullscreen')==2:break
+                time.sleep(.01)
+            else:raise StageFailed('Replacement fullscreen did not become ready')
         p.command('set_property','options/wayland-app-id','mpv')
         p.command('set_property','title','${media-title} - mpv')
         deadline=time.monotonic()+1
@@ -320,17 +334,14 @@ def adopt(name,title,marker,service,session,page):
             if mapped and mapped.get('class')=='mpv' and mapped.get('mapped',True):break
             time.sleep(.01)
         target='address:'+window['address']
-        batch=f'dispatch resizewindowpixel exact {w} {h},{target}; dispatch movewindowpixel exact {x} {y},{target}'
-        if data.get('staged') and old:batch+=f'; dispatch movetoworkspacesilent {old["workspace"]["name"]},{target}'
-        subprocess.run([*HYPRCTL,'--batch',batch],check=True,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL,timeout=2)
-        if was_fullscreen:
-            # Save floating geometry without issuing a second, focus-dependent
-            # fullscreen toggle. MPV is the sole owner of this transition.
-            saved=dict(window,at=[x,y],size=[w,h],floating=True,pinned=True)
-            prefix=Path(os.environ.get('XDG_RUNTIME_DIR','/tmp'))/f"pip-fullscreen-{os.getuid()}-{window['address']}"
-            Path(str(prefix)+'.geometry').write_text(json.dumps(saved))
-            Path(str(prefix)+'.geometry.return').write_text(json.dumps(saved))
-            p.command('set_property','fullscreen',True)
+        operations=[]
+        if not was_fullscreen:
+            operations.extend([f'dispatch resizewindowpixel exact {w} {h},{target}',
+                               f'dispatch movewindowpixel exact {x} {y},{target}'])
+        if data.get('staged') and old:
+            operations.append(f'dispatch movetoworkspacesilent {old["workspace"]["name"]},{target}')
+        if operations:
+            subprocess.run([*HYPRCTL,'--batch','; '.join(operations)],check=True,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL,timeout=2)
         deadline=time.monotonic()+2
         while time.monotonic()<deadline:
             current=next((c for c in clients() if c.get('pid')==data['pid']),None)

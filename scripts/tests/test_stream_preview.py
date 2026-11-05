@@ -112,6 +112,9 @@ class PreviewTests(unittest.TestCase):
                 self.assertEqual(preview.adopt('Example','title','','Twitch','chosen','page'),123)
                 toggle.assert_not_called()
                 player.command.assert_any_call('set_property','fullscreen',True)
+                calls=[c.args for c in player.command.call_args_list]
+                self.assertLess(calls.index(('set_property','fullscreen',True)),calls.index(('set_property','options/wayland-app-id','mpv')))
+                self.assertFalse(any('resizewindowpixel' in str(c) or 'movewindowpixel' in str(c) for c in move.call_args_list))
                 saved=json.loads((Path('/run/user/'+str(__import__('os').getuid()))/('pip-fullscreen-'+str(__import__('os').getuid())+'-p.geometry.return')).read_text())
                 self.assertNotEqual(saved['at'],window['at'])
                 self.assertEqual(saved['size'],[547,308])

@@ -31,7 +31,7 @@ with tempfile.TemporaryDirectory(dir=preview.ROOT) as tmp:
    patched=root/'legacy-sidebar.lua';patched.write_text(script.read_text().replace(',detach=true','').replace('capture_stdout=false,capture_stderr=false','capture_stdout=true,capture_stderr=true'));script=patched
   for name in ('old','new'):
    endpoint=str(root/(name+'.sock'))
-   args=['mpv','--no-config','--load-scripts=no','--vo=gpu','--gpu-api=opengl','--ao=null','--mute=yes','--idle=yes','--force-window=immediate','--input-ipc-server='+endpoint,'--wayland-app-id='+('mpv' if name=='old' else 'stream-preview'), '--script='+str(MPV_SCRIPTS/'pip-fullscreen.lua')]
+   args=['mpv','--no-config','--load-scripts=no','--vo=gpu','--gpu-api=opengl','--ao=null','--mute=yes','--idle=yes','--force-window=immediate','--input-ipc-server='+endpoint,'--wayland-app-id='+('mpv' if name=='old' else ('stream-preview' if '--picker' in sys.argv else 'stream-staging')), '--script='+str(MPV_SCRIPTS/'pip-fullscreen.lua')]
    if name=='old':args+=['--script='+str(script)]
    else:args+=['--script='+str(SCRIPTS/'stream-preview.lua')]
    p=subprocess.Popen([*args,'av://lavfi:testsrc=size=320x180:rate=30'],stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL);ps.append(p)
@@ -50,7 +50,7 @@ with tempfile.TemporaryDirectory(dir=preview.ROOT) as tmp:
   subprocess.run(['wtype','j'],check=True)
   b.command('set_property','user-data/preview-ready',True)
   handoff=root/'handoff';session=root/'session';session.write_text('test')
-  handoff.write_text(json.dumps(dict(pid=new.pid,endpoint=str(root/'new.sock'),name='xqc',service=service,created=time.time(),staged=True)))
+  handoff.write_text(json.dumps(dict(pid=new.pid,endpoint=str(root/'new.sock'),name='xqc',service=service,created=time.time(),staged='--picker' not in sys.argv)))
   if '--chat' in sys.argv:
    for key,value in [('STATE',root/'chat-state'),('OWNER',root/'chat-owner'),('PREFERENCE',root/'chat-preference')]:
     item=patch.object(chat,key,value);item.start();chat_patches.append(item)
