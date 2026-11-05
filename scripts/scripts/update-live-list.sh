@@ -20,7 +20,10 @@ set -u
 
 # Serialize scheduled refreshes with wake/unlock refreshes.
 exec 9>"${XDG_RUNTIME_DIR:-/tmp}/stream-live-update-${UID}.lock"
-flock -w 90 9 || exit 1
+flock -w 90 9 || {
+  echo "$(date): ERROR: live-list refresh lock timed out" >>/tmp/live_list_cron.log
+  exit 1
+}
 
 # Poll other services on the same five-minute schedule, even if Twitch is unavailable.
 python3 "$HOME/scripts/rumble-live.py" --update >>/tmp/rumble-live-check.log 2>&1 &
@@ -106,4 +109,6 @@ fi
 
 # Going live is the difference between this live set and the previous one, so
 # the notifier rides along here rather than polling on its own.
-"$HOME/scripts/twitch-golive-notify.sh" >/dev/null 2>&1 || true
+# Notification actions can outlive this refresh. They must not inherit its
+# lock, or a dismissed/stuck notification prevents every subsequent update.
+"$HOME/scripts/twitch-golive-notify.sh" 9>&- >/dev/null 2>&1 || true
