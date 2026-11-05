@@ -17,21 +17,33 @@ local function draw()
     if not card then return end
     local w,h=mp.get_osd_size()
     if w<=0 or h<=0 then return end
-    local scale=h/720
-    overlay.res_y=720;overlay.res_x=720*w/h
-    local width=math.min(360,overlay.res_x-32)
+    local scale=math.min(1,h/720)
+    overlay.res_y=h/scale;overlay.res_x=w/scale
+    local width=math.min(400,overlay.res_x-32)
+    local x,y,height=16,16,96
+    if mp.get_property_bool('fullscreen',false) then
+        local layout=mp.get_property_native('user-data/media-panel-layout',{})
+        local left=(layout.left or 0)*overlay.res_x
+        local right=(1-(layout.right or 0))*overlay.res_x
+        width=math.min(width,math.max(1,right-left-32))
+        x=left+(right-left-width)/2
+        local dimensions=mp.get_property_native('osd-dimensions',{})
+        -- Anchor to the rendered video's top edge, including theater letterboxing.
+        -- If there is no room above the video, keep the card inside the screen.
+        y=math.max(12,(dimensions.mt or 0)/scale-height-10)
+    end
     local a=assdraw.ass_new()
     a:new_event();a:pos(0,0)
     a:append('{\\an7\\bord0\\shad0\\1c&H242424&\\1a&H18&}')
-    a:draw_start();a:round_rect_cw(16,16,16+width,104,10);a:draw_stop()
-    a:new_event();a:pos(100,28)
-    a:append('{\\an7\\fs17\\bord0\\shad0\\1c&HBFC8CD&}'..escape(card.label))
-    a:new_event();a:pos(100,53)
-    a:append(string.format('{\\an7\\fs25\\b1\\bord0\\shad0\\1c&HFFFFFF&\\clip(100,16,%d,104)}',16+width-10)..escape(card.name))
+    a:draw_start();a:round_rect_cw(x,y,x+width,y+height,8);a:draw_stop()
+    a:new_event();a:pos(x+90,y+12)
+    a:append('{\\an7\\fs20\\bord0\\shad0\\1c&HBFC8CD&}'..escape(card.label))
+    a:new_event();a:pos(x+90,y+44)
+    a:append(string.format('{\\an7\\fs28\\b1\\bord0\\shad0\\1c&HFFFFFF&\\clip(%.0f,%.0f,%.0f,%.0f)}',x+90,y,x+width-12,y+height)..escape(card.name))
     overlay.data=a.text;overlay:update()
     if card.path then
-        local size=math.floor(64*scale)
-        mp.command_native({'overlay-add',44,math.floor(28*scale),math.floor(28*scale),
+        local size=math.floor(66*scale)
+        mp.command_native({'overlay-add',44,math.floor((x+12)*scale),math.floor((y+15)*scale),
             card.path,0,'bgra',96,96,384,size,size})
     end
 end
@@ -50,4 +62,6 @@ mp.register_script_message('stream-switch-card',function(service,name,label)
     end)
 end)
 mp.observe_property('osd-dimensions','native',draw)
+mp.observe_property('fullscreen','bool',draw)
+mp.observe_property('user-data/media-panel-layout','native',draw)
 mp.register_event('shutdown',hide)

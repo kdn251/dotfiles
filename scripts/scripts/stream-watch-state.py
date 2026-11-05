@@ -49,7 +49,10 @@ def main():
     if action=='step':
         if selected:
             choice=selected['name']+(' ('+selected['service']+')' if selected['service']!='Twitch' else '')
-            subprocess.Popen([str(SCRIPTS/'twitch-launcher.sh'),choice],stdin=subprocess.DEVNULL,
+            environment=dict(os.environ)
+            if len(sys.argv)>3:environment['STREAM_SWITCH_SOURCE_PID']=str(int(sys.argv[3]))
+            else:environment.pop('STREAM_SWITCH_SOURCE_PID',None)
+            subprocess.Popen([str(SCRIPTS/'twitch-launcher.sh'),choice],env=environment,stdin=subprocess.DEVNULL,
                              stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL,start_new_session=True)
             print(json.dumps(dict(selected,message='Switching to '+selected['name'])))
         else:print('No '+('earlier' if int(sys.argv[2])<0 else 'later')+' stream in history')

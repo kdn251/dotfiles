@@ -2,6 +2,9 @@ import importlib.util
 from pathlib import Path
 import subprocess
 import tempfile
+import json
+import os
+from unittest.mock import patch
 import unittest
 
 SCRIPTS=Path(__file__).resolve().parents[1]/'scripts'
@@ -29,9 +32,21 @@ class WatchTests(unittest.TestCase):
         self.assertEqual(state['items'],[item])
         self.assertIsNone(watch.step(state,-1))
 
+    def test_navigation_uses_current_player_not_inherited_source(self):
+        for args, expected in ((['step', '-1', '4321'], '4321'), (['step', '-1'], None)):
+            with tempfile.TemporaryDirectory() as tmp:
+                root=Path(tmp)
+                (root/'history.json').write_text(json.dumps({'items':[
+                    {'service':'Twitch','name':'one'}, {'service':'Kick','name':'two'}], 'index':1}))
+                with patch.object(watch,'ROOT',root), patch.object(watch.sys,'argv',['watch']+args), \
+                     patch.dict(os.environ,{'STREAM_SWITCH_SOURCE_PID':'999'}), \
+                     patch.object(watch.subprocess,'Popen') as launch, patch('builtins.print'):
+                    watch.main()
+                self.assertEqual(launch.call_args.kwargs['env'].get('STREAM_SWITCH_SOURCE_PID'),expected)
+
     def test_live_stream_navigation_bindings(self):
         harness=r'''
-package.preload['mp.utils']=function() return {parse_json=function() return nil end} end
+package.preload['mp.utils']=function() return {parse_json=function() return nil end,getpid=function() return 4321 end} end
 local props={['user-data/stream-ready-session']='s1',['user-data/stream-name']='one',['keep-open']='no'}
 local keys, observers, timers, requests, commands={},{},{},{},{}
 mp={
@@ -53,7 +68,7 @@ local function ready(s) props['user-data/stream-ready-session']=s;observers['use
 dofile(arg[1])
 ready('s1');assert(requests[#requests].req.args[3]=='record')
 keys['<']();assert(requests[#requests].req.args[3]=='step');reply('Switching')
-keys['>']();assert(requests[#requests].req.args[4]=='1');reply('Switching')
+keys['>']();assert(requests[#requests].req.args[4]=='1');assert(requests[#requests].req.args[5]=='4321');reply('Switching')
 assert(keys.Z==nil)
 assert(timers[30]==nil)
 assert(#commands==0)

@@ -1,7 +1,7 @@
 local utils = require 'mp.utils'
 local active = false
 local serial = 0
-local keys = {j='down',k='up',DOWN='down',UP='up',ENTER='choose',ESC='close'}
+local keys = {j='down',k='up',DOWN='down',UP='up',ENTER='choose',ESC='close',['/']='search'}
 local function send(action)
     serial=serial+1
     mp.set_property_native('user-data/stream-sidebar-action',{action=action,serial=serial})

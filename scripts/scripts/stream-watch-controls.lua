@@ -24,7 +24,7 @@ local function navigate(direction)
     if moving then return end
     if mp.get_property_native('user-data/stream-ready-session','')=='' then return end
     moving=true
-    run({'step',tostring(direction)},function(message)
+    run({'step',tostring(direction),tostring(utils.getpid())},function(message)
         local destination=utils.parse_json(message)
         if destination and destination.name then
             mp.commandv('script-message','stream-switch-card',destination.service,destination.name,

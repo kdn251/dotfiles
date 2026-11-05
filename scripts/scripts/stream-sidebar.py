@@ -260,7 +260,8 @@ class Sidebar(Gtk.Application):
         self.window.set_visible(False)
         if self.video_space:self.video_space.restore()
     def remote_key(self,action):
-        if action=='close':self.dismiss()
+        if action=='search':self.open_search()
+        elif action=='close':self.dismiss()
         elif action=='choose':self.choose(self.list,self.list.get_selected_row())
         elif action in ('up','down'):
             self.key(None,Gdk.KEY_j if action=='down' else Gdk.KEY_k,0,0)
@@ -307,7 +308,12 @@ class Sidebar(Gtk.Application):
         if self.pidfd is not None:
             os.close(self.pidfd);self.pidfd=None
     def open_search(self):
-        self.searching=True;self.search.set_visible(True);self.search.grab_focus_without_selecting()
+        self.searching=True
+        self.search.set_visible(True)
+        # Search may arrive through MPV while the video owns keyboard focus.
+        Layer.set_keyboard_mode(self.window,Layer.KeyboardMode.EXCLUSIVE)
+        self.window.present()
+        self.search.grab_focus_without_selecting()
     def search_changed(self,*_):
         self.catalog=None
         self.refresh()
@@ -429,6 +435,12 @@ class Sidebar(Gtk.Application):
                 self.choose(self.list,self.list.get_selected_row());return True
             if key in (Gdk.KEY_Tab,Gdk.KEY_ISO_Left_Tab):self.dismiss();return True
             return False
+        if key in (Gdk.KEY_less,Gdk.KEY_greater):
+            try:
+                ipc({'socket':socket_for(self.player),'player':self.player},
+                    'keypress','<' if key==Gdk.KEY_less else '>')
+            except (OSError,ValueError):pass
+            return True
         if key==Gdk.KEY_slash:
             self.open_search();return True
         if key in (Gdk.KEY_Tab,Gdk.KEY_ISO_Left_Tab,Gdk.KEY_Escape):
