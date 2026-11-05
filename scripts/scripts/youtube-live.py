@@ -46,7 +46,7 @@ def recent_stream(channel,now=None):
         values=json.loads((Path.home()/'.cache/youtube-live.json').read_text()).values()
         now=time.time() if now is None else now
         for stream in values:
-            if stream.get('channel','').rstrip('/')==channel.rstrip('/') and 0<=now-stream.get('checked_at',0)<300:
+            if stream.get('channel','').rstrip('/')==channel.rstrip('/') and 0<=now-stream.get('playback_resolved_at',0)<20:
                 if str(stream.get('playback_url','')).startswith(('edl://','https://')):
                     return stream
     except (OSError,ValueError,TypeError):pass
@@ -79,7 +79,9 @@ def fetch(channel, enrich=True):
                 capture_output=True,text=True,timeout=25)
             details=json.loads(result.stdout) if result.returncode==0 else {}
             manifest=playback_manifest(details)
-            if manifest:stream['playback_url']=manifest
+            if manifest:
+                stream['playback_url']=manifest
+                stream['playback_resolved_at']=time.time()
             stream['started_at'] = details.get('release_timestamp')
             viewers=details.get('concurrent_view_count')
             if isinstance(viewers,(int,float)):stream['viewer_count']=viewers

@@ -29,6 +29,17 @@ class PrefetchTests(unittest.TestCase):
         for file in self.root.glob('*.json'):
             self.assertEqual(file.stat().st_mode & 0o777,0o600)
 
+    def test_youtube_metadata_refresh_does_not_refresh_playback_expiry(self):
+        path=self.root/'cached.json'
+        data={'service':'YouTube','channel':'https://youtube.com/@Test','created':100,
+              'stream':{'url':'https://youtube.com/watch?v=123','playback_url':'edl://old','playback_resolved_at':50}}
+        path.write_text(json.dumps(data))
+        with patch.object(playback.time,'time',return_value=101):
+            self.assertIsNone(playback.cached(path,'YouTube',data['channel']))
+            data['stream']['playback_resolved_at']=100
+            path.write_text(json.dumps(data))
+            self.assertEqual(playback.cached(path,'YouTube',data['channel']),data['stream'])
+
     def test_expired_result_is_refetched(self):
         result=subprocess.CompletedProcess([],0,'{"url":"https://example.test/live"}','')
         with patch.object(playback.subprocess,'run',return_value=result) as run, patch.object(playback.time,'time',return_value=100):

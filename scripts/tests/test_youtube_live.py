@@ -47,10 +47,13 @@ class YouTubeLiveTests(unittest.TestCase):
     def test_cached_manifest_must_be_recent_and_match_channel(self):
         import json
         from unittest.mock import patch
-        stream={'channel':'https://www.youtube.com/@Test','checked_at':100,'playback_url':'https://example.com/master'}
+        stream={'channel':'https://www.youtube.com/@Test','checked_at':100,'playback_resolved_at':100,'playback_url':'https://example.com/master'}
         with patch.object(Path,'read_text',return_value=json.dumps({'Test':stream})):
             self.assertEqual(youtube.recent_stream(stream['channel'],101),stream)
-            self.assertIsNone(youtube.recent_stream(stream['channel'],401))
+            self.assertIsNone(youtube.recent_stream(stream['channel'],121))
+            stream['checked_at']=120
+        with patch.object(Path,'read_text',return_value=json.dumps({'Test':stream})):
+            self.assertIsNone(youtube.recent_stream(stream['channel'],121))
             self.assertIsNone(youtube.recent_stream('https://www.youtube.com/@Other',101))
 
     def test_requires_channel_url(self):

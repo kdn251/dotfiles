@@ -446,13 +446,12 @@ def prepare_transition(session, service, name):
         state = read()
         if not state:
             return
-        # New chats inherit the normal floating window rules. Stage them in
-        # the hidden special workspace until adopt_chat has applied the full
-        # height geometry. Disable automatic workspace re-show during staging.
+        # Keep the outgoing theater intact while resolution/decoding runs.
+        # Hiding its special workspace here can unfullscreen the video before
+        # the replacement has even captured its mode.
         monitors=json.loads(hypr('-j','monitors'))
         cover_chat(state,session,monitors)
         OWNER.unlink(missing_ok=True)
-        hide_workspace(monitors)
         state['transition'] = {'session': session, 'service': service,
                                'name': name, 'deadline': time.monotonic() + 60}
         STATE.write_text(json.dumps(state))
@@ -544,7 +543,11 @@ def resume_transition(session):
                     current = read()
                     if not current or current.get('transition', {}).get('session') != session:
                         return
-                    restore(current, clients)
+                    # The old chat is replaced by the opener. Do not restore
+                    # its windowed geometry or toggle its workspace here: that
+                    # tears down the fullscreen canvas underneath the new MPV.
+                    OWNER.unlink(missing_ok=True)
+                    STATE.unlink(missing_ok=True)
                 player=restore_transition_fullscreen(player)
                 # The ordinary opener supplies the matching platform's chat and
                 # reapplies the fullscreen layout once its window is ready.

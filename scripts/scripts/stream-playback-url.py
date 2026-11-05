@@ -22,6 +22,8 @@ def root():
 def cached(path, service, channel):
     try:
         data = json.loads(path.read_text())
+        if service=='YouTube' and data['stream'].get('playback_url'):
+            if not 0<=time.time()-data['stream'].get('playback_resolved_at',0)<TTL:return None
         if (data['service'] == service and data['channel'] == channel and
                 0 <= time.time()-data['created'] < TTL and
                 data['stream']['url'].startswith('https://')):

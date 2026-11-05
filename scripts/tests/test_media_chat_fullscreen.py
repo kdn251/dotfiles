@@ -63,7 +63,7 @@ class FullscreenChatTests(unittest.TestCase):
                 ipc.assert_any_call(state, 'set_property', 'video-margin-ratio-right',
                                             .2)
 
-    def test_handoff_hides_chat_before_replacement_can_launch(self):
+    def test_handoff_keeps_chat_visible_while_replacement_loads(self):
         events = []
         state = {'player': self.player, 'chat': self.chat}
         with tempfile.TemporaryDirectory() as tmp, patch.object(layout, 'STATE', Path(tmp)/'state'), \
@@ -73,7 +73,7 @@ class FullscreenChatTests(unittest.TestCase):
             layout.STATE.write_text(json.dumps(state))
             layout.OWNER.write_text('3 0 -97')
             layout.prepare_transition('session', 'Kick', 'example')
-            self.assertEqual(events, ['hide', 'launch'])
+            self.assertEqual(events, ['launch'])
             self.assertFalse(layout.OWNER.exists())
             self.assertEqual(layout.read()['transition']['service'], 'Kick')
 

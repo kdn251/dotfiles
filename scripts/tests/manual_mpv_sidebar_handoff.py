@@ -54,7 +54,7 @@ with tempfile.TemporaryDirectory(dir=preview.ROOT) as tmp:
   if '--chat' in sys.argv:
    for key,value in [('STATE',root/'chat-state'),('OWNER',root/'chat-owner'),('PREFERENCE',root/'chat-preference')]:
     item=patch.object(chat,key,value);item.start();chat_patches.append(item)
-   klass='com.chatterino.chatterino' if service=='Twitch' else 'newsboat-live-chat'
+   klass='com.chatterino.chatterino' if os.environ.get('TEST_FROM',service)=='Twitch' else 'newsboat-live-chat'
    code="from PyQt6.QtWidgets import QApplication,QLabel;import sys;app=QApplication([]);app.setDesktopFileName(sys.argv[1]);w=QLabel('Chat handoff test');w.resize(250,400);w.show();app.exec()"
    pane=subprocess.Popen(['python3','-c',code,klass],stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL);ps.append(pane)
    wait_for(lambda:any(c['pid']==pane.pid for c in preview.clients()))
@@ -62,14 +62,24 @@ with tempfile.TemporaryDirectory(dir=preview.ROOT) as tmp:
    monitors=json.loads(chat.hypr('-j','monitors'));monitor=next(m for m in monitors if m.get('focused'))
    if monitor.get('specialWorkspace',{}).get('name')!='special:chatterino_chat':chat.toggle_on_monitor(monitor,monitors)
    assert a.get('video-margin-ratio-right')>.1
+   real_spawn=subprocess.Popen
+   with patch('stream_sidebar.prepare_transfer'),patch.object(chat,'cover_chat'),patch.object(chat.subprocess,'Popen',side_effect=lambda args,**kwargs:None if isinstance(args,list) and 'resume' in args else real_spawn(args,**kwargs)):
+    chat.prepare_transition('test',service,'xqc')
+   assert a.get('fullscreen') is True,'Preparing chat switch exited fullscreen'
+   assert any(m.get('specialWorkspace',{}).get('name')=='special:chatterino_chat' for m in json.loads(chat.hypr('-j','monitors'))),'Preparing switch hid chat'
   actual_clients=preview.clients
   def clients():return [c for c in actual_clients() if c['pid'] in (old.pid,new.pid)]
   with patch.object(preview,'HANDOFF',handoff),patch.object(preview,'SESSION',session),patch.object(preview,'CANONICAL',root/'canonical'),patch.object(preview,'clients',side_effect=clients):
    assert preview.adopt('xqc','Test','',service,'test','')==new.pid
   if '--chat' in sys.argv:
    assert b.get('user-data/stream-handoff-complete')=='test'
-   chat.restore(chat.read(),test_clients())
+   chat.OWNER.unlink(missing_ok=True)
+   chat.STATE.unlink(missing_ok=True)
    chat.restore_transition_fullscreen(next(c for c in test_clients() if c['pid']==new.pid))
+   destination_class='com.chatterino.chatterino' if service=='Twitch' else 'newsboat-live-chat'
+   if destination_class!=klass:
+    pane=subprocess.Popen(['python3','-c',code,destination_class],stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL);ps.append(pane)
+    wait_for(lambda:any(c['pid']==pane.pid for c in preview.clients()))
    assert chat.begin(test_clients()), str([(c['pid'],c['fullscreen'],c['workspace']) for c in test_clients()])
    monitors=json.loads(chat.hypr('-j','monitors'));monitor=next(m for m in monitors if m.get('focused'))
    if monitor.get('specialWorkspace',{}).get('name')!='special:chatterino_chat':chat.toggle_on_monitor(monitor,monitors)
