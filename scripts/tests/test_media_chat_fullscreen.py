@@ -277,6 +277,18 @@ class FullscreenChatTests(unittest.TestCase):
             self.assertEqual(layout.restore_transition_fullscreen(self.player)['fullscreen'],2)
             self.assertEqual(changes,[False,True])
 
+    def test_cover_waits_through_missing_state_loading_and_geometry(self):
+        request={'bounds':{'at':[100,0],'size':[300,900]}}
+        player=dict(self.player,fullscreen=2)
+        chat=dict(self.chat,at=[100,0],size=[300,900],**{'class':'newsboat-live-chat'})
+        state={'player':player,'chat':chat}
+        monitor={'specialWorkspace':{'name':'special:chatterino_chat'}}
+        self.assertFalse(layout.chat_cover_ready(request,None,[player,chat],monitor,lambda pid:True))
+        self.assertFalse(layout.chat_cover_ready(request,state,[player,chat],monitor,lambda pid:False))
+        self.assertFalse(layout.chat_cover_ready(request,state,[player,dict(chat,at=[0,0])],monitor,lambda pid:True))
+        self.assertFalse(layout.chat_cover_ready(request,state,[dict(player,fullscreen=0),chat],monitor,lambda pid:True))
+        self.assertTrue(layout.chat_cover_ready(request,state,[player,chat],monitor,lambda pid:True))
+
     def test_cross_platform_requires_new_player(self):
         state = {'player': self.player, 'transition': {'service':'Kick', 'name':'newstream'}}
         new = dict(self.player, pid=11, address='new', fullscreen=0)

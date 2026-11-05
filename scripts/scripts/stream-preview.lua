@@ -69,7 +69,8 @@ mp.register_event('playback-restart',function()
 end)
 mp.register_event('end-file',function(event)
     if event.reason=='error' and not promoted then
-        stop_spinner()
-        mp.commandv('quit')
+        -- twitch-first-frame.lua may be replacing a failed direct URL with
+        -- its fallback. The owner/ready deadline cleans up real failures.
+        mp.set_property_native('user-data/preview-load-error',true)
     end
 end)

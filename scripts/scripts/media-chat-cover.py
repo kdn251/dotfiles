@@ -6,12 +6,12 @@ ctypes.CDLL('libgtk4-layer-shell.so',mode=ctypes.RTLD_GLOBAL)
 import gi
 gi.require_version('Gtk','4.0');gi.require_version('Gtk4LayerShell','1.0')
 from gi.repository import Gtk,Gdk,Gio,GLib,Gtk4LayerShell as Layer
-from media_chat_fullscreen import read,ROOT
+from media_chat_fullscreen import read,ROOT,chat_cover_ready
 
 class Cover(Gtk.Application):
     def __init__(self,request):
         super().__init__(application_id='local.media.chat.cover',flags=Gio.ApplicationFlags.NON_UNIQUE)
-        self.request=request;self.started=time.monotonic();self.armed=False
+        self.request=request;self.started=time.monotonic();self.windowed_since=None
         self.connect('activate',self.activate_cover)
     def activate_cover(self,_):
         r=self.request;m=r['monitor'];b=r['bounds']
@@ -33,6 +33,8 @@ class Cover(Gtk.Application):
         r=self.request
         try:
             if Path('/tmp/twitch-session.id').read_text().strip()!=r['session']:self.quit();return False
+            cancelled=ROOT/'media-chat-cover-cancel'
+            if cancelled.exists() and cancelled.read_text().strip()==r['session']:self.quit();return False
             if time.monotonic()-self.started>60:self.quit();return False
             clients=json.loads(subprocess.check_output(['/usr/bin/hyprctl','-j','clients'],timeout=1))
             monitors=json.loads(subprocess.check_output(['/usr/bin/hyprctl','-j','monitors'],timeout=1))
@@ -40,19 +42,18 @@ class Cover(Gtk.Application):
             visible=m.get('activeWorkspace',{}).get('id')==r['workspace']
             self.window.set_visible(visible)
             state=read()
-            if state and state.get('transition',{}).get('session')==r['session']:self.armed=True
-            if not self.armed:return True
+            if not any(c.get('class')=='mpv' for c in clients):
+                self.quit();return False
             if not any(c.get('class')=='mpv' and c.get('fullscreen') for c in clients):
+                # Chat teardown briefly exits fullscreen before the handoff
+                # restores it. Keep covering that compositor transition.
+                if self.windowed_since is None:self.windowed_since=time.monotonic()
+                if time.monotonic()-self.windowed_since>2:self.quit();return False
+            else:self.windowed_since=None
+            if chat_cover_ready(r,state,clients,m,lambda pid:(ROOT/f'media-chat-ready-{pid}').exists()):
                 self.quit();return False
-            if state and not state.get('transition'):
-                player=next((c for c in clients if c.get('pid')==state['player']['pid']),None)
-                chat=next((c for c in clients if c.get('address')==state['chat']['address']),None)
-                if player and not player.get('fullscreen'):self.quit();return False
-                if chat and m.get('specialWorkspace',{}).get('name')=='special:chatterino_chat':
-                    loaded=chat.get('class')=='com.chatterino.chatterino' or (ROOT/f"media-chat-ready-{chat['pid']}").exists()
-                    if loaded:self.quit();return False
-            elif not state and time.monotonic()-self.started>2:
-                self.quit();return False
+            # restore() removes the old state before the new browser maps.
+            # Absence of state is not readiness: retain the old chat frame.
         except (OSError,ValueError,subprocess.SubprocessError):pass
         return True
 

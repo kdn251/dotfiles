@@ -360,7 +360,7 @@ if [[ "$CHOICE" == *"(Rumble)" || "$CHOICE" == *"(YouTube)" || "$CHOICE" == *"(K
   fi
   CHANNEL_URL="${CUSTOM_CHANNEL_URL:-}"
   if [ -z "$CHANNEL_URL" ]; then
-    CHANNEL_URL=$(awk -v name="$STREAMER_USERNAME" '$1 == name {print $2; exit}' "$CHANNEL_LIST")
+    CHANNEL_URL=$(awk -v name="$STREAMER_USERNAME" 'tolower($1) == tolower(name) {print $2; exit}' "$CHANNEL_LIST")
   fi
   (
     # The background live check already cached the avatar: show it immediately,
@@ -408,7 +408,7 @@ PYICON
     stream_session_current || exit 0
     STREAM_PAGE_URL="$CHANNEL_URL"
     if [[ "$SERVICE" == YouTube ]]; then
-      STREAM_PAGE_URL="$LIVE_URL"
+      STREAM_PAGE_URL=$(jq -r '.url' <<<"$LIVE")
     elif [[ "$SERVICE" == Rumble ]]; then
       STREAM_PAGE_URL=$(jq -r --arg fallback "$CHANNEL_URL" '.page_url // $fallback' <<<"$LIVE")
     fi

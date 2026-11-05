@@ -259,6 +259,8 @@ def close(clients):
             return False
         # Mod+C explicitly selects ordinary fullscreen for the next return.
         PREFERENCE.unlink(missing_ok=True)
+        try:(ROOT/'media-chat-cover-cancel').write_text(Path('/tmp/twitch-session.id').read_text().strip())
+        except OSError:pass
         restore(state, clients)
         return True
 
@@ -402,6 +404,19 @@ def maintain(clients):
         return True
 
 
+def chat_cover_ready(request,state,clients,monitor,ready):
+    if not state or state.get('transition'):return False
+    if state['player']['pid']==request.get('old_player_pid'):return False
+    player=next((c for c in clients if c.get('pid')==state['player']['pid']),None)
+    chat=next((c for c in clients if c.get('address')==state['chat']['address']
+               and c.get('pid')==state['chat']['pid']),None)
+    if not player or not player.get('fullscreen') or not chat:return False
+    if monitor.get('specialWorkspace',{}).get('name')!='special:'+WORKSPACE:return False
+    bounds=request['bounds']
+    return (chat.get('at')==bounds['at'] and chat.get('size')==bounds['size']
+            and (chat.get('class')=='com.chatterino.chatterino' or ready(chat['pid'])))
+
+
 def cover_chat(state,session,monitors):
     """Capture before hiding; wait for the cover to map before tearing chat down."""
     import uuid
@@ -414,7 +429,7 @@ def cover_chat(state,session,monitors):
     try:
         subprocess.run(['grim','-g',f'{x},{y} {w}x{h}',image],check=True,timeout=2,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)
         Path(request).write_text(json.dumps(dict(session=session,monitor=monitor,bounds=bounds,
-            workspace=state['player']['workspace']['id'],image=image,ready=ready)))
+            workspace=state['player']['workspace']['id'],old_player_pid=state['player']['pid'],image=image,ready=ready)))
         subprocess.Popen(['python3',str(Path(__file__).with_name('media-chat-cover.py')),request],
             stdin=subprocess.DEVNULL,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL,start_new_session=True)
         deadline=time.monotonic()+1

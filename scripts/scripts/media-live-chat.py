@@ -60,14 +60,33 @@ def main(url, title):
     from pathlib import Path
     ready=Path(os.environ.get("XDG_RUNTIME_DIR","/tmp"))/f"media-chat-ready-{os.getpid()}"
     app.aboutToQuit.connect(lambda:ready.unlink(missing_ok=True))
+    generation=0
+    render_timer=QTimer(window);render_timer.setInterval(100)
     def started():
+        nonlocal generation
+        generation+=1;render_timer.stop()
         ready.unlink(missing_ok=True)
         cover.show();stack.setCurrentWidget(cover);spin();spinner.start()
+    def reveal(token):
+        if token!=generation:return
+        render_timer.stop();spinner.stop()
+        cover.hide();stack.setCurrentWidget(view)
+        # Let Qt paint the revealed web view before dropping the external
+        # screenshot cover. loadFinished alone precedes Kick's client rendering.
+        QTimer.singleShot(150,lambda:ready.touch() if token==generation else None)
+    def rendered():
+        token=generation
+        view.page().runJavaScript(
+            "Boolean(document.body && document.body.innerText.trim().length > 20)",
+            lambda visible:reveal(token) if visible else None)
     def finished(ok):
-        spinner.stop()
-        QTimer.singleShot(100,lambda:ready.touch())
-        if ok:cover.hide();stack.setCurrentWidget(view)
-        else:cover.setText('Chat could not load. Press Ctrl+R to retry.')
+        if ok:
+            render_timer.start();rendered()
+        else:
+            spinner.stop();cover.setText('Chat could not load. Press Ctrl+R to retry.')
+            token=generation
+            QTimer.singleShot(150,lambda:ready.touch() if token==generation else None)
+    render_timer.timeout.connect(rendered)
     from PyQt6.QtGui import QShortcut, QKeySequence
     retry=QShortcut(QKeySequence('Ctrl+R'),window);retry.activated.connect(view.reload)
     spinner.timeout.connect(spin);view.loadStarted.connect(started);view.loadFinished.connect(finished)
