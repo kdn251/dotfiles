@@ -306,7 +306,7 @@ def adopt(name,title,marker,service,session,page):
     from media_chat_fullscreen import socket_for,place_player
     from media_panel_layout import PROPERTY,FIT
     p=Player(data['endpoint'],data['pid'])
-    previous=None;old=None;attached=False;committed=False
+    previous=None;old=None;attached=False;committed=False;was_fullscreen=False
     try:
         if not p.get('user-data/preview-ready'):return None
         if SESSION.read_text().strip()!=session:return None
@@ -360,6 +360,12 @@ def adopt(name,title,marker,service,session,page):
                     saved=json.loads(saved.read_text())
                     if saved.get('pid')==old['pid']:(x,y),(w,h)=saved['at'],saved['size']
                 except (OSError,ValueError):pass
+        if was_fullscreen and old and not data.get('staged'):
+            # A ready picker preview is still visible. Prepare its fullscreen
+            # surface off-workspace so it cannot shrink the outgoing stream.
+            subprocess.run([*HYPRCTL,'dispatch','movetoworkspacesilent',
+                'special:stream_staging,address:'+window['address']],check=True,
+                stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL,timeout=2)
         if was_fullscreen:
             # Set fullscreen before changing the preview class: the mpv class
             # has floating-size rules that would otherwise expose a small window.
@@ -386,7 +392,11 @@ def adopt(name,title,marker,service,session,page):
         if not was_fullscreen:
             operations.extend([f'dispatch resizewindowpixel exact {w} {h},{target}',
                                f'dispatch movewindowpixel exact {x} {y},{target}'])
-        if data.get('staged') and old:
+        if was_fullscreen and old:
+            # One compositor transaction: there must be no frame between the
+            # old fullscreen window leaving and the prepared one arriving.
+            operations.append(f'dispatch movetoworkspacesilent special:stream_retired,address:{old["address"]}')
+        if old and (data.get('staged') or was_fullscreen):
             operations.append(f'dispatch movetoworkspacesilent {old["workspace"]["name"]},{target}')
         if operations:
             subprocess.run([*HYPRCTL,'--batch','; '.join(operations)],check=True,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL,timeout=2)
@@ -433,6 +443,13 @@ def adopt(name,title,marker,service,session,page):
                     deadline=time.monotonic()+.5
                     while time.monotonic()<deadline and p.get('user-data/stream-sidebar-attached')!=old['pid']:time.sleep(.01)
                 except (OSError,ValueError):pass
+            if old and was_fullscreen:
+                try:
+                    subprocess.run([*HYPRCTL,'dispatch','movetoworkspacesilent',
+                        old['workspace']['name']+',address:'+old['address']],
+                        stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL,timeout=2)
+                    previous.command('set_property','fullscreen',True)
+                except (OSError,ValueError,subprocess.SubprocessError):pass
             if previous:
                 try:previous.command('set_property','mute',False)
                 except (OSError,ValueError):pass

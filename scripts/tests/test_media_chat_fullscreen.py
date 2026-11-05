@@ -27,6 +27,22 @@ class FullscreenChatTests(unittest.TestCase):
     chat = dict(address='c', pid=20, at=[500, 600], size=[200, 300],
                 **{'class': 'com.chatterino.chatterino'})
 
+    def test_new_chat_stages_hidden_only_in_fullscreen(self):
+        for fullscreen in (0,2):
+            with self.subTest(fullscreen=fullscreen),patch.object(layout,'hypr',side_effect=[json.dumps([dict(self.player,fullscreen=fullscreen)]),json.dumps([self.monitor])]),patch.object(layout,'hide_workspace') as hide:
+                layout.prepare_chat_window()
+                self.assertEqual(hide.call_count,1 if fullscreen else 0)
+
+    def test_chat_retirement_moves_before_close_under_focus_guard(self):
+        with patch.object(layout,'hypr') as hypr:
+            layout.retire_chat_window('0x123')
+        command,script=hypr.call_args.args
+        self.assertEqual(command,'eval')
+        self.assertLess(script.index('on_focus_under_fullscreen=0'),script.index('window.move'))
+        self.assertLess(script.index('window.move'),script.index('window.close'))
+        self.assertIn('special:media_chat_closing',script)
+        self.assertIn('on_focus_under_fullscreen=previous',script)
+
     def test_new_stream_is_pinned_once_unless_fullscreen_or_already_pinned(self):
         for pinned, fullscreen, expected in [(False, 0, True), (True, 0, False), (False, 2, False)]:
             player = dict(self.player, pinned=pinned, fullscreen=fullscreen, floating=True)

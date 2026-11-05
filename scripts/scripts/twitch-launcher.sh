@@ -58,7 +58,7 @@ chat_stop() {
   rm -f "${XDG_RUNTIME_DIR:-/tmp}/twitch-chat-channel-${UID}"
   for addr in $(hyprctl clients -j 2>/dev/null |
     jq -r --arg c "$CHAT_CLASS" '.[] | select(.class == $c) | .address'); do
-    hyprctl dispatch closewindow address:"$addr" >/dev/null 2>&1
+    python3 "$HOME/scripts/media_chat_fullscreen.py" retire-chat "$addr" >/dev/null 2>&1
   done
   for i in $(seq 1 40); do
     pgrep -x chatterino >/dev/null || return 0
@@ -131,6 +131,7 @@ chat_start() {
 
   # Chatterino must not inherit the transition lock: otherwise every later
   # switch/cleanup waits for the very process it is supposed to close.
+  python3 "$HOME/scripts/media_chat_fullscreen.py" stage-chat
   chatterino 8>&- >/dev/null 2>&1 &
   printf '%s\n' "$ch" > "${XDG_RUNTIME_DIR:-/tmp}/twitch-chat-channel-${UID}"
 }
@@ -477,9 +478,8 @@ awk -v user="$STREAMER_USERNAME" '
     --retry-open 3
   )
 
-  # Chat and URL resolution proceed independently. Leave the current player
-  # intact until we know whether its window can be reused.
-  manage_chat start "$STREAMER_USERNAME" &
+  # Keep the current chat and fullscreen player intact while resolving and
+  # decoding the replacement. Closing Chatterino here can exit fullscreen.
   # Resolve the network URL while preparing local title/monitor settings.
   URL_FILE=$(mktemp "${XDG_RUNTIME_DIR:-/tmp}/twitch-url.XXXXXX")
   python3 "$HOME/scripts/twitch-stream-url.py" "$STREAMER_USERNAME" --playback >"$URL_FILE" 2>/dev/null &
@@ -551,6 +551,10 @@ awk -v user="$STREAMER_USERNAME" '
   MPV_PID=$!
   python3 "$HOME/scripts/media_chat_fullscreen.py" place "$MPV_PID" &
   fi
+
+  # The adopted player has decoded a frame and owns the fullscreen canvas.
+  # Only now replace the outgoing chat; its cover stays until the new chat maps.
+  manage_chat start "$STREAMER_USERNAME" &
 
   # Start at full quality. Replacing a playing low-quality stream causes a
   # visible freeze; the Lua helper uses the low URL only if startup fails.

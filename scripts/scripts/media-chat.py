@@ -51,8 +51,7 @@ def close_panels(clients, panel_class):
     for panel in panels:
         # Hide before requesting a graceful close so the other panel never
         # shares a visible frame while the old application's shutdown runs.
-        hypr('dispatch','movetoworkspacesilent','special:media_chat_closing,address:'+panel['address'])
-        hypr('dispatch','closewindow','address:'+panel['address'])
+        fullscreen_chat.retire_chat_window(panel['address'])
     return bool(panels)
 
 
@@ -169,6 +168,7 @@ def main():
              [sys.executable,str(Path(__file__).with_name('newsboat-youtube-comments.py')),url])
     environment=dict(os.environ)
     if preload:environment['MEDIA_CHAT_PLAYER_PID']=str(pid)
+    fullscreen_chat.prepare_chat_window()
     process=subprocess.Popen(command,env=environment,
                      stdin=subprocess.DEVNULL,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL,start_new_session=True)
     for _ in range(80):

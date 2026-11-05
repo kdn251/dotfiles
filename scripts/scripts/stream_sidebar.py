@@ -24,6 +24,19 @@ def rows(cache=None, now=None, current=None):
 def choice(row):
     return row['name']+('' if row['service']=='Twitch' else ' ('+row['service']+')')
 
+def visible_on_workspace(player,monitor):
+    """Native Hyprland special workspaces may have no numeric id."""
+    if not monitor:return False
+    def key(workspace):
+        return workspace.get('name') or workspace.get('address') or workspace.get('id')
+    current=key(player.get('workspace',{}))
+    if not current or current!=key(monitor.get('activeWorkspace',{})):return False
+    special=monitor.get('specialWorkspace',{})
+    name=special.get('name','')
+    if name and name!='special:chatterino_chat':return current==key(special)
+    return True
+
+
 class VideoSpace:
     def __init__(self, command, pid, fallback=None):
         self.command=command

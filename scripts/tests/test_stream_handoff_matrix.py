@@ -48,8 +48,13 @@ class HandoffMatrixTests(unittest.TestCase):
                             patch.object(preview,'Player',Player),patch.object(preview,'clients',return_value=[old,new]), \
                             patch('media_chat_fullscreen.socket_for',return_value='old'),patch('media_chat_fullscreen.place_player'), \
                             patch('pip_geometry.settings',return_value=([12]*4,1)),patch.object(preview,'retire_player',side_effect=retire), \
-                            patch.object(preview.subprocess,'run'),patch.object(preview.subprocess,'check_output',return_value=json.dumps([dict(id=0,x=0,y=0,width=1440,height=960,scale=1)])):
+                            patch.object(preview.subprocess,'run') as dispatch,patch.object(preview.subprocess,'check_output',return_value=json.dumps([dict(id=0,x=0,y=0,width=1440,height=960,scale=1)])):
                         self.assertEqual(preview.adopt('next','Next','','%s'%destination,'selected','page'),202)
+                    if fullscreen:
+                        batches=[c.args[0][-1] for c in dispatch.call_args_list if '--batch' in c.args[0]]
+                        swap=next(b for b in batches if 'special:stream_retired,address:old' in b)
+                        self.assertIn('movetoworkspacesilent 1,address:new',swap)
+                        self.assertLess(swap.index('special:stream_retired'),swap.index('1,address:new'))
                     self.assertEqual(trace[-2:],['new audible','old removed'])
                     self.assertEqual(new['fullscreen'],2 if fullscreen else 0)
                     if left:self.assertLess(trace.index('list attached'),trace.index('new audible'))

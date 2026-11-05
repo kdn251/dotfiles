@@ -157,6 +157,26 @@ def read():
         return None
 
 
+def prepare_chat_window():
+    """New chat windows must map out of view until begin() sizes the pane."""
+    clients=json.loads(hypr('-j','clients'))
+    if any(c.get('class')=='mpv' and c.get('fullscreen')==2 for c in clients):
+        hide_workspace(json.loads(hypr('-j','monitors')))
+
+
+def retire_chat_window(address):
+    """Remove chat from focus before its asynchronous process shutdown."""
+    target=json.dumps('address:'+address)
+    script=('local previous=hl.get_config("misc.on_focus_under_fullscreen"); '
+            'hl.config({misc={on_focus_under_fullscreen=0}}); '
+            'local ok,err=pcall(function() '
+            'hl.dispatch(hl.dsp.window.move({workspace="special:media_chat_closing",follow=false,window='+target+'})); '
+            'hl.dispatch(hl.dsp.window.close({window='+target+'})) end); '
+            'hl.config({misc={on_focus_under_fullscreen=previous}}); '
+            'if not ok then error(err) end')
+    hypr('eval',script)
+
+
 def toggle_workspace():
     """Map/unmap chat without Hyprland exiting the video's fullscreen mode."""
     # The normal policy (2) exits fullscreen when special-workspace focus moves
@@ -578,6 +598,10 @@ if __name__ == '__main__':
     import sys
     if sys.argv[1] == 'prepare':
         prepare_transition(*sys.argv[2:])
+    elif sys.argv[1] == 'stage-chat':
+        prepare_chat_window()
+    elif sys.argv[1] == 'retire-chat':
+        retire_chat_window(sys.argv[2])
     elif sys.argv[1] == 'place':
         place_player(int(sys.argv[2]))
     elif sys.argv[1] == 'pin':

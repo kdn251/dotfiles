@@ -18,7 +18,7 @@ gi.require_version('Gtk','4.0')
 gi.require_version('Gdk','4.0')
 gi.require_version('Gtk4LayerShell','1.0')
 from gi.repository import Gtk,Gdk,Gio,GLib,Pango,Gsk,Graphene,Gtk4LayerShell as Layer
-from stream_sidebar import rows,choice,VideoSpace,restore_windowed
+from stream_sidebar import rows,choice,VideoSpace,restore_windowed,visible_on_workspace
 from media_chat_fullscreen import ipc,socket_for,read as chat_layout
 from mpv_clip import Player
 from stream_player_identity import identity
@@ -338,6 +338,9 @@ class Sidebar(Gtk.Application):
             if not player:
                 self.dismiss();return False
             self.player=player
+            # The replacement is briefly fullscreen in its hidden staging
+            # workspace. Keep the existing sidebar/focus until it is revealed.
+            if time.monotonic()<self.handoff_until and player.get('workspace',{}).get('name')=='special:stream_staging':return True
             if not player.get('fullscreen'):
                 if time.monotonic()<self.handoff_until:return True
                 if self.leaving_fullscreen:restore_windowed(player)
@@ -349,9 +352,7 @@ class Sidebar(Gtk.Application):
             monitor=next((m for m in monitors if m['id']==player['monitor']),None)
             # A layer-shell surface has no workspace of its own. Unmap it while
             # away, retaining the widgets, selection and reserved video space.
-            visible=bool(monitor and monitor.get('activeWorkspace',{}).get('id')==player['workspace']['id'])
-            if monitor and monitor.get('specialWorkspace',{}).get('id',0) and monitor['specialWorkspace'].get('name')!='special:chatterino_chat':
-                visible=monitor['specialWorkspace']['id']==player['workspace']['id']
+            visible=visible_on_workspace(player,monitor)
             if visible and not self.window.get_visible():
                 self.reserve_video()
                 self.window.present()

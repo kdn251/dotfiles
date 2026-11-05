@@ -13,7 +13,9 @@ class ChatTests(unittest.TestCase):
     def setUp(self):
         toggle=patch.object(chat.fullscreen_chat,'toggle_workspace')
         self.toggle=toggle.start();self.addCleanup(toggle.stop)
-        for method in ('begin', 'close'):
+        retire=patch.object(chat.fullscreen_chat,'retire_chat_window')
+        self.retire=retire.start();self.addCleanup(retire.stop)
+        for method in ('begin', 'close', 'prepare_chat_window'):
             mock = patch.object(chat.fullscreen_chat, method, return_value=False)
             mock.start(); self.addCleanup(mock.stop)
 
@@ -60,8 +62,7 @@ class ChatTests(unittest.TestCase):
                     return 'ok'
                 with patch.object(chat,'STATE',state),patch.object(chat,'video_url',return_value=url),patch.object(chat,'hypr',side_effect=respond) as hypr,patch.object(chat.subprocess,'Popen') as spawn,patch.object(chat.subprocess,'run'):
                     chat.main()
-                    hypr.assert_any_call('dispatch','movetoworkspacesilent','special:media_chat_closing,address:'+closed)
-                    hypr.assert_any_call('dispatch','closewindow','address:'+closed)
+                    self.retire.assert_any_call(closed)
                     self.assertFalse(any(c.args[:2]==('dispatch','togglespecialworkspace') for c in hypr.call_args_list))
                     spawn.assert_not_called()
 

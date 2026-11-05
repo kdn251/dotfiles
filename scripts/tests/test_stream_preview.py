@@ -127,7 +127,7 @@ class PreviewTests(unittest.TestCase):
             handoff.write_text(json.dumps(dict(name='Example',service='Twitch',created=preview.time.time(),pid=123,endpoint=str(root/'preview.sock'))))
             player=Mock();player.get.side_effect=lambda key,*args: False if key=='user-data/stream-sidebar-open' else True
             window=dict(pid=123,address='p',monitor=0,at=[10,10],size=[480,270],fullscreen=0,**{'class':'mpv'})
-            old=dict(pid=456,address='old',fullscreen=2,**{'class':'mpv'})
+            old=dict(pid=456,address='old',fullscreen=2,workspace={'name':'1'},**{'class':'mpv'})
             toggle=Mock()
             player.command.side_effect=lambda *args:window.update(fullscreen=2) if args[:2]==('set_property','fullscreen') else None
             with patch.object(preview,'HANDOFF',handoff),patch.object(preview,'SESSION',session),                     patch.object(preview,'CANONICAL',root/'canonical'),patch.object(preview,'Player',return_value=player),                     patch.object(preview,'clients',return_value=[old,window]),                     patch.object(preview.os,'pidfd_open',side_effect=lambda pid: self.retire_after_fullscreen(window, pid)),                     patch('media_chat_fullscreen.socket_for',return_value='old.sock'),                     patch.object(preview.subprocess,'check_output',return_value=json.dumps([dict(id=0,x=0,y=0,width=1440,height=960,scale=1)])),                     patch.object(preview.subprocess,'run') as move,patch('pip_geometry.settings',return_value=([12]*4,1)),                     patch('media_chat_fullscreen.place_player') as place,                     patch.object(preview.runpy,'run_path',return_value={'toggle':toggle}):
@@ -227,7 +227,7 @@ class PreviewTests(unittest.TestCase):
             handoff=root/'handoff'
             handoff.write_text(json.dumps(dict(name='Example',service='Twitch',created=preview.time.time(),pid=123,endpoint='new.sock')))
             player=Mock();player.get.side_effect=lambda key,*args: False if key=='user-data/stream-sidebar-open' else True
-            old=dict(pid=456,address='old',fullscreen=2,**{'class':'mpv'})
+            old=dict(pid=456,address='old',fullscreen=2,workspace={'name':'1'},**{'class':'mpv'})
             window=dict(pid=123,address='new',fullscreen=0,mapped=True,monitor=0,at=[10,10],size=[480,270],**{'class':'mpv'})
             with patch.object(preview,'HANDOFF',handoff),patch.object(preview,'SESSION',session), \
                     patch.object(preview,'CANONICAL',root/'canonical'),patch.object(preview,'Player',return_value=player), \

@@ -15,6 +15,18 @@ class SidebarTests(unittest.TestCase):
                     restore_windowed(player)
                     self.assertEqual(sum('window.pin' in call.args[0][-1] for call in run.call_args_list),expected)
 
+    def test_native_workspaces_without_numeric_ids(self):
+        from stream_sidebar import visible_on_workspace
+        monitor={'activeWorkspace':{'name':'1'},'specialWorkspace':{'name':''}}
+        player={'workspace':{'name':'1'}}
+        self.assertTrue(visible_on_workspace(player,monitor))
+        self.assertFalse(visible_on_workspace({'workspace':{'name':'special:stream_staging'}},monitor))
+        monitor['specialWorkspace']={'name':'special:chatterino_chat'}
+        self.assertTrue(visible_on_workspace(player,monitor))
+        monitor['specialWorkspace']={'name':'special:scratch'}
+        self.assertFalse(visible_on_workspace(player,monitor))
+        self.assertFalse(visible_on_workspace({'workspace':{}},monitor))
+
     def test_live_counts_order_and_service_identity(self):
         cache={'t':{'a':{'checked_at':1000,'viewer_count':100}},
                'k':{'b':{'checked_at':1000,'viewer_count':200}},
