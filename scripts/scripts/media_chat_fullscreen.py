@@ -157,11 +157,25 @@ def read():
         return None
 
 
+def toggle_workspace():
+    """Map/unmap chat without Hyprland exiting the video's fullscreen mode."""
+    # The normal policy (2) exits fullscreen when special-workspace focus moves
+    # underneath it. Override only inside this compositor transaction, then
+    # restore the user's policy before another event or frame can run.
+    script=('local previous=hl.get_config("misc.on_focus_under_fullscreen"); '
+            'hl.config({misc={on_focus_under_fullscreen=0}}); '
+            'local ok,err=pcall(function() '
+            'hl.dispatch(hl.dsp.workspace.toggle_special("chatterino_chat")) end); '
+            'hl.config({misc={on_focus_under_fullscreen=previous}}); '
+            'if not ok then error(err) end')
+    hypr('eval',script)
+
+
 def toggle_on_monitor(monitor, monitors):
     focused = next((m for m in monitors if m.get('focused')), None)
     if focused and focused['id'] != monitor['id']:
         hypr('dispatch', 'focusmonitor', str(monitor['id']))
-    hypr('dispatch', 'togglespecialworkspace', WORKSPACE)
+    toggle_workspace()
     if focused and focused['id'] != monitor['id']:
         hypr('dispatch', 'focusmonitor', str(focused['id']))
 
@@ -439,6 +453,8 @@ def cover_chat(state,session,monitors):
 
 
 def prepare_transition(session, service, name):
+    from stream_preview import capture_switch
+    capture_switch(session)
     from stream_sidebar import prepare_transfer
     prepare_transfer(session,service,name)
     with STATE.with_suffix('.lock').open('a') as lock:

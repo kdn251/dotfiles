@@ -8,6 +8,8 @@ import media_chat_fullscreen as layout
 
 class FullscreenChatTests(unittest.TestCase):
     def setUp(self):
+        capture=patch('stream_preview.capture_switch')
+        capture.start();self.addCleanup(capture.stop)
         sidebar=patch('stream_sidebar.prepare_transfer')
         sidebar.start();self.addCleanup(sidebar.stop)
         cover=patch.object(layout,'cover_chat')
@@ -169,8 +171,8 @@ class FullscreenChatTests(unittest.TestCase):
             control.assert_any_call('keyword', 'input:special_fallthrough', '1')
             control.assert_any_call('keyword', 'input:special_fallthrough', '0')
             self.assertFalse(layout.STATE.exists())
-            self.assertFalse(any('fullscreen' in str(c.args) for c in control.call_args_list))
-            control.assert_any_call('dispatch', 'togglespecialworkspace', 'chatterino_chat')
+            self.assertFalse(any('window.fullscreen' in str(c.args) for c in control.call_args_list))
+            self.assertTrue(any(c.args[0]=='eval' and 'workspace.toggle_special' in c.args[1] for c in control.call_args_list))
 
     def test_chat_uses_full_height_even_with_letterboxed_video(self):
         bounds = layout.layout(self.monitor, video={'w':2880, 'h':1920, 'mr':576, 'mt':360, 'mb':360})
@@ -205,13 +207,13 @@ class FullscreenChatTests(unittest.TestCase):
             self.assertTrue(layout.maintain(clients))
             self.assertTrue(layout.read()['suspended'])
             restore.assert_not_called()
-            hypr.assert_any_call('dispatch', 'togglespecialworkspace', 'chatterino_chat')
+            self.assertTrue(any(c.args[0]=='eval' and 'workspace.toggle_special' in c.args[1] for c in hypr.call_args_list))
             hypr.reset_mock()
             hypr.return_value = json.dumps([back])
             self.assertTrue(layout.maintain(clients))
             self.assertFalse(layout.read()['suspended'])
             restore.assert_not_called()
-            hypr.assert_any_call('dispatch', 'togglespecialworkspace', 'chatterino_chat')
+            self.assertTrue(any(c.args[0]=='eval' and 'workspace.toggle_special' in c.args[1] for c in hypr.call_args_list))
 
     def test_transition_keeps_mode_while_windows_are_replaced(self):
         state = {'transition': {'deadline': 200}}

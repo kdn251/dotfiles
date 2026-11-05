@@ -41,6 +41,28 @@ class PreviewTests(unittest.TestCase):
             process.terminate.assert_called_once()
             ipc.assert_not_called()  # A stale resolver must never load media after cancellation.
 
+    def test_capture_preserves_fullscreen_before_handoff_changes_source(self):
+        old=dict(pid=456,address='old',fullscreen=2,at=[0,0],size=[1440,960],**{'class':'mpv'})
+        player=Mock();player.get.side_effect=lambda key: 'Twitch' if key=='user-data/stream-service' else False
+        with tempfile.TemporaryDirectory() as directory,patch.object(preview,'ROOT',Path(directory)), \
+                patch.object(preview,'HANDOFF',Path(directory)/'handoff'), \
+                patch.object(preview,'clients',return_value=[old]),patch.object(preview,'Player',return_value=player), \
+                patch.dict(preview.os.environ,{'STREAM_SWITCH_SOURCE_PID':'456'}), \
+                patch('media_chat_fullscreen.socket_for',return_value='test.sock'):
+            selected=preview.capture_switch('selection')
+            old['fullscreen']=0
+            self.assertTrue(selected['fullscreen'])
+            self.assertTrue(preview.switch_snapshot('selection',456)['fullscreen'])
+
+    def test_selection_snapshot_is_session_and_player_scoped(self):
+        with tempfile.TemporaryDirectory() as directory,patch.object(preview,'ROOT',Path(directory)):
+            path=Path(directory)/'switch.json'
+            data=dict(session='current',pid=123,fullscreen=True,window={})
+            path.write_text(json.dumps(data))
+            self.assertEqual(preview.switch_snapshot('current',123),data)
+            self.assertIsNone(preview.switch_snapshot('older',123))
+            self.assertIsNone(preview.switch_snapshot('current',456))
+
     def test_promote_preserves_player_without_loading_media_again(self):
         with tempfile.TemporaryDirectory() as directory:
             root=Path(directory);handoff=root/'handoff';session=root/'session';session.write_text('chosen')

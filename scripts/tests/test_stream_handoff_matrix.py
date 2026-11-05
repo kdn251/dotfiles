@@ -14,7 +14,7 @@ class HandoffMatrixTests(unittest.TestCase):
                 old=dict(pid=101,address='old',monitor=0,at=[40,50],size=[547,308],workspace={'name':'1','id':1},fullscreen=2 if (fullscreen != lagged) else 0,**{'class':'mpv'})
                 new=dict(pid=202,address='new',monitor=0,at=[0,0],size=[480,270],workspace={'name':'special:stream_staging','id':-1},fullscreen=0,mapped=True,**{'class':'stream-staging'})
                 handoff=root/'handoff';handoff.write_text(json.dumps(dict(name='next',service=destination,pid=202,endpoint='new',created=preview.time.time(),staged=True,source_pid=101)))
-                props={101:dict(FIT,volume=65,fullscreen=fullscreen,**{'user-data/stream-service':source,'user-data/stream-sidebar-open':left}),202:dict(FIT,**{'user-data/preview-ready':True})}
+                props={101:dict(FIT,volume=65,fullscreen=(fullscreen != lagged),**{'user-data/stream-service':source,'user-data/stream-sidebar-open':left}),202:dict(FIT,**{'user-data/preview-ready':True})}
                 trace=[]
                 class Player:
                     def __init__(self,endpoint,pid):self.pid=pid
@@ -32,6 +32,7 @@ class HandoffMatrixTests(unittest.TestCase):
                         if op=='script-message' and key=='preview-promote':trace.append('new audible')
                     def close(self):pass
                 oldipc=Player('old',101);newipc=Player('new',202)
+                (root/'switch.json').write_text(json.dumps(dict(session='selected',pid=101,fullscreen=fullscreen,window=old)))
                 with patch.dict(os.environ,XDG_RUNTIME_DIR=folder):
                     if fullscreen and left:update(oldipc.command,101,'left',.16)
                     if fullscreen and right:update(oldipc.command,101,'right',.2)
@@ -43,7 +44,7 @@ class HandoffMatrixTests(unittest.TestCase):
                         if fullscreen and lagged:
                             new['fullscreen']=0
                             props[202]['fullscreen']=False
-                    with patch.object(preview,'HANDOFF',handoff),patch.object(preview,'SESSION',session),patch.object(preview,'CANONICAL',root/'canonical'), \
+                    with patch.object(preview,'ROOT',root),patch.object(preview,'HANDOFF',handoff),patch.object(preview,'SESSION',session),patch.object(preview,'CANONICAL',root/'canonical'), \
                             patch.object(preview,'Player',Player),patch.object(preview,'clients',return_value=[old,new]), \
                             patch('media_chat_fullscreen.socket_for',return_value='old'),patch('media_chat_fullscreen.place_player'), \
                             patch('pip_geometry.settings',return_value=([12]*4,1)),patch.object(preview,'retire_player',side_effect=retire), \

@@ -61,7 +61,7 @@ def show_workspace():
     monitors=json.loads(hypr('-j','monitors'))
     focused=next((m for m in monitors if m.get('focused')), {})
     if focused.get('specialWorkspace',{}).get('name')!='special:'+WORKSPACE:
-        hypr('dispatch','togglespecialworkspace',WORKSPACE)
+        fullscreen_chat.toggle_workspace()
     if theater:
         fullscreen_chat.focus_player()
 
@@ -120,7 +120,7 @@ def main():
     url=live['url'] if live else video_url(clients,active.get('address'))
     panel_class=LIVE_CLASS if live else CLASS
     if not url and active.get('class') in (CLASS,LIVE_CLASS) and not any(c.get('class','').lower()=='mpv' for c in clients):
-        hypr('dispatch','togglespecialworkspace',WORKSPACE);return
+        fullscreen_chat.toggle_workspace();return
     if not url:
         # Twitch's launcher already preloads Chatterino asynchronously.
         if preload:return
@@ -140,7 +140,7 @@ def main():
         if ready and present:
             if fullscreen_chat.begin(clients):
                 show_workspace();return
-            hypr('dispatch','togglespecialworkspace',WORKSPACE)
+            fullscreen_chat.toggle_workspace()
             return
         subprocess.run([str(Path(__file__).with_name('twitch-launcher.sh')),
                         '--chat-only',name,str(pid)],check=False)
@@ -161,7 +161,7 @@ def main():
     if panels and previous==url:
         if preload:return
         if switched or fullscreen_chat.begin(clients):show_workspace()
-        else:hypr('dispatch','togglespecialworkspace',WORKSPACE)
+        else:fullscreen_chat.toggle_workspace()
         return
     close_panels(clients,panel_class)
     STATE.write_text(json.dumps({'url':url}));STATE.chmod(0o600)

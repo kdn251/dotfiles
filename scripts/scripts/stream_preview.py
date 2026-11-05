@@ -28,6 +28,46 @@ def clients():
     return json.loads(subprocess.check_output([*HYPRCTL,'-j','clients'],text=True,timeout=2))
 
 
+def capture_switch(session):
+    """Save the selected player's layout before chat/preview work changes it."""
+    from media_chat_fullscreen import socket_for
+    windows=clients()
+    source=int(os.environ.get('STREAM_SWITCH_SOURCE_PID','0'))
+    candidates=[c for c in windows if c.get('class')=='mpv']
+    if source:candidates=[c for c in candidates if c['pid']==source]
+    candidates.sort(key=lambda c:c.get('focusHistoryID',999))
+    for old in candidates:
+        try:
+            player=Player(socket_for(old),old['pid']);player.socket.settimeout(.5)
+            try:
+                if player.get('user-data/stream-service') not in ('Twitch','YouTube','Kick','Rumble'):continue
+                fullscreen=bool(old.get('fullscreen') or player.get('fullscreen'))
+            finally:player.close()
+            snapshot=dict(session=session,pid=old['pid'],fullscreen=fullscreen,window=old)
+            # Enter on an already decoded preview captured the state even
+            # earlier, before the picker relinquished keyboard focus.
+            try:
+                handoff=json.loads(HANDOFF.read_text())
+                selected=handoff.get('source')
+                if selected and selected['pid']==old['pid'] and time.time()-handoff.get('created',0)<5:
+                    snapshot.update(fullscreen=selected['fullscreen'],window=selected['window'])
+            except (OSError,ValueError,KeyError):pass
+            ROOT.mkdir(mode=0o700,parents=True,exist_ok=True)
+            path=ROOT/'switch.json';temporary=ROOT/f'switch-{os.getpid()}.tmp'
+            temporary.write_text(json.dumps(snapshot));temporary.chmod(0o600);temporary.replace(path)
+            return snapshot
+        except (OSError,ValueError,TypeError):continue
+    return None
+
+
+def switch_snapshot(session,pid=None):
+    try:
+        data=json.loads((ROOT/'switch.json').read_text())
+        if data.get('session')==session and (pid is None or data.get('pid')==pid):return data
+    except (OSError,ValueError):pass
+    return None
+
+
 def already_watching(name, service):
     """Read the live player's identity, not stale launcher/cache metadata."""
     try:
@@ -151,6 +191,10 @@ class Preview:
                 old = next((c for c in clients() if c.get('class') == 'mpv'
                             and c.get('pid') != self.process.pid), None)
                 fullscreen = bool(old and old.get('fullscreen'))
+                if old:
+                    data['source_pid']=old['pid']
+                    data['source']=dict(pid=old['pid'],fullscreen=fullscreen,window=old)
+                    temp.write_text(json.dumps(data));temp.chmod(0o600);temp.replace(HANDOFF)
             except (OSError, ValueError, subprocess.SubprocessError):
                 fullscreen = True  # Avoid a misplaced flash if layout lookup fails.
             if self.landing and not fullscreen:
@@ -267,7 +311,8 @@ def adopt(name,title,marker,service,session,page):
         if not p.get('user-data/preview-ready'):return None
         if SESSION.read_text().strip()!=session:return None
         windows=clients()
-        source_pid=data.get('source_pid') or int(os.environ.get('STREAM_SWITCH_SOURCE_PID','0'))
+        selected=switch_snapshot(session)
+        source_pid=data.get('source_pid') or (selected or {}).get('pid') or int(os.environ.get('STREAM_SWITCH_SOURCE_PID','0'))
         candidates=[c for c in windows if c.get('class')=='mpv' and c['pid']!=data['pid']]
         old=next((c for c in candidates if c['pid']==source_pid),None) if source_pid else next(iter(candidates),None)
         if source_pid and not old:raise StageFailed('Player closed')
@@ -277,6 +322,8 @@ def adopt(name,title,marker,service,session,page):
             # MPV owns the requested mode; compositor geometry may lag a transition.
             requested_fullscreen=previous.get('fullscreen')
             if isinstance(requested_fullscreen,bool):was_fullscreen=requested_fullscreen
+            if selected and selected.get('pid')==old['pid']:
+                was_fullscreen=selected['fullscreen']
             volume=previous.get('volume')
             if volume is not None and volume<=0:volume=previous.get('user-data/stream-audible-volume',100)
             if volume is not None:p.command('set_property','volume',volume)
@@ -297,7 +344,8 @@ def adopt(name,title,marker,service,session,page):
         window=next((c for c in windows if c['pid']==data['pid']),None)
         if not window:raise StageFailed('Replacement window unavailable; current stream kept playing')
         if old and not was_fullscreen:
-            (x,y),(w,h)=old['at'],old['size']
+            geometry=selected['window'] if selected and selected.get('pid')==old['pid'] else old
+            (x,y),(w,h)=geometry['at'],geometry['size']
         elif data.get('landed') and not was_fullscreen:
             (x,y),(w,h)=window['at'],window['size']
         else:

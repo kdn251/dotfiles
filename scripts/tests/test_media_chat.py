@@ -11,12 +11,15 @@ URL='https://www.youtube.com/watch?v=abc123DEF45'
 
 class ChatTests(unittest.TestCase):
     def setUp(self):
+        toggle=patch.object(chat.fullscreen_chat,'toggle_workspace')
+        self.toggle=toggle.start();self.addCleanup(toggle.stop)
         for method in ('begin', 'close'):
             mock = patch.object(chat.fullscreen_chat, method, return_value=False)
             mock.start(); self.addCleanup(mock.stop)
 
     def test_theater_reveal_focuses_video_after_showing_chat(self):
         events=[]
+        self.toggle.side_effect=lambda:events.append('show')
         def hypr(*args):
             if args == ('-j','clients'): return '[]'
             if args == ('-j','monitors'): return '[{"focused":true,"specialWorkspace":{}}]'
@@ -41,7 +44,7 @@ class ChatTests(unittest.TestCase):
             state=Path(d)/'state';state.write_text('{"url":"'+URL+'"}')
             with patch.object(chat,'STATE',state),patch.object(chat,'video_url',return_value=URL),patch.object(chat,'hypr',side_effect=['[{"class":"newsboat-youtube-comments"}]','{}','ok']) as hypr,patch.object(chat.subprocess,'Popen') as spawn,patch.object(chat.subprocess,'run'):
                 chat.main()
-                hypr.assert_called_with('dispatch','togglespecialworkspace','chatterino_chat')
+                self.toggle.assert_called_once_with()
                 spawn.assert_not_called()
     def test_switching_closes_other_panel_without_hiding_current_workspace(self):
         import json
