@@ -21,6 +21,14 @@ def rows(cache=None, now=None, current=None):
         not (current and current[0]==r['service'] and current[1].casefold()==r['name'].casefold()),
         -(r['viewers'] or 0),r['name'].casefold(),r['service']))
 
+def search_rows(catalog,query):
+    from stream_menu_metadata import search_rank
+    if not query.strip():return catalog
+    ranked=[(search_rank(query,row['name'],row.get('category',''),row.get('title','')),i,row)
+            for i,row in enumerate(catalog)]
+    return [row for rank,i,row in sorted((item for item in ranked if item[0] is not None),key=lambda item:item[:2])]
+
+
 def choice(row):
     return row['name']+('' if row['service']=='Twitch' else ' ('+row['service']+')')
 

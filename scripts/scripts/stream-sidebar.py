@@ -18,7 +18,8 @@ gi.require_version('Gtk','4.0')
 gi.require_version('Gdk','4.0')
 gi.require_version('Gtk4LayerShell','1.0')
 from gi.repository import Gtk,Gdk,Gio,GLib,Pango,Gsk,Graphene,Gtk4LayerShell as Layer
-from stream_sidebar import rows,choice,VideoSpace,restore_windowed,visible_on_workspace
+from stream_sidebar import rows,choice,VideoSpace,restore_windowed,visible_on_workspace,search_rows
+from stream_menu_metadata import highlight
 from media_chat_fullscreen import ipc,socket_for,read as chat_layout
 from mpv_clip import Player
 from stream_player_identity import identity
@@ -49,6 +50,7 @@ class Sidebar(Gtk.Application):
         self.pidfd=None
         self.pid_watch=None
         self.handoff_until=0
+        self.searching=False
         self.connect('shutdown',self.release_video)
         self.connect('shutdown',self.stop_events)
         self.connect('activate',self.activate_sidebar)
@@ -95,6 +97,13 @@ class Sidebar(Gtk.Application):
         .collapse {background:transparent;color:#efeff1;border:none;box-shadow:none;padding:6px;min-width:20px;min-height:20px;}
         .collapse:hover {background:#3a3a40;}
         .hint {color:#adadb8;font-size:12px;padding:10px;}
+        entry.sidebar-search {background:#303038;color:#efeff1;border:1px solid #484850;
+            border-radius:6px;box-shadow:none;outline:none;min-height:30px;
+            padding:4px 8px;font-size:14px;}
+        entry.sidebar-search:focus-within {border-color:#a970ff;box-shadow:none;outline:none;}
+        entry.sidebar-search image {color:#adadb8;margin-right:6px;}
+        entry.sidebar-search text {background:transparent;color:#efeff1;}
+        entry.sidebar-search selection {background:#664795;color:#ffffff;}
         list {background:transparent;}
         row {padding:10px 10px;border-radius:0;margin:0;}
         row label {color:#efeff1;}
@@ -116,7 +125,18 @@ class Sidebar(Gtk.Application):
         collapse.set_margin_end(8)
         collapse.set_tooltip_text('Collapse live channels (Tab)')
         collapse.connect('clicked',self.dismiss)
-        header.append(collapse);box.append(header)
+        search_button=Gtk.Button.new_from_icon_name('system-search-symbolic')
+        search_button.add_css_class('collapse');search_button.set_tooltip_text('Search live channels (/)')
+        search_button.connect('clicked',lambda *_:self.open_search())
+        header.append(search_button);header.append(collapse);box.append(header)
+        self.search=Gtk.Entry(placeholder_text='Search channels…')
+        self.search.add_css_class('sidebar-search')
+        self.search.set_width_chars(1)
+        self.search.set_icon_from_icon_name(Gtk.EntryIconPosition.PRIMARY,'system-search-symbolic')
+        self.search.set_margin_start(8);self.search.set_margin_end(8);self.search.set_margin_bottom(8)
+        self.search.set_visible(False)
+        self.search.connect('changed',self.search_changed)
+        box.append(self.search)
         self.collapse=collapse
         self.list=Gtk.ListBox(selection_mode=Gtk.SelectionMode.SINGLE)
         self.list.set_activate_on_single_click(True)
@@ -125,7 +145,7 @@ class Sidebar(Gtk.Application):
         scroll.set_policy(Gtk.PolicyType.NEVER,Gtk.PolicyType.EXTERNAL)
         scroll.set_child(self.list);box.append(scroll)
         self.scroll=scroll
-        hint=Gtk.Label(label='j/k · Enter to watch · Tab to close')
+        hint=Gtk.Label(label='/ Search · j/k · Enter to watch · Tab to close')
         hint.add_css_class('hint');hint.set_wrap(True);hint.set_max_width_chars(28);box.append(hint)
         self.window.set_child(box)
         keys=Gtk.EventControllerKey()
@@ -286,10 +306,27 @@ class Sidebar(Gtk.Application):
             GLib.source_remove(self.pid_watch);self.pid_watch=None
         if self.pidfd is not None:
             os.close(self.pidfd);self.pidfd=None
+    def open_search(self):
+        self.searching=True;self.search.set_visible(True);self.search.grab_focus_without_selecting()
+    def search_changed(self,*_):
+        self.catalog=None
+        self.refresh()
+        self.list.select_row(self.list.get_row_at_index(0))
+    def move_selection(self,step):
+        if not self.catalog:return
+        current=self.list.get_selected_row()
+        index=((current.get_index() if current else 0)+step)%len(self.catalog)
+        row=self.list.get_row_at_index(index)
+        self.list.select_row(row)
+        if self.searching:
+            # Scroll to the selected row while leaving typing focus in the field.
+            row.grab_focus();self.search.grab_focus_without_selecting()
+        else:row.grab_focus()
     def refresh(self):
         try:self.current=identity(self.player) or self.current
         except (OSError,ValueError):pass
-        catalog=rows(current=self.current)
+        query=self.search.get_text() if self.searching else ""
+        catalog=search_rows(rows(current=self.current),query)
         if catalog==self.catalog:return True
         focused=self.window.get_focus() is not None
         selected=self.list.get_selected_row()
@@ -306,12 +343,14 @@ class Sidebar(Gtk.Application):
             body.append(image)
             labels=Gtk.Box(orientation=Gtk.Orientation.VERTICAL,spacing=3,hexpand=True)
             current=self.current and self.current[0]==data['service'] and self.current[1].casefold()==data['name'].casefold()
-            name=Gtk.Label(label=data['name'],xalign=0);name.add_css_class('name')
+            name=Gtk.Label(xalign=0);name.set_markup(highlight(data['name'],query,fuzzy=True));name.add_css_class('name')
             if current:
                 name.add_css_class('playing');row.add_css_class('current')
             name.set_ellipsize(Pango.EllipsizeMode.END);name.set_max_width_chars(17);name.set_width_chars(1)
             labels.append(name)
-            category=Gtk.Label(label=data['category'] or data['service'],xalign=0)
+            subtitle=data['category'] or data['service']
+            if query and query.casefold() in data['title'].casefold() and query.casefold() not in subtitle.casefold():subtitle=data['title']
+            category=Gtk.Label(xalign=0);category.set_markup(highlight(subtitle,query))
             category.add_css_class('category');category.set_ellipsize(Pango.EllipsizeMode.END);category.set_max_width_chars(21);category.set_width_chars(1)
             labels.append(category);body.append(labels)
             count=data['viewers']
@@ -322,14 +361,14 @@ class Sidebar(Gtk.Application):
             self.list.append(row)
             if choice(data)==selected_key or (selected_key is None and current):preferred=row
         if not catalog:
-            empty=Gtk.Label(label='No live channels in the current cache',wrap=True)
+            empty=Gtk.Label(label='No matching live channels' if query else 'No live channels in the current cache',wrap=True)
             self.list.append(empty)
         selected=preferred or self.list.get_row_at_index(0)
         self.list.select_row(selected)
         # Rebuilding removes the focused GtkListBoxRow. Selection alone does
         # not install a keyboard target, leaving the exclusive layer eating F.
         if focused and self.window.get_visible():
-            (selected or self.list).grab_focus()
+            if not self.searching:(selected or self.list).grab_focus()
         return True
     def check_player(self):
         if self.closing:return False
@@ -356,7 +395,8 @@ class Sidebar(Gtk.Application):
             if visible and not self.window.get_visible():
                 self.reserve_video()
                 self.window.present()
-                self.list.grab_focus()
+                if self.searching:self.search.grab_focus_without_selecting()
+                else:self.list.grab_focus()
             elif not visible and self.window.get_visible():
                 self.window.set_visible(False)
         except (OSError,ValueError,subprocess.SubprocessError):
@@ -364,6 +404,7 @@ class Sidebar(Gtk.Application):
             pass
         return True
     def choose(self,_,row):
+        if self.searching:self.search.grab_focus_without_selecting()
         if not row or not hasattr(row,'data'):return
         data=row.data
         if not (self.current and self.current[0]==data['service'] and self.current[1].casefold()==data['name'].casefold()):
@@ -371,6 +412,20 @@ class Sidebar(Gtk.Application):
                              env=dict(os.environ,STREAM_SWITCH_SOURCE_PID=str(self.pid)),stdin=subprocess.DEVNULL,
                              stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL,start_new_session=True)
     def key(self,_,key,code,modifiers):
+        if self.searching:
+            if key==Gdk.KEY_Escape:
+                if self.search.get_text():self.search.set_text('')
+                else:
+                    self.searching=False;self.search.set_visible(False);self.list.grab_focus()
+                return True
+            if key in (Gdk.KEY_Up,Gdk.KEY_Down):
+                self.move_selection(1 if key==Gdk.KEY_Down else -1);return True
+            if key in (Gdk.KEY_Return,Gdk.KEY_KP_Enter):
+                self.choose(self.list,self.list.get_selected_row());return True
+            if key in (Gdk.KEY_Tab,Gdk.KEY_ISO_Left_Tab):self.dismiss();return True
+            return False
+        if key==Gdk.KEY_slash:
+            self.open_search();return True
         if key in (Gdk.KEY_Tab,Gdk.KEY_ISO_Left_Tab,Gdk.KEY_Escape):
             self.dismiss();return True
         if key in (Gdk.KEY_q,Gdk.KEY_f):
@@ -393,11 +448,7 @@ class Sidebar(Gtk.Application):
         if key in (Gdk.KEY_Return,Gdk.KEY_KP_Enter):
             self.choose(self.list,self.list.get_selected_row());return True
         if key in (Gdk.KEY_j,Gdk.KEY_Down,Gdk.KEY_k,Gdk.KEY_Up):
-            current=self.list.get_selected_row()
-            count=max(1,len(self.catalog))
-            index=(current.get_index() if current else 0)+(1 if key in (Gdk.KEY_j,Gdk.KEY_Down) else -1)
-            row=self.list.get_row_at_index(index%count)
-            if row:self.list.select_row(row);row.grab_focus()
+            self.move_selection(1 if key in (Gdk.KEY_j,Gdk.KEY_Down) else -1)
             return True
         return False
 

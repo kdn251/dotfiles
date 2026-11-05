@@ -27,6 +27,16 @@ class SidebarTests(unittest.TestCase):
         self.assertFalse(visible_on_workspace(player,monitor))
         self.assertFalse(visible_on_workspace({'workspace':{}},monitor))
 
+    def test_search_ranks_names_before_category_and_title(self):
+        from stream_sidebar import search_rows
+        catalog=[dict(name='other',category='Gaming',title='Watching soda'),
+                 dict(name='third',category='Soda games',title=''),
+                 dict(name='sodapoppin',category='',title=''),
+                 dict(name='soda',category='',title='')]
+        self.assertEqual([r['name'] for r in search_rows(catalog,'SoDa')],['soda','sodapoppin','third','other'])
+        self.assertEqual(search_rows(catalog,''),catalog)
+        self.assertEqual(search_rows(catalog,'missing'),[])
+
     def test_live_counts_order_and_service_identity(self):
         cache={'t':{'a':{'checked_at':1000,'viewer_count':100}},
                'k':{'b':{'checked_at':1000,'viewer_count':200}},
