@@ -411,6 +411,11 @@ class Sidebar(Gtk.Application):
             subprocess.Popen([str(SCRIPTS/'twitch-launcher.sh'),choice(data)],
                              env=dict(os.environ,STREAM_SWITCH_SOURCE_PID=str(self.pid)),stdin=subprocess.DEVNULL,
                              stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL,start_new_session=True)
+            if self.searching:
+                self.searching=False
+                self.search.set_visible(False)
+                self.search.set_text('')
+                self.list.grab_focus()
     def key(self,_,key,code,modifiers):
         if self.searching:
             if key==Gdk.KEY_Escape:
