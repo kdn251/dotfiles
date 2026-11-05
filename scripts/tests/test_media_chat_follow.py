@@ -40,3 +40,13 @@ class PlacementTests(unittest.TestCase):
                           **{'class':'com.chatterino.chatterino' if title=='Twitch' else 'newsboat-live-chat'})
                 follow.follow_geometry(dict(at=[880,439],size=[547,508]),chat,self.monitor,[12]*4,1)
                 self.assertIn(f'resizewindowpixel exact {expected} 508',hypr.call_args.args[1])
+
+class NativeCommandTests(unittest.TestCase):
+    def test_single_chat_commands_are_translated_like_batches(self):
+        for args in [('keyword','input:special_fallthrough','0'),
+                     ('dispatch','togglespecialworkspace','chatterino_chat'),
+                     ('dispatch','focuswindow','address:0x123')]:
+            with self.subTest(args=args),patch.object(follow.subprocess,'check_output',return_value='ok') as call:
+                follow.hypr(*args)
+                self.assertEqual(call.call_args.args[0],
+                    ['/usr/bin/hyprctl','eval',follow._compat.translate(' '.join(args))])

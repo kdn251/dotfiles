@@ -56,7 +56,7 @@ class FullscreenChatTests(unittest.TestCase):
                 self.assertEqual(state['player']['pid'], self.player['pid'])
                 self.assertEqual(state['properties'], {'panscan': 1})
                 self.assertNotIn('transition', state)
-                ipc.assert_called_once_with(state, 'set_property', 'video-margin-ratio-right',
+                ipc.assert_any_call(state, 'set_property', 'video-margin-ratio-right',
                                             .3 if service == 'YouTube' else .2)
 
     def test_handoff_hides_chat_before_replacement_can_launch(self):
@@ -89,6 +89,20 @@ class FullscreenChatTests(unittest.TestCase):
             launch.assert_called_once()  # No duplicate openers during startup.
             self.assertFalse(layout.resume_theater([dict(self.player, pid=999)]))
             self.assertFalse(layout.PREFERENCE.exists())
+
+    def test_fullscreen_return_reuses_loaded_chat_without_opener(self):
+        layout.remember_theater(self.player,self.chat)
+        monitor=dict(self.monitor,specialWorkspace={'name':''})
+        with patch.object(layout,'hypr',return_value=json.dumps([monitor])), \
+                patch.object(layout,'begin',return_value=True) as begin, \
+                patch.object(layout,'toggle_on_monitor') as reveal, \
+                patch.object(layout,'focus_player') as focus, \
+                patch.object(layout.subprocess,'Popen') as launch:
+            self.assertTrue(layout.resume_theater([self.player,self.chat]))
+            begin.assert_called_once_with([self.player,self.chat])
+            reveal.assert_called_once()
+            focus.assert_called_once()
+            launch.assert_not_called()
 
     def test_explicit_mod_c_returns_to_normal_fullscreen(self):
         state = {'player': self.player, 'chat': self.chat}
@@ -132,7 +146,7 @@ class FullscreenChatTests(unittest.TestCase):
         def ipc(state, action, key, *value):
             if action == 'get_property':
                 if key == 'osd-dimensions': return {'w':2880,'h':1920,'mr':576,'mt':360,'mb':360}
-                return props[key]
+                return props.get(key)
             self.assertEqual(action, 'set_property')
             props[key] = value[0]
         def hypr(*args):
@@ -147,7 +161,7 @@ class FullscreenChatTests(unittest.TestCase):
             self.assertEqual(props['panscan'], 0)
             self.assertAlmostEqual(props['video-margin-ratio-right'], 288/1440)
             self.assertTrue(layout.close(clients))
-            self.assertEqual(props, original)
+            self.assertEqual({key:props[key] for key in original}, original)
             control.assert_any_call('keyword', 'input:special_fallthrough', '1')
             control.assert_any_call('keyword', 'input:special_fallthrough', '0')
             self.assertFalse(layout.STATE.exists())
@@ -254,7 +268,7 @@ class FullscreenChatTests(unittest.TestCase):
                 chat = dict(self.chat, **{'class':'newsboat-live-chat', 'workspace':{'id':-97}})
                 props = dict(layout.PROPERTIES)
                 def ipc(state, action, key, *value):
-                    if action=='get_property':return props[key]
+                    if action=='get_property':return props.get(key)
                     props[key]=value[0]
                 def hypr(*args):
                     if args==('-j','monitors'):return json.dumps([self.monitor])

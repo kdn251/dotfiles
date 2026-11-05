@@ -7,6 +7,8 @@ import os
 from pathlib import Path
 import subprocess
 import time
+import socket
+import threading
 import media_chat_fullscreen as fullscreen_chat
 
 CHAT_CLASSES={'com.chatterino.chatterino','newsboat-live-chat','newsboat-youtube-comments'}
@@ -17,10 +19,33 @@ _compat=importlib.util.module_from_spec(_spec);_spec.loader.exec_module(_compat)
 
 def hypr(*args):
     if args[0]=='--batch':args=('eval',_compat.translate_batch(args[1]))
+    elif args[0] in ('dispatch','keyword'):
+        args=('eval',_compat.translate(' '.join(args)))
     result=subprocess.check_output(['/usr/bin/hyprctl',*args],text=True,timeout=2)
     if '-j' in args:
         return json.dumps(_compat.legacy_json(json.loads(result)))
     return result
+
+# The resident helper already translates Hyprland commands in-process.
+fullscreen_chat.hypr=hypr
+
+def compositor_wakeup():
+    wake=threading.Event()
+    path=Path(os.environ.get('XDG_RUNTIME_DIR','/tmp'))/'hypr'/os.environ.get('HYPRLAND_INSTANCE_SIGNATURE','')/'.socket2.sock'
+    def listen():
+        while True:
+            try:
+                with socket.socket(socket.AF_UNIX,socket.SOCK_STREAM) as client:
+                    client.connect(str(path))
+                    with client.makefile('r') as events:
+                        for line in events:
+                            if line.split('>>',1)[0] in {'fullscreen','workspace','workspacev2','activespecial','openwindow','closewindow','movewindow','movewindowv2'}:
+                                wake.set()
+            except OSError:pass
+            time.sleep(1)
+    threading.Thread(target=listen,daemon=True).start()
+    return wake
+
 
 def placement(player, chat, monitor, gaps, border):
     width,height=monitor['width'],monitor['height']
@@ -64,6 +89,7 @@ def run():
     with (runtime/f'media-chat-follow-{os.getuid()}.lock').open('w') as lock:
         try:fcntl.flock(lock,fcntl.LOCK_EX|fcntl.LOCK_NB)
         except BlockingIOError:return
+        wake=compositor_wakeup()
         cached_until=0;monitors=[];gaps=[12]*4;border=1
         while True:
             delay=.75
@@ -71,7 +97,7 @@ def run():
                 clients=json.loads(hypr('-j','clients'))
                 theater_needed=fullscreen_chat.STATE.exists() or any(c.get('class')=='mpv' and c.get('fullscreen') for c in clients)
                 if theater_needed and fullscreen_chat.maintain(clients):
-                    time.sleep(.12)
+                    wake.wait(.12);wake.clear()
                     continue
                 chats=[c for c in clients if c.get('class') in CHAT_CLASSES and c.get('floating')
                        and c.get('workspace',{}).get('name')=='special:chatterino_chat']
@@ -93,6 +119,6 @@ def run():
                         for chat in chats:
                             follow_geometry(player,chat,monitor,gaps,border)
             except (OSError,ValueError,KeyError,subprocess.SubprocessError):pass
-            time.sleep(delay)
+            wake.wait(delay);wake.clear()
 
 if __name__=='__main__':run()

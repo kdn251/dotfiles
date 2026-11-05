@@ -130,6 +130,12 @@ def layout(monitor, youtube=False, video=None):
 
 
 
+def panel_space(state, ratio):
+    from media_panel_layout import update
+    update(lambda *args:ipc(state,*args),state['player']['pid'],'right',ratio,
+           fallback=state.get('properties'))
+
+
 def style(chat, inline):
     address = chat['address']
     values = {'no_shadow': '1', 'border_size': '0', 'rounding': '0'}
@@ -170,11 +176,10 @@ def restore(state, clients, hide=True):
     OWNER.unlink(missing_ok=True)
     if 'special_fallthrough' in state:
         hypr('keyword', 'input:special_fallthrough', str(state['special_fallthrough']))
-    for prop, value in state.get('properties', {}).items():
-        try:
-            ipc(state, 'set_property', prop, value)
-        except (OSError, ValueError):
-            break
+    try:
+        panel_space(state,0)
+    except (OSError,ValueError):
+        pass
     old = state['chat']
     chat = next((c for c in clients if c['address'] == old['address'] and c['pid'] == old['pid']), None)
     if hide:
@@ -201,8 +206,10 @@ def focus_player():
         hypr('dispatch', 'focuswindow', 'address:' + player['address'])
 
 
-def remember_theater(player):
-    PREFERENCE.write_text(json.dumps({'pid': player['pid'], 'address': player['address']}))
+def remember_theater(player, chat=None):
+    saved={'pid': player['pid'], 'address': player['address']}
+    if chat:saved['chat']={'pid':chat['pid'],'address':chat['address']}
+    PREFERENCE.write_text(json.dumps(saved))
     PREFERENCE.chmod(0o600)
 
 
@@ -223,6 +230,17 @@ def resume_theater(clients):
     monitor = next((m for m in json.loads(hypr('-j', 'monitors')) if m['id'] == player['monitor']), None)
     if not monitor or monitor.get('activeWorkspace', {}).get('id') != player.get('workspace', {}).get('id'):
         return True
+    previous=saved.get('chat',{})
+    if any(c.get('pid')==previous.get('pid') and c.get('address')==previous.get('address') for c in clients):
+        # The existing chat is already loaded: restore it here, without launching
+        # another Python opener or rediscovering/reloading the stream's chat.
+        if begin(clients):
+            monitors=json.loads(hypr('-j','monitors'))
+            monitor=next((m for m in monitors if m['id']==player['monitor']),None)
+            if monitor and monitor.get('specialWorkspace',{}).get('name')!='special:'+WORKSPACE:
+                toggle_on_monitor(monitor,monitors)
+            focus_player()
+            return True
     if time.monotonic() - saved.get('attempt', 0) < 10:
         return True
     saved['attempt'] = time.monotonic()
@@ -271,7 +289,7 @@ def adopt_chat(state, clients):
     state.pop('transition', None)
     style(chat, True)
     move(chat, bounds)
-    ipc(state, 'set_property', 'video-margin-ratio-right', bounds['ratio'])
+    panel_space(state,bounds['ratio'])
     STATE.write_text(json.dumps(state))
     owner_tmp = OWNER.with_suffix('.tmp')
     owner_tmp.write_text(f"{player['workspace']['id']} {player['monitor']} {chat.get('workspace', {}).get('id', 0)}\n")
@@ -318,8 +336,7 @@ def begin(clients=None):
             owner_tmp.replace(OWNER)
             try:
                 hypr('keyword', 'input:special_fallthrough', '1')
-                for prop, value in dict(PROPERTIES, **{'video-margin-ratio-right': bounds['ratio']}).items():
-                    ipc(state, 'set_property', prop, value)
+                panel_space(state,bounds['ratio'])
                 style(chat, True)
                 move(chat, bounds)
                 hypr('dispatch', 'focusmonitor', str(player['monitor']))
@@ -339,6 +356,7 @@ def maintain(clients):
             return True
         state = read()
         if not state:
+            fcntl.flock(lock,fcntl.LOCK_UN)
             return resume_theater(clients)
         transition = state.get('transition')
         if transition and time.monotonic() < transition['deadline']:
@@ -349,7 +367,7 @@ def maintain(clients):
         chat = next((c for c in clients if c['address'] == state['chat']['address'] and c['pid'] == state['chat']['pid']), None)
         if not player or not chat or player.get('fullscreen') != 2:
             if player and chat and player.get('fullscreen') != 2:
-                remember_theater(player)
+                remember_theater(player,chat)
             else:
                 PREFERENCE.unlink(missing_ok=True)
             restore(state, clients, hide=True)
@@ -379,7 +397,7 @@ def maintain(clients):
         bounds = layout(monitor, state.get('service') == 'YouTube' or state['socket'].endswith('mpv-youtube-live-ipc'))
         if chat['at'] != bounds['at'] or chat['size'] != bounds['size']:
             move(chat, bounds)
-            ipc(state, 'set_property', 'video-margin-ratio-right', bounds['ratio'])
+            panel_space(state,bounds['ratio'])
         return True
 
 
