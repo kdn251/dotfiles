@@ -211,17 +211,27 @@ class QueueTests(unittest.TestCase):
     def test_real_mpv_notices_queue_edits_during_playback(self):self.run_real_mpv()
     def test_real_mpv_autoplays_queue_at_eof(self):self.run_real_mpv(natural_end=True)
 
-    def test_visual_enqueue_keeps_selection_order(self):
+    def test_visual_enqueue_marks_selected_items_read(self):
         with isolated() as (root,_):
+            (root/'scripts').symlink_to(queue.SCRIPTS,target_is_directory=True)
             feed=root/'feed.xml'
             feed.write_text('<rss version="2.0"><channel><title>Videos</title><link>https://example.org</link><description>Test</description>'+''.join(f'<item><title>Video{i}</title><link>{url}</link><guid>{i}</guid></item>' for i,url in enumerate(URLS))+'</channel></rss>')
-            config='show-read-feeds yes\nshow-read-articles yes\nconfirm-exit no\narticle-sort-order title-asc\nrun-on-startup open\nbind-key j down\nbind V articlelist visual-rows\nmacro w set browser "python3 '+str(queue.SCRIPTS/'newsboat_queue.py')+' add %u" ; open-in-browser-noninteractively\n'
+            binding=next(line for line in (queue.SCRIPTS.parents[1]/'newsboat/.newsboat/config').read_text().splitlines() if line.startswith('macro w '))
+            config='show-read-feeds yes\nshow-read-articles yes\nconfirm-exit no\narticle-sort-order title-asc\nrun-on-startup open\nbind-key j down\nbind V articlelist visual-rows\n'+binding+'\n'
             env=dict(XDG_STATE_HOME=str(root),NEWSBOAT_URLS_FILE=str(root/'urls'),NEWSBOAT_CACHE=str(root/'cache'),NEWSBOAT_QUEUE_STATUS=str(queue.state()/'viewing-queue.tsv'))
             with reader(root,config,feed.as_uri()+'\n',env) as (_,screen,send,wait):
                 wait(lambda s:'Video3' in s)
                 send('Vj,w')
                 wait(lambda s:len(queue.entries())==2)
-                self.assertEqual([row['url'] for row in queue.entries()],URLS[:2])
+                self.assertEqual([row['url'] for row in queue.entries()],list(reversed(URLS[:2])))
+                import sqlite3
+                def read_rows():
+                    with sqlite3.connect(root/'cache') as db:
+                        return dict(db.execute('SELECT url,unread FROM rss_item'))
+                send('q')
+                wait(lambda s:all(read_rows().get(url)==0 for url in URLS[:2]))
+                self.assertTrue(all(read_rows()[url]==1 for url in URLS[2:]))
+
 
     def test_missing_feed_title_uses_cached_channel_and_repairs_saved_queue(self):
         import sqlite3
