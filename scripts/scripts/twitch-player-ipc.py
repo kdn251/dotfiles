@@ -41,24 +41,16 @@ def channel(expected_pid):
 
 
 def reuse(name,title,url,marker,fallback="",service="Twitch",session="",page=""):
-    from stream_preview import adopt
+    from stream_preview import adopt,stage,StageFailed
     promoted=adopt(name,title,marker,service,session,page)
     if promoted:return promoted
     client,pid=connect()
     with client,client.makefile('rwb',buffering=0) as stream:
         if command(stream,'get_property','user-data/twitch-managed')!=2:
             raise ValueError('Player does not support stream switching')
-        # Also works for already-running players whose Lua predates this reset.
-        if command(stream,'get_property','volume') <= 0:
-            try:volume=command(stream,'get_property','user-data/stream-audible-volume')
-            except ValueError:volume=100
-            command(stream,'set_property','volume',volume if volume and volume > 0 else 100)
-        command(stream,'set_property','mute',False)
-        command(stream,'set_property','vid','auto')
-        command(stream,'script-message','twitch-load',name,title,url,marker,fallback,service,session,page)
-    from media_chat_fullscreen import reveal_player
-    reveal_player(pid)
-    return pid
+        try:return stage(name,title,url,marker,fallback,service,session,page,pid)
+        except StageFailed:raise
+        except (OSError,ValueError) as error:raise StageFailed('New stream could not load; current stream kept playing') from error
 
 
 if __name__=='__main__':
@@ -75,5 +67,10 @@ if __name__=='__main__':
                     if select.select([fd],[],[],.5 if len(sys.argv)>3 else None)[0]:break
             finally:os.close(fd)
         else:print(reuse(*sys.argv[1:]))
+    except __import__('stream_preview').StageFailed as error:
+        import subprocess
+        if str(error) not in ('Selection changed','Player closed'):
+            subprocess.Popen(['notify-send','-a','Streams','Stream switch failed',str(error),'-t','5000'])
+        raise SystemExit(3)
     except (OSError,ValueError,KeyError):
         raise SystemExit(1)

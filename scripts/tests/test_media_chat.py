@@ -65,13 +65,14 @@ class ChatTests(unittest.TestCase):
     def test_preload_stays_hidden_and_reuses_loaded_panel(self):
         import json
         player={'class':'mpv','pid':123,'address':'player'}
-        panel={'class':chat.CLASS,'address':'comments'}
+        panel={'class':chat.CLASS,'address':'comments','pid':456}
         for already_loaded in (False,True):
             with self.subTest(already_loaded=already_loaded),tempfile.TemporaryDirectory() as d:
                 state=Path(d)/'state';state.write_text(json.dumps({'url':URL}))
                 responses=[json.dumps([player,panel] if already_loaded else [player])]
                 if not already_loaded:responses.append(json.dumps([player,panel]))
                 with patch.object(chat,'STATE',state),patch.object(chat.sys,'argv',['media-chat','--preload','123']),                         patch.object(chat,'video_url',return_value=URL),patch.object(chat,'live_target',return_value=None),                         patch.object(chat,'hypr',side_effect=responses) as hypr,patch.object(chat,'show_workspace') as show,                         patch.object(chat.subprocess,'Popen') as spawn:
+                    spawn.return_value.pid=456
                     chat.main()
                     show.assert_not_called()
                     self.assertEqual(spawn.call_count,0 if already_loaded else 1)
@@ -81,3 +82,22 @@ class ChatTests(unittest.TestCase):
         new_url='https://www.youtube.com/watch?v=xyz123DEF45'
         with patch.object(Path,'read_bytes',return_value=b'NEWSBOAT_MEDIA_URL='+URL.encode()+b'\0'),                 patch.object(chat.fullscreen_chat,'socket_for',return_value='/tmp/player'),                 patch.object(chat.fullscreen_chat,'ipc',return_value=new_url):
             self.assertEqual(chat.video_url([{'class':'mpv','pid':123,'address':'a'}],'a'),new_url)
+
+    def test_new_live_chat_waits_for_replacement_pid_not_closing_window(self):
+        import json
+        player={'class':'mpv','pid':123,'address':'player'}
+        old={'class':chat.LIVE_CLASS,'pid':111,'address':'old',
+             'workspace':{'name':'special:media_chat_closing'}}
+        new={'class':chat.LIVE_CLASS,'pid':222,'address':'new',
+             'workspace':{'name':'special:chatterino_chat'}}
+        responses=[json.dumps([player,old]),'{}',json.dumps([player,old]),json.dumps([player,new])]
+        with tempfile.TemporaryDirectory() as d,patch.object(chat,'STATE',Path(d)/'state'), \
+                patch.object(chat.sys,'argv',['media-chat','--handoff']), \
+                patch.object(chat,'live_target',return_value={'url':'https://kick.com/popout/nickwhite/chat','title':'Kick live chat'}), \
+                patch.object(chat,'hypr',side_effect=responses),patch.object(chat,'close_panels',return_value=False), \
+                patch.object(chat.subprocess,'Popen') as spawn,patch.object(chat,'show_workspace') as show, \
+                patch.object(chat.time,'sleep') as wait:
+            spawn.return_value.pid=222
+            chat.main()
+            wait.assert_called_once_with(.1)
+            show.assert_called_once()

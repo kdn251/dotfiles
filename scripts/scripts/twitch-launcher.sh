@@ -395,6 +395,8 @@ PYICON
       YTDL="$HOME/.local/bin/yt-dlp"
       [ -x "$YTDL" ] || YTDL=$(command -v yt-dlp)
       PLAYER_ARGS=("--script-opts=ytdl_hook-ytdl_path=$YTDL"
+        '--ytdl-raw-options=ignore-config=,no-warnings=,no-playlist='
+        '--demuxer-lavf-o=live_start_index=-1'
         '--ytdl-format=bestvideo[height<=?1080]+bestaudio/best[height<=?1080]/best')
     else
       PLAYER_ARGS=(--user-agent=Mozilla/5.0 "--referrer=https://${SERVICE,,}.com/")
@@ -411,6 +413,7 @@ PYICON
       STREAM_PAGE_URL=$(jq -r --arg fallback "$CHANNEL_URL" '.page_url // $fallback' <<<"$LIVE")
     fi
     MPV_PID=$(python3 "$HOME/scripts/twitch-player-ipc.py" "$STREAMER" "$PLAYER_TITLE" "$LIVE_URL" "" "$LIVE_FALLBACK_URL" "$SERVICE" "$SESSION_ID" "$STREAM_PAGE_URL" 2>/dev/null)
+    [ "$?" -eq 3 ] && exit 0  # A failed/cancelled staged switch keeps the current player.
     python3 "$HOME/scripts/media-chat.py" --close-youtube
     manage_chat stop &
     stream_session_current || exit 0
@@ -517,6 +520,7 @@ awk -v user="$STREAMER_USERNAME" '
   stream_session_current || exit 0
   FIRST_FRAME=$(mktemp "${XDG_RUNTIME_DIR:-/tmp}/twitch-first-frame.XXXXXX")
   MPV_PID=$(python3 "$HOME/scripts/twitch-player-ipc.py" "$STREAMER_USERNAME" "$PLAYER_TITLE" "$PLAY_URL" "$FIRST_FRAME" "$FALLBACK_URL" Twitch "$SESSION_ID" "$URL" 2>/dev/null)
+    [ "$?" -eq 3 ] && exit 0  # A failed/cancelled staged switch keeps the current player.
   REUSED_PLAYER=1
   if [ -z "$MPV_PID" ]; then
     REUSED_PLAYER=0

@@ -2,6 +2,19 @@ import unittest
 from stream_sidebar import rows,choice
 
 class SidebarTests(unittest.TestCase):
+    def test_windowed_restore_pins_once_and_never_unpins(self):
+        import json,os,tempfile
+        from pathlib import Path
+        from unittest.mock import patch
+        from stream_sidebar import restore_windowed
+        player=dict(pid=123,address='0x123',at=[100,200],size=[640,360],pinned=False)
+        with tempfile.TemporaryDirectory() as folder,patch.dict(os.environ,XDG_RUNTIME_DIR=folder):
+            (Path(folder)/f"pip-fullscreen-{os.getuid()}-0x123.geometry.return").write_text(json.dumps(player))
+            for pinned,fullscreen,expected in ((False,0,1),(True,0,0),(False,2,0)):
+                with self.subTest(pinned=pinned,fullscreen=fullscreen),patch('subprocess.check_output',return_value=json.dumps([dict(player,pinned=pinned,fullscreen=fullscreen)])),patch('subprocess.run') as run:
+                    restore_windowed(player)
+                    self.assertEqual(sum('window.pin' in call.args[0][-1] for call in run.call_args_list),expected)
+
     def test_live_counts_order_and_service_identity(self):
         cache={'t':{'a':{'checked_at':1000,'viewer_count':100}},
                'k':{'b':{'checked_at':1000,'viewer_count':200}},

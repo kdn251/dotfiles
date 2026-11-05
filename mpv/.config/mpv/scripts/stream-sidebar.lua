@@ -20,8 +20,8 @@ mp.observe_property('user-data/media-panel-layout','native',navigation)
 local function open_sidebar()
     if active then send('close');return end
     if not mp.get_property_bool('fullscreen',false) then return end
-    mp.command_native_async({name='subprocess',playback_only=false,
-        capture_stdout=true,capture_stderr=true,
+    mp.command_native_async({name='subprocess',playback_only=false,detach=true,
+        capture_stdout=false,capture_stderr=false,
         args={'python3',os.getenv('HOME')..'/scripts/stream-sidebar.py',tostring(utils.getpid())}},
         function(ok,result)
             if not ok or not result or result.status~=0 then

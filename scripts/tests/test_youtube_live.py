@@ -27,6 +27,32 @@ class YouTubeLiveTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, 'stream listing'):
             youtube.resolve({'error': 'unavailable'})
 
+    def test_playback_selects_one_video_and_audio_instead_of_full_master(self):
+        details={'formats':[
+            {'height':720,'protocol':'m3u8_native','url':'https://example.com/720','acodec':'none'},
+            {'height':1080,'protocol':'m3u8_native','url':'https://example.com/1080','acodec':'none'},
+            {'height':2160,'protocol':'m3u8_native','url':'https://example.com/4k','acodec':'none'},
+            {'vcodec':'none','protocol':'m3u8_native','url':'https://example.com/low-audio','source_preference':0},
+            {'vcodec':'none','protocol':'m3u8_native','url':'https://example.com/audio','source_preference':1}]}
+        selected=youtube.playback_manifest(details)
+        self.assertTrue(selected.startswith('edl://'))
+        self.assertIn('https://example.com/1080',selected)
+        self.assertIn('https://example.com/audio',selected)
+        self.assertNotIn('https://example.com/low-audio',selected)
+        self.assertNotIn('https://example.com/720',selected)
+        self.assertNotIn('https://example.com/4k',selected)
+        self.assertIsNone(youtube.playback_manifest({'formats':[]}))
+        self.assertIsNone(youtube.playback_manifest({'formats':details['formats'][:2]}))
+
+    def test_cached_manifest_must_be_recent_and_match_channel(self):
+        import json
+        from unittest.mock import patch
+        stream={'channel':'https://www.youtube.com/@Test','checked_at':100,'playback_url':'https://example.com/master'}
+        with patch.object(Path,'read_text',return_value=json.dumps({'Test':stream})):
+            self.assertEqual(youtube.recent_stream(stream['channel'],101),stream)
+            self.assertIsNone(youtube.recent_stream(stream['channel'],401))
+            self.assertIsNone(youtube.recent_stream('https://www.youtube.com/@Other',101))
+
     def test_requires_channel_url(self):
         with self.assertRaisesRegex(ValueError, 'channel URL'):
             youtube.fetch('https://example.com/@someone')

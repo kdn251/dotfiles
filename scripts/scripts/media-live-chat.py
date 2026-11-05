@@ -65,7 +65,7 @@ def main(url, title):
         cover.show();stack.setCurrentWidget(cover);spin();spinner.start()
     def finished(ok):
         spinner.stop()
-        QTimer.singleShot(100,ready.touch)
+        QTimer.singleShot(100,lambda:ready.touch())
         if ok:cover.hide();stack.setCurrentWidget(view)
         else:cover.setText('Chat could not load. Press Ctrl+R to retry.')
     from PyQt6.QtGui import QShortcut, QKeySequence

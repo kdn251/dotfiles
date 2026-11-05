@@ -3,6 +3,7 @@ import json
 import os
 from pathlib import Path
 import signal
+import select
 import runpy
 import socket
 import subprocess
@@ -82,7 +83,9 @@ class Preview:
                   '--script='+str(SCRIPTS/'stream-title-refresh.lua'),
                   '--force-media-title='+playback_title(self.name,self.service)]
             if self.service in ('Kick','Rumble'):args+=['--user-agent=Mozilla/5.0','--referrer=https://'+self.service.lower()+'.com/']
-            if self.service=='YouTube':args+=['--script-opts=ytdl_hook-ytdl_path='+str(Path.home()/'.local/bin/yt-dlp')]
+            if self.service=='YouTube':args+=['--script-opts=ytdl_hook-ytdl_path='+str(Path.home()/'.local/bin/yt-dlp'),
+                '--ytdl-raw-options=ignore-config=,no-warnings=,no-playlist=',
+                '--demuxer-lavf-o=live_start_index=-1']
             env=dict(os.environ,STREAM_TITLE_SERVICE=self.service,STREAM_TITLE_NAME=self.name,
                      STREAM_PAGE_URL=self.channel,STREAM_PREVIEW_ACCEPT=str(self.accepted),STREAM_PREVIEW_OWNER=str(os.getpid()))
             if self.service=='Twitch':env['TWITCH_STREAMER_USERNAME']=self.name
@@ -178,12 +181,88 @@ class Preview:
         return True
 
 
+class StageFailed(ValueError):
+    """Keep the current stream intact if its replacement cannot become ready."""
+
+
+def stage(name,title,url,marker,fallback,service,session,page,old_pid):
+    ROOT.mkdir(mode=0o700,parents=True,exist_ok=True)
+    token=uuid.uuid4().hex
+    endpoint=str(ROOT/(token+'.sock'))
+    # Map outside the visible workspace so decoding can finish without exposing
+    # a second window or replacing the video currently being watched.
+    rule='float on, no_initial_focus on, workspace special:stream_staging silent, match:class ^(stream-staging)$'
+    subprocess.run([*HYPRCTL,'keyword','windowrule',rule],check=True,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL,timeout=2)
+    args=['mpv','--no-terminal','--mute=yes','--idle=yes','--force-window=immediate',
+          '--wayland-app-id=stream-staging','--input-ipc-server='+endpoint,
+          '--cache=yes','--cache-secs=30','--demuxer-max-bytes=384MiB','--demuxer-max-back-bytes=256MiB',
+          '--hwdec=vaapi','--vo=gpu','--gpu-api=opengl',
+          '--script='+str(SCRIPTS/'twitch-first-frame.lua'),
+          '--script='+str(SCRIPTS/'stream-preview.lua'),
+          '--script='+str(SCRIPTS/'stream-title-refresh.lua'),
+          '--force-media-title='+title]
+    if service=='YouTube':args+=['--ytdl-raw-options=ignore-config=,no-warnings=,no-playlist=',
+        '--demuxer-lavf-o=live_start_index=-1',
+        '--script-opts=ytdl_hook-ytdl_path='+str(Path.home()/'.local/bin/yt-dlp')]
+    if service in ('Kick','Rumble'):args+=['--user-agent=Mozilla/5.0','--referrer=https://'+service.lower()+'.com/']
+    env=dict(os.environ,STREAM_TITLE_SERVICE=service,STREAM_TITLE_NAME=name,STREAM_PAGE_URL=page,
+             STREAM_PREVIEW_OWNER=str(os.getpid()),TWITCH_FALLBACK_URL=fallback)
+    if service=='Twitch':env['TWITCH_STREAMER_USERNAME']=name
+    process=subprocess.Popen([*args,url],env=env,stdin=subprocess.DEVNULL,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL,start_new_session=True)
+    promoted=False
+    try:
+        deadline=time.monotonic()+35
+        while time.monotonic()<deadline and process.poll() is None:
+            if SESSION.read_text().strip()!=session:raise StageFailed('Selection changed')
+            if not Path(f'/proc/{old_pid}').exists():raise StageFailed('Player closed')
+            try:
+                player=Player(endpoint,process.pid)
+                try:ready=player.get('user-data/preview-ready')
+                finally:player.close()
+                if ready:
+                    data=dict(pid=process.pid,endpoint=endpoint,name=name,service=service,created=time.time(),staged=True)
+                    tmp=HANDOFF.with_suffix('.tmp');tmp.write_text(json.dumps(data));tmp.chmod(0o600);tmp.replace(HANDOFF)
+                    result=adopt(name,title,marker,service,session,page)
+                    if result:promoted=True;return result
+                    raise StageFailed('Selection changed')
+            except (OSError,ValueError) as error:
+                if isinstance(error,StageFailed):raise
+            time.sleep(.025)
+        raise StageFailed('New stream did not become ready; current stream kept playing')
+    finally:
+        if not promoted and process.poll() is None:
+            process.terminate()
+            try:process.wait(timeout=2)
+            except subprocess.TimeoutExpired:process.kill()
+
+
+def retire_player(player):
+    """Unmap the outgoing stream immediately and guarantee its process exits."""
+    try:fd=os.pidfd_open(player['pid'])
+    except ProcessLookupError:return
+    try:
+        target=json.dumps('address:'+player['address'])
+        try:
+            subprocess.run(['/usr/bin/hyprctl','eval',
+                'hl.dispatch(hl.dsp.window.move({workspace="special:stream_retired",follow=false,window='+target+'}))'],
+                stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL,timeout=.5)
+        except (OSError,subprocess.SubprocessError):pass
+        try:
+            signal.pidfd_send_signal(fd,signal.SIGTERM)
+            if not select.select([fd],[],[],.25)[0]:signal.pidfd_send_signal(fd,signal.SIGKILL)
+        except ProcessLookupError:pass
+    finally:os.close(fd)
+
+
 def adopt(name,title,marker,service,session,page):
-    """Consume only the preview explicitly selected by this picker invocation."""
+    """Commit a decoded replacement only after its window and panels are ready."""
     try:data=json.loads(HANDOFF.read_text())
     except (OSError,ValueError):return None
     if data.get('name','').casefold()!=name.casefold() or data.get('service')!=service or time.time()-data.get('created',0)>70:return None
+    from media_chat_fullscreen import socket_for,place_player
+    from media_panel_layout import PROPERTY,FIT
     p=Player(data['endpoint'],data['pid'])
+    previous=None;old=None;attached=False;committed=False
     try:
         if not p.get('user-data/preview-ready'):return None
         if SESSION.read_text().strip()!=session:return None
@@ -191,76 +270,96 @@ def adopt(name,title,marker,service,session,page):
         old=next((c for c in windows if c.get('class')=='mpv' and c['pid']!=data['pid']),None)
         was_fullscreen=bool(old and old.get('fullscreen'))
         if old:
-            try:
-                from media_chat_fullscreen import socket_for
-                previous=Player(socket_for(old),old['pid'])
-                volume=previous.get('volume')
-                if volume is not None and volume <= 0:
-                    volume=previous.get('user-data/stream-audible-volume',100)
-                previous.close()
-                if volume is not None:p.command('set_property','volume',volume)
-            except (OSError,ValueError,TypeError):pass
-        old_geometry=(old['at'],old['size']) if old and not was_fullscreen else None
-        canonical=CANONICAL
-        canonical.unlink(missing_ok=True);canonical.symlink_to(data['endpoint'])
+            previous=Player(socket_for(old),old['pid'])
+            volume=previous.get('volume')
+            if volume is not None and volume<=0:volume=previous.get('user-data/stream-audible-volume',100)
+            if volume is not None:p.command('set_property','volume',volume)
+            layout=previous.get(PROPERTY)
+            if isinstance(layout,dict) and layout.get('original'):
+                p.command('set_property',PROPERTY,layout)
+                for key,value in dict(FIT,**{'video-margin-ratio-left':layout.get('left',0),
+                                             'video-margin-ratio-right':layout.get('right',0)}).items():
+                    p.command('set_property',key,value)
+            if previous.get('user-data/stream-sidebar-open') is True:
+                previous.command('set_property','user-data/stream-sidebar-replacement',{'pid':data['pid']})
+                deadline=time.monotonic()+1
+                while time.monotonic()<deadline:
+                    if previous.get('user-data/stream-sidebar-attached')==data['pid']:
+                        attached=True;break
+                    time.sleep(.01)
+                if not attached:raise StageFailed('Stream list could not transfer; current stream kept playing. Reopen the list and try again.')
+        window=next((c for c in windows if c['pid']==data['pid']),None)
+        if not window:raise StageFailed('Replacement window unavailable; current stream kept playing')
+        if old and not was_fullscreen:
+            (x,y),(w,h)=old['at'],old['size']
+        elif data.get('landed') and not was_fullscreen:
+            (x,y),(w,h)=window['at'],window['size']
+        else:
+            monitors=json.loads(subprocess.check_output([*HYPRCTL,'-j','monitors'],timeout=2))
+            mon=next(m for m in monitors if m['id']==window['monitor'])
+            from pip_geometry import monitor_size,bottom_right,settings
+            mw,mh=monitor_size(mon);w,h=round(mw*.38),round(mw*.21375)
+            x,y=bottom_right(mon,(w,h),*settings())
+            if old:
+                saved=Path(os.environ.get('XDG_RUNTIME_DIR','/tmp'))/f"pip-fullscreen-{os.getuid()}-{old['address']}.geometry.return"
+                try:
+                    saved=json.loads(saved.read_text())
+                    if saved.get('pid')==old['pid']:(x,y),(w,h)=saved['at'],saved['size']
+                except (OSError,ValueError):pass
         p.command('set_property','options/wayland-app-id','mpv')
         p.command('set_property','title','${media-title} - mpv')
-        # Preserve the already-decoded stream: no loadfile here.
-        p.command('script-message','preview-promote',session,page,title,marker)
-        HANDOFF.unlink(missing_ok=True)
-        for _ in range(20):
-            window=next((c for c in clients() if c['pid']==data['pid']),None)
-            if window and window.get('class')=='mpv':break
+        deadline=time.monotonic()+1
+        while time.monotonic()<deadline:
+            mapped=next((c for c in clients() if c.get('pid')==data['pid']),None)
+            if mapped and mapped.get('class')=='mpv' and mapped.get('mapped',True):break
+            time.sleep(.01)
+        target='address:'+window['address']
+        batch=f'dispatch resizewindowpixel exact {w} {h},{target}; dispatch movewindowpixel exact {x} {y},{target}'
+        if data.get('staged') and old:batch+=f'; dispatch movetoworkspacesilent {old["workspace"]["name"]},{target}'
+        subprocess.run([*HYPRCTL,'--batch',batch],check=True,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL,timeout=2)
+        if was_fullscreen:
+            # Save floating geometry without issuing a second, focus-dependent
+            # fullscreen toggle. MPV is the sole owner of this transition.
+            saved=dict(window,at=[x,y],size=[w,h],floating=True,pinned=True)
+            prefix=Path(os.environ.get('XDG_RUNTIME_DIR','/tmp'))/f"pip-fullscreen-{os.getuid()}-{window['address']}"
+            Path(str(prefix)+'.geometry').write_text(json.dumps(saved))
+            Path(str(prefix)+'.geometry.return').write_text(json.dumps(saved))
+            p.command('set_property','fullscreen',True)
+        deadline=time.monotonic()+2
+        while time.monotonic()<deadline:
+            current=next((c for c in clients() if c.get('pid')==data['pid']),None)
+            if current and current.get('mapped',True) and (not was_fullscreen or current.get('fullscreen')==2):break
             time.sleep(.025)
-        if window:
-            address=window['address']
-            if old_geometry:
-                # Re-read at adoption in case the user moved/resized the player
-                # after selecting the preview. Its geometry wins over defaults.
-                (x,y),(w,h)=old_geometry
-            elif data.get('landed') and not was_fullscreen:
-                (x,y),(w,h)=window['at'],window['size']
-            else:
-                monitors=json.loads(subprocess.check_output([*HYPRCTL,'-j','monitors'],timeout=2))
-                mon=next(m for m in monitors if m['id']==window['monitor'])
-                from pip_geometry import monitor_size, bottom_right, settings
-                mw,mh=monitor_size(mon)
-                w,h=round(mw*.38),round(mw*.21375)
-                x,y=bottom_right(mon,(w,h),*settings())
-            from media_chat_fullscreen import place_player
-            if was_fullscreen:
-                if not window.get('fullscreen'):
-                    # Save the intended windowed return geometry without ever
-                    # displaying it. Enter fullscreen directly from the preview.
-                    restore = dict(window, at=[x,y], size=[w,h], floating=True)
-                    toggle = runpy.run_path(str(SCRIPTS/'toggle-pip-fullscreen.py'))['toggle']
-                    toggle(restore, Path(os.environ.get('XDG_RUNTIME_DIR', '/tmp')))
-                place_player(data['pid'], align=False)
-            else:
-                subprocess.run([*HYPRCTL,'--batch',f'dispatch resizewindowpixel exact {w} {h},address:{address}; dispatch movewindowpixel exact {x} {y},address:{address}'],stdout=subprocess.DEVNULL,timeout=2)
-                if old_geometry:
-                    place_player(data['pid'], align=False)
-                else:
-                    place_player(data['pid'])
-        # Keep the old decoded frame covering the desktop until the compositor
-        # has installed the replacement fullscreen window. Killing it before
-        # promotion leaves a visible gap even when the preview is already ready.
-        covered = not was_fullscreen
-        if was_fullscreen and window:
-            for _ in range(40):
-                current = next((c for c in clients() if c.get('pid') == data['pid']), None)
-                if current and current.get('mapped', True) and current.get('fullscreen') == 2:
-                    covered = True
-                    break
-                time.sleep(.025)
-        if old and covered:
-            try:
-                fd=os.pidfd_open(old['pid'])
-                try:
-                    signal.pidfd_send_signal(fd,signal.SIGTERM)
-                finally:
-                    os.close(fd)
-            except ProcessLookupError:
-                pass
+        else:raise StageFailed('Replacement layout did not become ready; current stream kept playing')
+        if SESSION.read_text().strip()!=session:raise StageFailed('Selection changed')
+        CANONICAL.unlink(missing_ok=True);CANONICAL.symlink_to(data['endpoint'])
+        if previous:previous.command('set_property','mute',True)
+        p.command('script-message','preview-promote',session,page,title,marker)
+        committed=True
+        HANDOFF.unlink(missing_ok=True)
+        if old:
+            retire_player(old)
+            for stale in windows:
+                if stale.get('class')=='mpv' and stale.get('pid') not in (old['pid'],data['pid']):
+                    try:
+                        if player_identity(stale):retire_player(stale)
+                    except (OSError,ValueError):pass
+        place_player(data['pid'],align=not bool(old or was_fullscreen or data.get('landed')))
         return data['pid']
-    finally:p.close()
+    except (OSError,ValueError,subprocess.SubprocessError):
+        if not committed:
+            if attached and old:
+                try:
+                    p.command('set_property','user-data/stream-sidebar-replacement',{'pid':old['pid']})
+                    deadline=time.monotonic()+.5
+                    while time.monotonic()<deadline and p.get('user-data/stream-sidebar-attached')!=old['pid']:time.sleep(.01)
+                except (OSError,ValueError):pass
+            if previous:
+                try:previous.command('set_property','mute',False)
+                except (OSError,ValueError):pass
+            try:os.kill(data['pid'],signal.SIGTERM)
+            except ProcessLookupError:pass
+        raise
+    finally:
+        p.close()
+        if previous:previous.close()

@@ -124,7 +124,7 @@ def layout(monitor, youtube=False, video=None):
         width, height = height, width
     width = round(width / monitor.get('scale', 1))
     height = round(height / monitor.get('scale', 1))
-    chat_width = min(round(width * .4), max(320 if youtube else 240, min(520, round(width * (.30 if youtube else .20)))))
+    chat_width = min(round(width * .4), max(240, min(520, round(width * .20))))
     return {'at': [monitor['x'] + width - chat_width, monitor['y']],
             'size': [chat_width, height], 'ratio': chat_width / width}
 
@@ -316,7 +316,8 @@ def begin(clients=None):
                 continue
             service = player_service(player, endpoint)
             chat_class = 'com.chatterino.chatterino' if service == 'Twitch' else 'newsboat-live-chat'
-            chat = next((c for c in clients if c.get('class') == chat_class), None)
+            chat = next((c for c in clients if c.get('class') == chat_class and
+                         c.get('workspace',{}).get('name')!='special:media_chat_closing'), None)
             if not chat:
                 continue
             monitors = json.loads(hypr('-j', 'monitors'))
@@ -501,8 +502,7 @@ def resume_transition(session):
                         return
                     restore(current, clients)
                 if not player.get('fullscreen'):
-                    subprocess.run([str(Path(__file__).with_name('toggle-pip-fullscreen.sh')),
-                                    '--pid', str(player['pid'])], check=True, timeout=5)
+                    ipc({'player':player,'socket':socket_for(player)},'set_property','fullscreen',True)
                 # The ordinary opener supplies the matching platform's chat and
                 # reapplies the fullscreen layout once its window is ready.
                 subprocess.run(['python3', str(Path(__file__).with_name('media-chat.py'))], timeout=20)

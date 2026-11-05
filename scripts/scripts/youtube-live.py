@@ -5,6 +5,7 @@ import re
 import shutil
 import subprocess
 import sys
+import time
 from pathlib import Path
 from stream_profile import cache_avatar
 from stream_live_cache import OfflineError, update_live_list, menu
@@ -22,6 +23,34 @@ def resolve(data):
                     'title': entry.get('title') or 'YouTube live stream',
                     'chat_url': f'https://www.youtube.com/live_chat?v={video_id}&is_popout=1'}
     raise OfflineError('This channel is offline on YouTube. Try again when the stream is live.')
+
+
+def playback_manifest(details):
+    # Keep one video and one audio rendition. Opening the master makes FFmpeg
+    # probe every quality, while choosing only video would silently lose audio.
+    formats=[f for f in details.get('formats',[]) if f.get('protocol') in ('m3u8','m3u8_native')
+             and str(f.get('url','')).startswith('https://')]
+    videos=[f for f in formats if f.get('height') and f['height']<=1080]
+    if not videos:return None
+    video=max(videos,key=lambda f:(f['height'],f.get('fps') or 0))
+    if video.get('acodec') not in ('none',None):return video['url']
+    audio=[f for f in formats if f.get('vcodec')=='none']
+    if not audio:return None
+    sound=max(audio,key=lambda f:(f.get('language_preference') or 0,f.get('quality') or 0,
+                                f.get('abr') or f.get('tbr') or 0,f.get('source_preference') or 0))
+    return 'edl://'+';'.join('!new_stream;!no_clip;%'+str(len(f['url'].encode()))+'%'+f['url'] for f in (video,sound))
+
+
+def recent_stream(channel,now=None):
+    try:
+        values=json.loads((Path.home()/'.cache/youtube-live.json').read_text()).values()
+        now=time.time() if now is None else now
+        for stream in values:
+            if stream.get('channel','').rstrip('/')==channel.rstrip('/') and 0<=now-stream.get('checked_at',0)<300:
+                if str(stream.get('playback_url','')).startswith(('edl://','https://')):
+                    return stream
+    except (OSError,ValueError,TypeError):pass
+    return None
 
 
 def fetch(channel, enrich=True):
@@ -49,6 +78,8 @@ def fetch(channel, enrich=True):
                 '--no-playlist','--socket-timeout','8','--retries','0',stream['url']],
                 capture_output=True,text=True,timeout=25)
             details=json.loads(result.stdout) if result.returncode==0 else {}
+            manifest=playback_manifest(details)
+            if manifest:stream['playback_url']=manifest
             stream['started_at'] = details.get('release_timestamp')
             viewers=details.get('concurrent_view_count')
             if isinstance(viewers,(int,float)):stream['viewer_count']=viewers
@@ -65,7 +96,7 @@ def main():
     elif sys.argv[1:] == ['--menu']:
         menu(cache, 'YouTube')
     else:
-        print(json.dumps(fetch(sys.argv[1],enrich=False)))
+        print(json.dumps(recent_stream(sys.argv[1]) or fetch(sys.argv[1],enrich=True)))
 
 
 if __name__ == '__main__':

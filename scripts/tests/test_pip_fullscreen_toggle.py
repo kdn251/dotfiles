@@ -42,3 +42,26 @@ class ToggleTests(unittest.TestCase):
             script = run.call_args.args[0][-1]
             self.assertNotIn('window.resize', script)
             self.assertNotIn('window.pin', script)
+
+    def test_managed_streams_use_targeted_mpv_fullscreen_not_focused_window(self):
+        for service in ('Twitch','YouTube','Kick','Rumble'):
+            with self.subTest(service=service),tempfile.TemporaryDirectory() as tmp:
+                client=dict(address='0x123',pid=123,floating=True,fullscreen=0,pinned=True,
+                            at=[100,200],size=[420,240],**{'class':'mpv'})
+                properties={'user-data/stream-service':service,'fullscreen':False}
+                def ipc(state,op,key,*args):
+                    if op=='get_property':return properties[key]
+                    properties[key]=args[0]
+                with patch('media_chat_fullscreen.socket_for',return_value='player.sock'), \
+                        patch('media_chat_fullscreen.ipc',side_effect=ipc) as command, \
+                        patch.object(toggle.subprocess,'run') as native, \
+                        patch.object(toggle,'query',return_value=[dict(client,fullscreen=0)]), \
+                        patch('stream_sidebar.restore_windowed') as restore:
+                    toggle.toggle(client,Path(tmp))
+                    self.assertTrue(properties['fullscreen'])
+                    toggle.toggle(dict(client,fullscreen=2,pinned=False),Path(tmp))
+                    self.assertFalse(properties['fullscreen'])
+                    restore.assert_called_once()
+                    for call in native.call_args_list:
+                        self.assertNotIn('window.fullscreen',call.args[0][-1])
+                        self.assertNotIn('hl.dsp.focus',call.args[0][-1])

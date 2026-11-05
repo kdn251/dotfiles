@@ -44,6 +44,10 @@ mp.register_script_message('twitch-load', function(channel, title, url, marker, 
     mp.set_property_native('pause', false)
     activate_stream()
     local options = {['user-agent']='Mozilla/5.0', referrer='', ['ytdl-format']='bestvideo[height<=?1080]+bestaudio/best[height<=?1080]/best'}
+    if service == 'YouTube' then
+        options['ytdl-raw-options']='ignore-config=,no-warnings=,no-playlist='
+        options['demuxer-lavf-o']='live_start_index=-1'
+    end
     if service == 'Kick' or service == 'Rumble' then options.referrer = 'https://' .. service:lower() .. '.com/' end
     mp.command_native({'loadfile', url, 'replace', 0, options})
 end)
@@ -78,3 +82,5 @@ end)
 
 -- Stream-only back/forward navigation.
 dofile((os.getenv('HOME') or '') .. '/scripts/stream-watch-controls.lua')
+
+dofile((os.getenv('HOME') or '') .. '/scripts/stream-live-seek.lua')

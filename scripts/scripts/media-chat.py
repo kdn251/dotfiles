@@ -46,7 +46,8 @@ def video_url(clients, focused):
 
 
 def close_panels(clients, panel_class):
-    panels=[c for c in clients if c.get('class')==panel_class]
+    panels=[c for c in clients if c.get('class')==panel_class and
+            c.get('workspace',{}).get('name')!='special:media_chat_closing']
     for panel in panels:
         # Hide before requesting a graceful close so the other panel never
         # shares a visible frame while the old application's shutdown runs.
@@ -153,7 +154,8 @@ def main():
         return
     switched=close_panels(clients,'com.chatterino.chatterino')
     switched=close_panels(clients,CLASS if live else LIVE_CLASS) or switched
-    panels=[c for c in clients if c.get('class')==panel_class]
+    panels=[c for c in clients if c.get('class')==panel_class and
+            c.get('workspace',{}).get('name')!='special:media_chat_closing']
     try:previous=json.loads(STATE.read_text()).get('url')
     except (OSError,ValueError):previous=None
     if panels and previous==url:
@@ -167,10 +169,12 @@ def main():
              [sys.executable,str(Path(__file__).with_name('newsboat-youtube-comments.py')),url])
     environment=dict(os.environ)
     if preload:environment['MEDIA_CHAT_PLAYER_PID']=str(pid)
-    subprocess.Popen(command,env=environment,
+    process=subprocess.Popen(command,env=environment,
                      stdin=subprocess.DEVNULL,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL,start_new_session=True)
     for _ in range(80):
-        if any(c.get('class')==panel_class for c in json.loads(hypr('-j','clients'))):
+        if any(c.get('class')==panel_class and c.get('pid')==process.pid and
+               c.get('workspace',{}).get('name')!='special:media_chat_closing'
+               for c in json.loads(hypr('-j','clients'))):
             if not preload:show_workspace()
             return
         time.sleep(.1)

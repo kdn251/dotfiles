@@ -61,7 +61,7 @@ class FullscreenChatTests(unittest.TestCase):
                 self.assertEqual(state['properties'], {'panscan': 1})
                 self.assertNotIn('transition', state)
                 ipc.assert_any_call(state, 'set_property', 'video-margin-ratio-right',
-                                            .3 if service == 'YouTube' else .2)
+                                            .2)
 
     def test_handoff_hides_chat_before_replacement_can_launch(self):
         events = []
@@ -284,6 +284,6 @@ class FullscreenChatTests(unittest.TestCase):
                     self.assertTrue(layout.begin([self.player, chat]))
                     self.assertEqual(layout.read()['player']['workspace']['id'],3)
                     self.assertEqual(layout.read()['chat']['class'],'newsboat-live-chat')
-                    self.assertAlmostEqual(props['video-margin-ratio-right'], .30 if service=='youtube' else .20)
+                    self.assertAlmostEqual(props['video-margin-ratio-right'], .20)
                     self.assertTrue(layout.close([self.player, chat]))
                     self.assertEqual(props['video-margin-ratio-right'],0)

@@ -8,6 +8,7 @@ from pathlib import Path
 import subprocess
 import signal
 import threading
+import time
 import socket
 import sys
 os.environ.setdefault('GSK_RENDERER','gl')
@@ -17,7 +18,7 @@ gi.require_version('Gtk','4.0')
 gi.require_version('Gdk','4.0')
 gi.require_version('Gtk4LayerShell','1.0')
 from gi.repository import Gtk,Gdk,Gio,GLib,Pango,Gsk,Graphene,Gtk4LayerShell as Layer
-from stream_sidebar import rows,choice,VideoSpace
+from stream_sidebar import rows,choice,VideoSpace,restore_windowed
 from media_chat_fullscreen import ipc,socket_for,read as chat_layout
 from mpv_clip import Player
 from stream_player_identity import identity
@@ -43,8 +44,11 @@ class Sidebar(Gtk.Application):
         self.events=None
         self.workspace_events=None
         self.closing=False
+        self.leaving_fullscreen=False
         self.dead=False
         self.pidfd=None
+        self.pid_watch=None
+        self.handoff_until=0
         self.connect('shutdown',self.release_video)
         self.connect('shutdown',self.stop_events)
         self.connect('activate',self.activate_sidebar)
@@ -56,7 +60,7 @@ class Sidebar(Gtk.Application):
         self.player=player
         try:
             self.pidfd=os.pidfd_open(self.pid)
-            GLib.io_add_watch(self.pidfd,GLib.IO_IN,self.player_exited)
+            self.pid_watch=GLib.io_add_watch(self.pidfd,GLib.IO_IN,self.player_exited)
         except ProcessLookupError:self.quit();return
         self.current=identity(player)
         self.window=Gtk.ApplicationWindow(application=self,title='Live channels')
@@ -159,16 +163,22 @@ class Sidebar(Gtk.Application):
         previous=self.events.get('user-data/stream-sidebar-action')
         self.events.command('observe_property',701,'user-data/stream-sidebar-action')
         self.events.command('observe_property',702,'fullscreen')
+        self.events.command('observe_property',703,'user-data/stream-sidebar-replacement')
+        events=self.events
+        watched_pid=self.pid
         def listen():
             nonlocal previous
             try:
-                for line in self.events.stream:
+                for line in events.stream:
                     event=json.loads(line)
+                    if watched_pid!=self.pid:return
                     if event.get('event')=='shutdown':
                         GLib.idle_add(self.player_exited);return
                     if event.get('event')!='property-change':continue
+                    if event.get('name')=='user-data/stream-sidebar-replacement' and isinstance(event.get('data'),dict):
+                        GLib.idle_add(self.retarget,event['data'])
                     if event.get('name')=='fullscreen':
-                        GLib.idle_add(self.fullscreen_changed,event.get('data'))
+                        GLib.idle_add(self.fullscreen_for_player,watched_pid,event.get('data'))
                     if event.get('name')=='user-data/stream-sidebar-action':
                         data=event.get('data')
                         if isinstance(data,dict) and data!=previous:
@@ -176,10 +186,53 @@ class Sidebar(Gtk.Application):
                             GLib.idle_add(self.remote_key,data.get('action'))
             except (OSError,ValueError):pass
         threading.Thread(target=listen,daemon=True).start()
+    def fullscreen_for_player(self,pid,fullscreen):
+        if pid==self.pid:self.fullscreen_changed(fullscreen)
+        return False
+    def retarget(self,data):
+        if self.closing or data.get('pid')==self.pid:return False
+        new_pid=data.get('pid')
+        if not isinstance(new_pid,int):return False
+        player=next((c for c in clients() if c.get('pid')==new_pid),None)
+        if not player:return False
+        endpoint=socket_for(player)
+        if not endpoint:return False
+        try:
+            connection=Player(endpoint,new_pid)
+            connection.socket.settimeout(.4)
+            connection.command('set_property','user-data/stream-sidebar-open',True)
+            pidfd=os.pidfd_open(new_pid)
+        except (OSError,ValueError):return False
+        old_connection=self.connection
+        old_events=self.events
+        print(f'sidebar retarget {self.pid} -> {new_pid}',file=sys.stderr,flush=True)
+        self.pid=new_pid;self.player=player;self.connection=connection
+        self.handoff_until=time.monotonic()+3
+        if self.pid_watch:GLib.source_remove(self.pid_watch)
+        if self.pidfd is not None:os.close(self.pidfd)
+        self.pidfd=pidfd
+        self.pid_watch=GLib.io_add_watch(pidfd,GLib.IO_IN,self.player_exited)
+        if old_events:
+            try:old_events.socket.shutdown(socket.SHUT_RDWR)
+            except OSError:pass
+            old_events.close()
+        self.start_events(endpoint)
+        self.video_space=VideoSpace(connection.command,new_pid)
+        self.reserve_video()
+        if old_connection:
+            try:old_connection.command('set_property','user-data/stream-sidebar-attached',new_pid)
+            except (OSError,ValueError):pass
+            old_connection.close()
+        self.current=identity(player) or self.current
+        self.refresh()
+        return False
     def fullscreen_changed(self,fullscreen):
         if self.closing:return False
-        if fullscreen is False:self.suspend_fullscreen()
-        else:self.check_player()
+        if fullscreen is False:
+            if time.monotonic()>=self.handoff_until:self.suspend_fullscreen()
+        else:
+            self.leaving_fullscreen=False
+            self.check_player()
         return False
     def suspend_fullscreen(self):
         # Keep the menu and its selection alive, but give the windowed video
@@ -229,6 +282,8 @@ class Sidebar(Gtk.Application):
         if self.video_space and not self.dead:self.video_space.restore()
         if self.connection:
             self.connection.close();self.connection=None
+        if self.pid_watch:
+            GLib.source_remove(self.pid_watch);self.pid_watch=None
         if self.pidfd is not None:
             os.close(self.pidfd);self.pidfd=None
     def refresh(self):
@@ -276,14 +331,20 @@ class Sidebar(Gtk.Application):
             player=next((c for c in clients() if c.get('pid')==self.pid),None)
             if not player:
                 self.dismiss();return False
+            self.player=player
             if not player.get('fullscreen'):
+                if time.monotonic()<self.handoff_until:return True
+                if self.leaving_fullscreen:restore_windowed(player)
+                self.leaving_fullscreen=False
                 self.suspend_fullscreen();return True
+            if self.leaving_fullscreen:return True
+            self.handoff_until=0
             monitors=json.loads(subprocess.check_output(['/usr/bin/hyprctl','-j','monitors'],timeout=1))
             monitor=next((m for m in monitors if m['id']==player['monitor']),None)
             # A layer-shell surface has no workspace of its own. Unmap it while
             # away, retaining the widgets, selection and reserved video space.
             visible=bool(monitor and monitor.get('activeWorkspace',{}).get('id')==player['workspace']['id'])
-            if monitor and monitor.get('specialWorkspace',{}).get('id',0):
+            if monitor and monitor.get('specialWorkspace',{}).get('id',0) and monitor['specialWorkspace'].get('name')!='special:chatterino_chat':
                 visible=monitor['specialWorkspace']['id']==player['workspace']['id']
             if visible and not self.window.get_visible():
                 self.reserve_video()
@@ -304,12 +365,20 @@ class Sidebar(Gtk.Application):
         if key in (Gdk.KEY_Tab,Gdk.KEY_ISO_Left_Tab,Gdk.KEY_Escape):
             self.dismiss();return True
         if key in (Gdk.KEY_q,Gdk.KEY_f):
-            if key==Gdk.KEY_f:self.suspend_fullscreen()
-            else:self.release_video()
             try:
                 state={'socket':socket_for(self.player),'player':self.player}
-                ipc(state,'quit') if key==Gdk.KEY_q else ipc(state,'keypress','f')
-            except (OSError,ValueError):pass
+                if key==Gdk.KEY_f:
+                    # Forwarding a synthetic F starts an asynchronous compositor
+                    # toggle while this layer still owns focus. Address MPV's
+                    # fullscreen property directly and wait for its actual exit.
+                    self.leaving_fullscreen=True
+                    ipc(state,'set_property','fullscreen',False)
+                    self.suspend_fullscreen()
+                else:
+                    self.release_video()
+                    ipc(state,'quit')
+            except (OSError,ValueError):
+                self.leaving_fullscreen=False
             if key==Gdk.KEY_q:self.dismiss()
             return True
         if key in (Gdk.KEY_Return,Gdk.KEY_KP_Enter):
@@ -324,6 +393,10 @@ class Sidebar(Gtk.Application):
         return False
 
 if __name__=='__main__':
+    log=Path(os.environ.get('XDG_RUNTIME_DIR','/tmp'))/'stream-sidebar.log'
+    log.touch(mode=0o600,exist_ok=True)
+    sys.stderr=log.open('a',buffering=1)
+    print(f'{time.time():.3f} sidebar started for player {sys.argv[1]}',file=sys.stderr)
     with (Path(os.environ.get('XDG_RUNTIME_DIR','/tmp'))/'stream-sidebar.lock').open('a+') as lock:
         try:fcntl.flock(lock,fcntl.LOCK_EX|fcntl.LOCK_NB)
         except BlockingIOError:

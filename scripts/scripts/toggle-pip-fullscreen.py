@@ -7,6 +7,7 @@ from pathlib import Path
 import re
 import subprocess
 import sys
+import time
 
 HYPRCTL = '/usr/bin/hyprctl'
 
@@ -45,7 +46,41 @@ def write(path, value):
     temp.replace(path)
 
 
+def managed_stream_toggle(client,runtime):
+    if client.get('class')!='mpv':return False
+    from media_chat_fullscreen import socket_for,ipc
+    try:
+        endpoint=socket_for(client)
+        if not endpoint:return False
+        state={'player':client,'socket':endpoint}
+        if ipc(state,'get_property','user-data/stream-service') not in ('Twitch','Kick','YouTube','Rumble'):return False
+    except (OSError,ValueError):return False
+    prefix=runtime/f"pip-fullscreen-{os.getuid()}-{client['address']}"
+    geometry=Path(str(prefix)+'.geometry');snapshot=Path(str(geometry)+'.return')
+    target='address:'+client['address']
+    fullscreen=bool(client.get('fullscreen') or ipc(state,'get_property','fullscreen'))
+    if not fullscreen:
+        write(geometry,client);write(snapshot,client)
+        if client.get('pinned'):
+            subprocess.run([HYPRCTL,'eval',dispatch('window.pin',window=target)],check=True,stdout=subprocess.DEVNULL)
+        ipc(state,'set_property','fullscreen',True)
+    else:
+        ipc(state,'set_property','fullscreen',False)
+        # Wait only for the compositor acknowledgment, not a fixed sleep.
+        deadline=time.monotonic()+.25
+        while time.monotonic()<deadline:
+            current=next((c for c in query('clients') if c.get('pid')==client['pid']),None)
+            if not current or not current.get('fullscreen'):break
+            time.sleep(.005)
+        from stream_sidebar import restore_windowed
+        restore_windowed(client)
+        write(Path(str(geometry)+'.restored'),client['pid'])
+        geometry.unlink(missing_ok=True);snapshot.unlink(missing_ok=True)
+    return True
+
+
 def toggle(client, runtime):
+    if managed_stream_toggle(client,runtime):return
     address = client.get('address')
     if not address:
         return

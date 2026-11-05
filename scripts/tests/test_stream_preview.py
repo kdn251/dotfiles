@@ -45,7 +45,7 @@ class PreviewTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             root=Path(directory);handoff=root/'handoff';session=root/'session';session.write_text('chosen')
             handoff.write_text(json.dumps(dict(name='Example',service='Twitch',created=preview.time.time(),pid=123,endpoint=str(root/'preview.sock'))))
-            player=Mock();player.get.return_value=True
+            player=Mock();player.get.side_effect=lambda key,*args: False if key=='user-data/stream-sidebar-open' else True
             window=dict(pid=123,address='p',monitor=0,**{'class':'mpv'})
             with patch.object(preview,'HANDOFF',handoff),patch.object(preview,'SESSION',session), \
                     patch.object(preview,'CANONICAL',root/'canonical'),patch.object(preview,'Player',return_value=player), \
@@ -57,13 +57,13 @@ class PreviewTests(unittest.TestCase):
                 self.assertFalse(handoff.exists());self.assertTrue((root/'canonical').is_symlink())
                 self.assertFalse(any(c.args[0]=='loadfile' for c in player.command.call_args_list))
                 player.command.assert_any_call('script-message','preview-promote','chosen','page','title','')
-                place.assert_called_once_with(123)
+                place.assert_called_once_with(123,align=True)
 
     def test_stale_launcher_cannot_promote(self):
         with tempfile.TemporaryDirectory() as directory:
             root=Path(directory);handoff=root/'handoff';session=root/'session';session.write_text('newer')
             handoff.write_text(json.dumps(dict(name='Example',service='Twitch',created=preview.time.time(),pid=123,endpoint='test')))
-            player=Mock();player.get.return_value=True
+            player=Mock();player.get.side_effect=lambda key,*args: False if key=='user-data/stream-sidebar-open' else True
             with patch.object(preview,'HANDOFF',handoff),patch.object(preview,'SESSION',session),patch.object(preview,'Player',return_value=player):
                 self.assertIsNone(preview.adopt('Example','title','','Twitch','old','page'))
                 player.command.assert_not_called()
@@ -103,15 +103,16 @@ class PreviewTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             root=Path(directory);handoff=root/'handoff';session=root/'session';session.write_text('chosen')
             handoff.write_text(json.dumps(dict(name='Example',service='Twitch',created=preview.time.time(),pid=123,endpoint=str(root/'preview.sock'))))
-            player=Mock();player.get.return_value=True
+            player=Mock();player.get.side_effect=lambda key,*args: False if key=='user-data/stream-sidebar-open' else True
             window=dict(pid=123,address='p',monitor=0,at=[10,10],size=[480,270],fullscreen=0,**{'class':'mpv'})
             old=dict(pid=456,address='old',fullscreen=2,**{'class':'mpv'})
-            toggle=Mock(side_effect=lambda *args: window.update(fullscreen=2))
+            toggle=Mock()
+            player.command.side_effect=lambda *args:window.update(fullscreen=2) if args[:2]==('set_property','fullscreen') else None
             with patch.object(preview,'HANDOFF',handoff),patch.object(preview,'SESSION',session),                     patch.object(preview,'CANONICAL',root/'canonical'),patch.object(preview,'Player',return_value=player),                     patch.object(preview,'clients',return_value=[old,window]),                     patch.object(preview.os,'pidfd_open',side_effect=lambda pid: self.retire_after_fullscreen(window, pid)),                     patch('media_chat_fullscreen.socket_for',return_value='old.sock'),                     patch.object(preview.subprocess,'check_output',return_value=json.dumps([dict(id=0,x=0,y=0,width=1440,height=960,scale=1)])),                     patch.object(preview.subprocess,'run') as move,patch('pip_geometry.settings',return_value=([12]*4,1)),                     patch('media_chat_fullscreen.place_player') as place,                     patch.object(preview.runpy,'run_path',return_value={'toggle':toggle}):
                 self.assertEqual(preview.adopt('Example','title','','Twitch','chosen','page'),123)
-                move.assert_not_called()
-                toggle.assert_called_once()
-                saved=toggle.call_args.args[0]
+                toggle.assert_not_called()
+                player.command.assert_any_call('set_property','fullscreen',True)
+                saved=json.loads((Path('/run/user/'+str(__import__('os').getuid()))/('pip-fullscreen-'+str(__import__('os').getuid())+'-p.geometry.return')).read_text())
                 self.assertNotEqual(saved['at'],window['at'])
                 self.assertEqual(saved['size'],[547,308])
                 place.assert_called_once_with(123,align=False)
@@ -141,7 +142,7 @@ class PreviewTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             root=Path(directory);handoff=root/'handoff';session=root/'session';session.write_text('chosen')
             handoff.write_text(json.dumps(dict(name='Example',service='Twitch',created=preview.time.time(),pid=123,endpoint=str(root/'preview.sock'),landed=True)))
-            player=Mock();player.get.return_value=True
+            player=Mock();player.get.side_effect=lambda key,*args: False if key=='user-data/stream-sidebar-open' else True
             window=dict(pid=123,address='p',monitor=0,at=[883,642],size=[547,308],fullscreen=0,**{'class':'mpv'})
             old=dict(pid=456,address='old',fullscreen=0,at=[45,67],size=[800,450],**{'class':'mpv'})
             with patch.object(preview,'HANDOFF',handoff),patch.object(preview,'SESSION',session),                     patch.object(preview,'CANONICAL',root/'canonical'),patch.object(preview,'Player',return_value=player),                     patch.object(preview,'clients',return_value=[old,window]),                     patch.object(preview.os,'pidfd_open',side_effect=ProcessLookupError),                     patch('media_chat_fullscreen.socket_for',return_value='old.sock'),                     patch.object(preview.subprocess,'run') as move,                     patch('media_chat_fullscreen.place_player') as place:
@@ -150,3 +151,68 @@ class PreviewTests(unittest.TestCase):
                 self.assertIn('exact 800 450',batch)
                 self.assertIn('exact 45 67',batch)
                 place.assert_called_once_with(123,align=False)
+
+    def test_staged_switch_waits_for_decoded_frame_before_adopting(self):
+        import os
+        process=Mock(pid=456);process.poll.return_value=None
+        player=Mock();player.get.side_effect=[False,True]
+        with tempfile.TemporaryDirectory() as directory:
+            root=Path(directory);session=root/'session';session.write_text('chosen')
+            with patch.object(preview,'ROOT',root),patch.object(preview,'HANDOFF',root/'handoff'), \
+                    patch.object(preview,'SESSION',session),patch.object(preview.subprocess,'run'), \
+                    patch.object(preview.subprocess,'Popen',return_value=process), \
+                    patch.object(preview,'Player',return_value=player),patch.object(preview.time,'sleep'), \
+                    patch.object(preview,'adopt',return_value=456) as adopt:
+                result=preview.stage('name','title','https://example.test/live','','','Kick','chosen','page',os.getpid())
+                self.assertEqual(result,456)
+                self.assertEqual(player.get.call_count,2)
+                adopt.assert_called_once()
+                player.command.assert_not_called()
+                process.terminate.assert_not_called()
+
+    def test_cancelled_stage_closes_only_replacement(self):
+        import os
+        process=Mock(pid=456);process.poll.return_value=None
+        with tempfile.TemporaryDirectory() as directory:
+            root=Path(directory);session=root/'session';session.write_text('newer')
+            with patch.object(preview,'ROOT',root),patch.object(preview,'SESSION',session), \
+                    patch.object(preview.subprocess,'run'),patch.object(preview.subprocess,'Popen',return_value=process), \
+                    patch.object(preview,'adopt') as adopt,patch.object(preview,'Player') as player:
+                with self.assertRaises(preview.StageFailed):
+                    preview.stage('name','title','https://example.test/live','','','Kick','old','page',os.getpid())
+                process.terminate.assert_called_once()
+                adopt.assert_not_called();player.assert_not_called()
+
+    def test_retirement_hides_old_window_and_enforces_exit(self):
+        import signal
+        for exited in (True,False):
+            with self.subTest(exited=exited),patch.object(preview.os,'pidfd_open',return_value=99), \
+                    patch.object(preview.os,'close') as close,patch.object(preview.subprocess,'run') as hide, \
+                    patch.object(preview.select,'select',return_value=([99] if exited else [],[],[])), \
+                    patch.object(preview.signal,'pidfd_send_signal') as send:
+                preview.retire_player({'pid':123,'address':'old'})
+                self.assertIn('special:stream_retired',hide.call_args.args[0][-1])
+                self.assertEqual([c.args[1] for c in send.call_args_list],
+                                 [signal.SIGTERM] if exited else [signal.SIGTERM,signal.SIGKILL])
+                close.assert_called_once_with(99)
+
+    def test_failed_fullscreen_confirmation_aborts_replacement_without_retiring_old(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root=Path(directory);session=root/'session';session.write_text('chosen')
+            handoff=root/'handoff'
+            handoff.write_text(json.dumps(dict(name='Example',service='Twitch',created=preview.time.time(),pid=123,endpoint='new.sock')))
+            player=Mock();player.get.side_effect=lambda key,*args: False if key=='user-data/stream-sidebar-open' else True
+            old=dict(pid=456,address='old',fullscreen=2,**{'class':'mpv'})
+            window=dict(pid=123,address='new',fullscreen=0,mapped=True,monitor=0,at=[10,10],size=[480,270],**{'class':'mpv'})
+            with patch.object(preview,'HANDOFF',handoff),patch.object(preview,'SESSION',session), \
+                    patch.object(preview,'CANONICAL',root/'canonical'),patch.object(preview,'Player',return_value=player), \
+                    patch.object(preview,'clients',return_value=[old,window]), \
+                    patch('media_chat_fullscreen.socket_for',return_value='old.sock'), \
+                    patch.object(preview.subprocess,'check_output',return_value=json.dumps([dict(id=0,x=0,y=0,width=1440,height=960,scale=1)])), \
+                    patch.object(preview.subprocess,'run'),patch('pip_geometry.settings',return_value=([12]*4,1)), \
+                    patch('media_chat_fullscreen.place_player'),patch.object(preview.runpy,'run_path',return_value={'toggle':Mock()}), \
+                    patch.object(preview.time,'sleep'),patch.object(preview,'retire_player') as retire,patch.object(preview.os,'kill') as kill:
+                with self.assertRaises(preview.StageFailed):preview.adopt('Example','title','','Twitch','chosen','page')
+                player.command.assert_any_call('set_property','fullscreen',True)
+                retire.assert_not_called()
+                kill.assert_called_once_with(123,preview.signal.SIGTERM)

@@ -7,7 +7,8 @@ local function schedule()
     if timer then timer:kill() end
     timer=mp.add_timeout(0.75,function()
         timer=nil
-        if mp.get_property('options/wayland-app-id')=='stream-preview' then return end
+        local app_id=mp.get_property('options/wayland-app-id')
+        if app_id=='stream-preview' or app_id=='stream-staging' then return end
         if mp.get_property_number('time-pos')==nil then return end
         local service=mp.get_property_native('user-data/stream-service','')
         local url=mp.get_property_native('user-data/newsboat/url',os.getenv('NEWSBOAT_MEDIA_URL') or '')

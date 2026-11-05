@@ -44,6 +44,39 @@ class VideoSpace:
         except (OSError,ValueError):pass
 
 
+def restore_windowed(player):
+    """Restore a promoted player's floating bounds after a direct fullscreen exit."""
+    import json,os,subprocess
+    from pip_geometry import monitor_size,bottom_right,settings
+    runtime=Path(os.environ.get('XDG_RUNTIME_DIR','/tmp'))
+    saved_path=runtime/f"pip-fullscreen-{os.getuid()}-{player['address']}.geometry.return"
+    try:saved=json.loads(saved_path.read_text())
+    except (OSError,ValueError):saved={}
+    if saved.get('pid')==player['pid']:
+        x,y=saved['at'];w,h=saved['size']
+    else:
+        monitors=json.loads(subprocess.check_output(['/usr/bin/hyprctl','-j','monitors'],timeout=1))
+        monitor=next(m for m in monitors if m['id']==player['monitor'])
+        width,height=monitor_size(monitor);w,h=round(width*.38),round(width*.21375)
+        x,y=bottom_right(monitor,(w,h),*settings())
+    target=json.dumps('address:'+player['address'])
+    script=(f'hl.dispatch(hl.dsp.window.resize({{window={target},x={w},y={h},relative=false}})); '
+            f'hl.dispatch(hl.dsp.window.move({{window={target},x={x},y={y},relative=false}}))')
+    subprocess.run(['/usr/bin/hyprctl','eval',script],stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL,timeout=1)
+
+
+    # Both the sidebar and MPV can restore bounds. Serialize the pin check so
+    # their fullscreen notifications cannot toggle an already pinned window off.
+    import fcntl
+    with (runtime/f"stream-windowed-{player['pid']}.lock").open('a+') as lock:
+        fcntl.flock(lock,fcntl.LOCK_EX)
+        clients=json.loads(subprocess.check_output(['/usr/bin/hyprctl','-j','clients'],timeout=1))
+        current=next((c for c in clients if c.get('pid')==player['pid'] and c.get('address')==player['address']),None)
+        if current and not current.get('fullscreen') and not current.get('pinned'):
+            subprocess.run(['/usr/bin/hyprctl','eval',f'hl.dispatch(hl.dsp.window.pin({{window={target}}}))'],
+                check=True,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL,timeout=1)
+
+
 def prepare_transfer(session,service,name):
     """Snapshot whether the list is open before the launcher replaces MPV."""
     import json,subprocess,sys
@@ -81,12 +114,21 @@ def transfer(session,service,name,old_pid):
                 if player.get('class')!='mpv' or not player.get('fullscreen'):continue
                 current=identity(player)
                 if not current or (current[0],current[1].casefold())!=(service,name.casefold()):continue
+                if player['pid']!=old_pid:
+                    try:
+                        # An explicitly closed transferred list must not be
+                        # resurrected by this older fallback worker.
+                        if ipc({'player':player,'socket':socket_for(player)},'get_property','user-data/stream-sidebar-open') is False:return
+                    except (OSError,ValueError):pass
                 # A reused player keeps its existing menu. A replacement player
                 # waits for the old menu to exit before opening its own.
                 with (runtime/'stream-sidebar.lock').open('a+') as lock:
                     try:fcntl.flock(lock,fcntl.LOCK_EX|fcntl.LOCK_NB)
                     except BlockingIOError:
                         if player['pid']==old_pid:return
+                        try:
+                            if ipc({'player':player,'socket':socket_for(player)},'get_property','user-data/stream-sidebar-open'):return
+                        except (OSError,ValueError):pass
                         continue
                 subprocess.Popen([sys.executable,str(Path(__file__).with_name('stream-sidebar.py')),str(player['pid'])],
                     stdin=subprocess.DEVNULL,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL,start_new_session=True)
