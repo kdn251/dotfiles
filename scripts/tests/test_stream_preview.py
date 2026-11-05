@@ -121,3 +121,32 @@ class PreviewTests(unittest.TestCase):
         self.assertEqual(window['fullscreen'],2,
                          'Previous stream closed before replacement covered desktop')
         raise ProcessLookupError
+
+    def test_windowed_handoff_uses_current_player_position_and_size(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root=Path(directory)
+            old=dict(pid=456,fullscreen=0,at=[45,67],size=[800,450],**{'class':'mpv'})
+            with patch.object(preview,'ROOT',root),patch.object(preview,'HANDOFF',root/'handoff'),                     patch.object(preview,'Player') as ipc,patch.object(preview.subprocess,'run') as move,                     patch.object(preview,'clients',return_value=[old]),patch.object(preview.threading.Thread,'start'):
+                item=preview.Preview('example','Twitch','https://twitch.tv/example',(0,0,400,225))
+                item.process=Mock(pid=123);item.process.poll.return_value=None
+                item.landing=('0x123',883,642,547,308)
+                ipc.return_value.get.return_value=True
+                self.assertTrue(item.handoff())
+                script=move.call_args.args[0][2]
+                self.assertIn('x=45,y=67',script)
+                self.assertIn('x=800,y=450',script)
+                self.assertNotIn('x=883,y=642',script)
+
+    def test_adoption_preserves_old_geometry_without_default_alignment(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root=Path(directory);handoff=root/'handoff';session=root/'session';session.write_text('chosen')
+            handoff.write_text(json.dumps(dict(name='Example',service='Twitch',created=preview.time.time(),pid=123,endpoint=str(root/'preview.sock'),landed=True)))
+            player=Mock();player.get.return_value=True
+            window=dict(pid=123,address='p',monitor=0,at=[883,642],size=[547,308],fullscreen=0,**{'class':'mpv'})
+            old=dict(pid=456,address='old',fullscreen=0,at=[45,67],size=[800,450],**{'class':'mpv'})
+            with patch.object(preview,'HANDOFF',handoff),patch.object(preview,'SESSION',session),                     patch.object(preview,'CANONICAL',root/'canonical'),patch.object(preview,'Player',return_value=player),                     patch.object(preview,'clients',return_value=[old,window]),                     patch.object(preview.os,'pidfd_open',side_effect=ProcessLookupError),                     patch('media_chat_fullscreen.socket_for',return_value='old.sock'),                     patch.object(preview.subprocess,'run') as move,                     patch('media_chat_fullscreen.place_player') as place:
+                self.assertEqual(preview.adopt('Example','title','','Twitch','chosen','page'),123)
+                batch=move.call_args.args[0][-1]
+                self.assertIn('exact 800 450',batch)
+                self.assertIn('exact 45 67',batch)
+                place.assert_called_once_with(123,align=False)

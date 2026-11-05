@@ -145,12 +145,16 @@ class Preview:
             # The decoded preview can move immediately. Session/chat ownership
             # still transfers through the launcher's normal guarded adoption.
             try:
-                fullscreen = any(c.get('class') == 'mpv' and c.get('fullscreen')
-                                 for c in clients() if c.get('pid') != self.process.pid)
+                old = next((c for c in clients() if c.get('class') == 'mpv'
+                            and c.get('pid') != self.process.pid), None)
+                fullscreen = bool(old and old.get('fullscreen'))
             except (OSError, ValueError, subprocess.SubprocessError):
                 fullscreen = True  # Avoid a misplaced flash if layout lookup fails.
             if self.landing and not fullscreen:
                 address,x,y,w,h=self.landing
+                if old:
+                    x,y=old['at']
+                    w,h=old['size']
                 target=json.dumps('address:'+address)
                 script=(f'hl.dispatch(hl.dsp.window.resize({{window={target},x={w},y={h},relative=false}})); '
                         f'hl.dispatch(hl.dsp.window.move({{window={target},x={x},y={y},relative=false}}))')
@@ -210,11 +214,12 @@ def adopt(name,title,marker,service,session,page):
             time.sleep(.025)
         if window:
             address=window['address']
-            if data.get('landed') and not was_fullscreen:
-                # Already placed on Enter; do not jump again after setup.
-                (x,y),(w,h)=window['at'],window['size']
-            elif old_geometry:
+            if old_geometry:
+                # Re-read at adoption in case the user moved/resized the player
+                # after selecting the preview. Its geometry wins over defaults.
                 (x,y),(w,h)=old_geometry
+            elif data.get('landed') and not was_fullscreen:
+                (x,y),(w,h)=window['at'],window['size']
             else:
                 monitors=json.loads(subprocess.check_output([*HYPRCTL,'-j','monitors'],timeout=2))
                 mon=next(m for m in monitors if m['id']==window['monitor'])
@@ -233,7 +238,10 @@ def adopt(name,title,marker,service,session,page):
                 place_player(data['pid'], align=False)
             else:
                 subprocess.run([*HYPRCTL,'--batch',f'dispatch resizewindowpixel exact {w} {h},address:{address}; dispatch movewindowpixel exact {x} {y},address:{address}'],stdout=subprocess.DEVNULL,timeout=2)
-                place_player(data['pid'])
+                if old_geometry:
+                    place_player(data['pid'], align=False)
+                else:
+                    place_player(data['pid'])
         # Keep the old decoded frame covering the desktop until the compositor
         # has installed the replacement fullscreen window. Killing it before
         # promotion leaves a visible gap even when the preview is already ready.
