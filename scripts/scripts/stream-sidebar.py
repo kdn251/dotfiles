@@ -44,6 +44,7 @@ class Sidebar(Gtk.Application):
         self.connection=None
         self.events=None
         self.workspace_events=None
+        self.workspace_update_pending=False
         self.closing=False
         self.leaving_fullscreen=False
         self.dead=False
@@ -183,19 +184,23 @@ class Sidebar(Gtk.Application):
                 with listener.makefile("r") as stream:
                     for line in stream:
                         if line.split(">>",1)[0] in ("workspace","workspacev2","focusedmon","movewindow","movewindowv2","fullscreen","activespecial"):
-                            GLib.idle_add(self.workspace_changed)
+                            if not self.workspace_update_pending:
+                                self.workspace_update_pending=True
+                                GLib.idle_add(self.workspace_changed)
             except (OSError,ValueError):pass
         threading.Thread(target=listen,daemon=True).start()
     def workspace_changed(self):
+        self.workspace_update_pending=False
         self.check_player()
         return False
     def start_events(self,endpoint):
         self.events=Player(endpoint,self.pid)
-        self.events.socket.settimeout(None)
+        self.events.socket.settimeout(.4)
         previous=self.events.get('user-data/stream-sidebar-action')
         self.events.command('observe_property',701,'user-data/stream-sidebar-action')
         self.events.command('observe_property',702,'fullscreen')
         self.events.command('observe_property',703,'user-data/stream-sidebar-replacement')
+        self.events.socket.settimeout(None)
         events=self.events
         watched_pid=self.pid
         def listen():
@@ -205,19 +210,28 @@ class Sidebar(Gtk.Application):
                     event=json.loads(line)
                     if watched_pid!=self.pid:return
                     if event.get('event')=='shutdown':
-                        GLib.idle_add(self.player_exited);return
+                        GLib.idle_add(self.exited_for_player,watched_pid);return
                     if event.get('event')!='property-change':continue
                     if event.get('name')=='user-data/stream-sidebar-replacement' and isinstance(event.get('data'),dict):
-                        GLib.idle_add(self.retarget,event['data'])
+                        GLib.idle_add(self.retarget_for_player,watched_pid,event['data'])
                     if event.get('name')=='fullscreen':
                         GLib.idle_add(self.fullscreen_for_player,watched_pid,event.get('data'))
                     if event.get('name')=='user-data/stream-sidebar-action':
                         data=event.get('data')
                         if isinstance(data,dict) and data!=previous:
                             previous=data
-                            GLib.idle_add(self.remote_key,data.get('action'))
+                            GLib.idle_add(self.action_for_player,watched_pid,data.get('action'))
             except (OSError,ValueError):pass
         threading.Thread(target=listen,daemon=True).start()
+    def exited_for_player(self,pid):
+        if pid==self.pid:self.player_exited()
+        return False
+    def retarget_for_player(self,pid,data):
+        if pid==self.pid:self.retarget(data)
+        return False
+    def action_for_player(self,pid,action):
+        if pid==self.pid:self.remote_key(action)
+        return False
     def fullscreen_for_player(self,pid,fullscreen):
         if pid==self.pid:self.fullscreen_changed(fullscreen)
         return False
@@ -248,7 +262,12 @@ class Sidebar(Gtk.Application):
             try:old_events.socket.shutdown(socket.SHUT_RDWR)
             except OSError:pass
             old_events.close()
-        self.start_events(endpoint)
+        try:self.start_events(endpoint)
+        except (OSError,ValueError) as error:
+            # Never leave an exclusive keyboard layer alive but disconnected.
+            print(f'Sidebar event connection failed: {error}',file=sys.stderr)
+            self.dismiss()
+            return False
         self.video_space=VideoSpace(connection.command,new_pid)
         self.reserve_video()
         if old_connection:
@@ -419,8 +438,8 @@ class Sidebar(Gtk.Application):
             popup.popup()
             self.title_timer=GLib.timeout_add(2500,self.expire_stream_title)
     def refresh(self):
-        try:self.current=identity(self.player) or self.current
-        except (OSError,ValueError):pass
+        # Identity changes only on retarget; do not block the GTK loop on IPC
+        # while refreshing cached viewer counts.
         query=self.search.get_text() if self.searching else ""
         catalog=search_rows(rows(current=self.current),query)
         if catalog==self.catalog:return True

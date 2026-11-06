@@ -7,7 +7,8 @@ local function send(action)
     mp.set_property_native('user-data/stream-sidebar-action',{action=action,serial=serial})
 end
 local function navigation(_,layout)
-    active=type(layout)=='table' and (layout.left or 0)>0
+    active=mp.get_property_native('user-data/stream-sidebar-open',false)==true
+        and type(layout)=='table' and (layout.left or 0)>0
     for key,action in pairs(keys) do
         local binding='sidebar-capture-'..key
         mp.remove_key_binding(binding)
@@ -17,6 +18,9 @@ local function navigation(_,layout)
     end
 end
 mp.observe_property('user-data/media-panel-layout','native',navigation)
+mp.observe_property('user-data/stream-sidebar-open','native',function()
+    navigation(nil,mp.get_property_native('user-data/media-panel-layout',{}))
+end)
 local function open_sidebar()
     if active then send('close');return end
     if not mp.get_property_bool('fullscreen',false) then return end

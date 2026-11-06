@@ -2,6 +2,27 @@ import unittest
 from stream_sidebar import rows,choice
 
 class SidebarTests(unittest.TestCase):
+    def test_old_player_events_cannot_control_replacement(self):
+        import ast
+        from pathlib import Path
+        from types import SimpleNamespace
+        from unittest.mock import Mock
+        source=ast.parse((Path(__file__).resolve().parents[1]/'scripts/stream-sidebar.py').read_text())
+        cls=next(n for n in source.body if isinstance(n,ast.ClassDef) and n.name=='Sidebar')
+        names=('exited_for_player','retarget_for_player','action_for_player','fullscreen_for_player')
+        methods=[n for n in cls.body if isinstance(n,ast.FunctionDef) and n.name in names]
+        namespace={}
+        exec(compile(ast.Module(body=methods,type_ignores=[]),'sidebar-events','exec'),namespace)
+        sidebar=SimpleNamespace(pid=22,player_exited=Mock(),retarget=Mock(),remote_key=Mock(),fullscreen_changed=Mock())
+        for method,callback,args in [('exited_for_player','player_exited',()),
+                ('retarget_for_player','retarget',({'pid':33},)),
+                ('action_for_player','remote_key',('close',)),
+                ('fullscreen_for_player','fullscreen_changed',(False,))]:
+            namespace[method](sidebar,11,*args)
+            getattr(sidebar,callback).assert_not_called()
+            namespace[method](sidebar,22,*args)
+            getattr(sidebar,callback).assert_called_once()
+
     def test_collapsed_preference_persists_and_tolerates_invalid_state(self):
         import os,tempfile
         from unittest.mock import patch
@@ -24,7 +45,9 @@ class SidebarTests(unittest.TestCase):
 package.preload['mp.utils']=function() return {} end
 local keys,observers={},{}
 local sent
+local opened=true
 mp={
+ get_property_native=function(k,d) if k=='user-data/stream-sidebar-open' then return opened end return d end,
  observe_property=function(k,t,cb) observers[k]=cb end,
  remove_key_binding=function(n) keys[n]=nil end,
  add_forced_key_binding=function(k,n,cb) keys[n]=cb end,
@@ -38,6 +61,7 @@ keys['sidebar-capture-/']()
 assert(sent.action=='search')
 layout('',{left=0})
 assert(keys['sidebar-capture-/']==nil)
+opened=false;layout('',{left=.15});assert(keys['sidebar-capture-/']==nil)
 """
         with tempfile.TemporaryDirectory() as tmp:
             path=Path(tmp)/'check.lua';path.write_text(harness)
