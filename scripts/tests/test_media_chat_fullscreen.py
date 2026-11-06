@@ -216,7 +216,8 @@ class FullscreenChatTests(unittest.TestCase):
         back = dict(self.monitor, specialWorkspace={'name':''})
         with tempfile.TemporaryDirectory() as tmp, patch.object(layout, 'STATE', Path(tmp)/'state'), \
                 patch.object(layout, 'restore') as restore, patch.object(layout, 'move'), \
-                patch.object(layout, 'ipc'), patch.object(layout, 'hypr') as hypr:
+                patch.object(layout, 'ipc'), patch.object(layout, 'focus_player') as focus, \
+                patch.object(layout, 'hypr') as hypr:
             layout.STATE.write_text(json.dumps(state))
             clients = [self.player, self.chat]
             hypr.return_value = json.dumps([away])
@@ -228,6 +229,7 @@ class FullscreenChatTests(unittest.TestCase):
             hypr.return_value = json.dumps([back])
             self.assertTrue(layout.maintain(clients))
             self.assertFalse(layout.read()['suspended'])
+            focus.assert_not_called()
             restore.assert_not_called()
             self.assertTrue(any(c.args[0]=='eval' and 'workspace.toggle_special' in c.args[1] for c in hypr.call_args_list))
 

@@ -54,24 +54,27 @@ APICALL EXPORT PLUGIN_DESCRIPTION_INFO PLUGIN_INIT(HANDLE handle) {
         const auto active = focus->window();
         const auto monitor = focus->monitor();
         if (!workspace || !monitor || monitor->m_activeWorkspace != workspace ||
-            monitor->m_activeSpecialWorkspace || !active || active->metadata().appID() != "mpv" ||
-            !(active->m_state & Desktop::View::WINDOW_STATE_PINNED) || active->m_monitor != monitor)
+            !active || active->metadata().appID() != "mpv" || active->m_monitor != monitor)
             return;
 
-        // Ignore pinned MPV overlays when deciding whether the destination is empty.
-        // Other floating windows and other pinned apps are real focus targets.
-        for (const auto& window : Desktop::windowState()->windows()) {
-            if (!window->mapped() || window->isHidden())
+        // Workspace entry must never select MPV, even if it was the last
+        // focused window there. Prefer an eligible normal app on that workspace.
+        // Raw focus does not tear down a fullscreen player behind the sidebar.
+        PHLWINDOW target;
+        const auto& windows = Desktop::windowState()->windows();
+        for (auto it = windows.rbegin(); it != windows.rend(); ++it) {
+            const auto& window = *it;
+            if (!window->mapped() || window->isHidden() || !window->focusAvailable() ||
+                window->metadata().appID() == "mpv")
                 continue;
-            if ((window->m_state & Desktop::View::WINDOW_STATE_PINNED) && window->metadata().appID() == "mpv")
-                continue;
-            if (window->m_workspace == workspace ||
-                ((window->m_state & Desktop::View::WINDOW_STATE_PINNED) && window->m_monitor == monitor))
-                return;
+            if (window->m_workspace == workspace) {
+                target = window;
+                break;
+            }
         }
-        focus->fullWindowFocus(nullptr, Desktop::FOCUS_REASON_WORKSPACE_CHANGE);
+        focus->rawWindowFocus(target, Desktop::FOCUS_REASON_WORKSPACE_CHANGE);
     });
-    return {"pip-workspace-focus", "Keep pinned MPV unfocused on empty workspace entry", "local", "1.1"};
+    return {"pip-workspace-focus", "Keep MPV unfocused on workspace entry", "local", "1.2"};
 }
 
 APICALL EXPORT void PLUGIN_EXIT() {

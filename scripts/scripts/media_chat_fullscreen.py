@@ -447,7 +447,7 @@ def maintain(clients):
                 monitor['specialWorkspace'] = {'name': 'special:' + WORKSPACE}
             state['suspended'] = False
             STATE.write_text(json.dumps(state))
-            focus_player()
+            # Returning to a workspace restores chat, not keyboard focus.
         if not monitor or monitor.get('specialWorkspace', {}).get('name') != 'special:' + WORKSPACE:
             if time.monotonic() - state.get('created', 0) < 1:
                 return True
