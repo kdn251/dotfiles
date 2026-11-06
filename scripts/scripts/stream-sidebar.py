@@ -54,6 +54,7 @@ class Sidebar(Gtk.Application):
         self.pid_watch=None
         self.handoff_until=0
         self.searching=False
+        self.search_editing=False
         self.pending_g=0
         self.held_nav=None
         self.nav_timer=None
@@ -402,6 +403,7 @@ class Sidebar(Gtk.Application):
     def start_search(self):
         if not self.searching:self.open_search()
         else:
+            self.search_editing=True
             self.window.present()
             self.search.grab_focus_without_selecting()
         return True  # Keep the signal handler installed.
@@ -418,6 +420,7 @@ class Sidebar(Gtk.Application):
             return
         if self.collapsed:self.toggle_collapsed()
         self.searching=True
+        self.search_editing=True
         self.search.set_visible(True)
         # Search may arrive through MPV while the video owns keyboard focus.
         Layer.set_keyboard_mode(self.window,Layer.KeyboardMode.EXCLUSIVE)
@@ -468,7 +471,7 @@ class Sidebar(Gtk.Application):
         index=((current.get_index() if current else 0)+step)%len(self.catalog)
         row=self.list.get_row_at_index(index)
         self.list.select_row(row)
-        if self.searching:
+        if self.searching and self.search_editing:
             # Scroll to the selected row while leaving typing focus in the field.
             row.grab_focus();self.search.grab_focus_without_selecting()
         else:row.grab_focus()
@@ -571,7 +574,7 @@ class Sidebar(Gtk.Application):
         # Rebuilding removes the focused GtkListBoxRow. Selection alone does
         # not install a keyboard target, leaving the exclusive layer eating F.
         if focused and self.window.get_visible():
-            if not self.searching:(selected or self.list).grab_focus()
+            if not self.searching or not self.search_editing:(selected or self.list).grab_focus()
         return True
     def check_player(self):
         if self.closing:return False
@@ -622,8 +625,14 @@ class Sidebar(Gtk.Application):
                 self.search.set_text('')
                 self.list.grab_focus()
     def key(self,_,key,code,modifiers):
-        if self.searching:
+        if self.searching and self.search_editing:
             self.pending_g=0
+            if key==Gdk.KEY_Down:
+                self.stop_navigation()
+                self.search_editing=False
+                row=self.list.get_selected_row() or self.list.get_row_at_index(0)
+                (row or self.list).grab_focus()
+                return True
             if key==Gdk.KEY_slash:
                 self.open_search();return True
             if key==Gdk.KEY_BackSpace and not self.search.get_text():return True
