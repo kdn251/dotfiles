@@ -53,6 +53,8 @@ class Sidebar(Gtk.Application):
         self.handoff_until=0
         self.searching=False
         self.pending_g=0
+        self.held_nav=None
+        self.nav_timer=None
         self.collapsed=load_collapsed()
         self.connect('shutdown',self.release_video)
         self.connect('shutdown',self.stop_events)
@@ -162,7 +164,10 @@ class Sidebar(Gtk.Application):
         self.window.set_child(box)
         keys=Gtk.EventControllerKey()
         keys.set_propagation_phase(Gtk.PropagationPhase.CAPTURE)
-        keys.connect('key-pressed',self.key);self.window.add_controller(keys)
+        keys.connect('key-pressed',self.key)
+        keys.connect('key-released',self.key_released)
+        self.window.add_controller(keys)
+        self.window.connect('notify::visible',lambda *_:self.stop_navigation() if not self.window.get_visible() else None)
         self.catalog=None
         self.refresh()
         self.apply_collapsed()
@@ -236,6 +241,7 @@ class Sidebar(Gtk.Application):
         if pid==self.pid:self.fullscreen_changed(fullscreen)
         return False
     def retarget(self,data):
+        self.stop_navigation()
         if self.closing or data.get('pid')==self.pid:return False
         new_pid=data.get('pid')
         if not isinstance(new_pid,int):return False
@@ -296,10 +302,14 @@ class Sidebar(Gtk.Application):
         elif action=='choose':self.choose(self.list,self.list.get_selected_row())
         elif action in ('g','G'):
             self.key(None,Gdk.KEY_g if action=='g' else Gdk.KEY_G,0,0)
+        elif action=='nav-stop':self.stop_navigation()
+        elif action in ('up-start','down-start'):
+            self.start_navigation(Gdk.KEY_Down if action=='down-start' else Gdk.KEY_Up)
         elif action in ('up','down'):
             self.key(None,Gdk.KEY_j if action=='down' else Gdk.KEY_k,0,0)
         return False
     def stop_events(self,*_):
+        self.stop_navigation()
         self.closing=True
         if self.workspace_events:
             try:self.workspace_events.shutdown(socket.SHUT_RDWR)
@@ -367,6 +377,7 @@ class Sidebar(Gtk.Application):
         self.reserve_video()
         self.list.grab_focus()
     def open_search(self):
+        self.stop_navigation()
         if self.collapsed:self.toggle_collapsed()
         self.searching=True
         self.search.set_visible(True)
@@ -385,6 +396,29 @@ class Sidebar(Gtk.Application):
         row.grab_focus()
         adjustment=self.scroll.get_vadjustment()
         adjustment.set_value(max(adjustment.get_lower(),adjustment.get_upper()-adjustment.get_page_size()) if last else adjustment.get_lower())
+    def stop_navigation(self):
+        if self.nav_timer:
+            GLib.source_remove(self.nav_timer)
+            self.nav_timer=None
+        self.held_nav=None
+    def key_released(self,_,key,code,modifiers):
+        if key in (Gdk.KEY_j,Gdk.KEY_k,Gdk.KEY_Down,Gdk.KEY_Up):self.stop_navigation()
+    def start_navigation(self,key):
+        if self.held_nav==key:return
+        self.stop_navigation()
+        self.held_nav=key
+        step=1 if key in (Gdk.KEY_j,Gdk.KEY_Down) else -1
+        self.move_selection(step)
+        def repeat():
+            if self.held_nav!=key:return False
+            self.move_selection(step)
+            return True
+        def begin_repeat():
+            self.nav_timer=None
+            if not repeat():return False
+            self.nav_timer=GLib.timeout_add(80,repeat)
+            return False
+        self.nav_timer=GLib.timeout_add(200,begin_repeat)
     def move_selection(self,step):
         if not self.catalog:return
         current=self.list.get_selected_row()
@@ -527,6 +561,7 @@ class Sidebar(Gtk.Application):
             pass
         return True
     def choose(self,_,row):
+        self.stop_navigation()
         self.hide_stream_title()
         if self.searching:self.search.grab_focus_without_selecting()
         if not row or not hasattr(row,'data'):return
@@ -550,7 +585,7 @@ class Sidebar(Gtk.Application):
                     self.searching=False;self.search.set_visible(False);self.list.grab_focus()
                 return True
             if key in (Gdk.KEY_Up,Gdk.KEY_Down):
-                self.move_selection(1 if key==Gdk.KEY_Down else -1);return True
+                self.start_navigation(key);return True
             if key in (Gdk.KEY_Return,Gdk.KEY_KP_Enter):
                 self.choose(self.list,self.list.get_selected_row());return True
             if key in (Gdk.KEY_Tab,Gdk.KEY_ISO_Left_Tab):self.dismiss();return True
@@ -605,7 +640,7 @@ class Sidebar(Gtk.Application):
         if key in (Gdk.KEY_Return,Gdk.KEY_KP_Enter):
             self.choose(self.list,self.list.get_selected_row());return True
         if key in (Gdk.KEY_j,Gdk.KEY_Down,Gdk.KEY_k,Gdk.KEY_Up):
-            self.move_selection(1 if key in (Gdk.KEY_j,Gdk.KEY_Down) else -1)
+            self.start_navigation(key)
             return True
         return False
 

@@ -4,11 +4,29 @@
 #include <hyprland/src/desktop/state/FocusState.hpp>
 #include <hyprland/src/desktop/state/WindowState.hpp>
 #include <hyprland/src/output/Monitor.hpp>
+#include <hyprland/src/managers/fullscreen/FullscreenController.hpp>
 #include <stdexcept>
 #include <fstream>
 #include <cstdlib>
 
 static CHyprSignalListener workspaceListener;
+static CHyprSignalListener fullscreenListener;
+
+static void focusOtherApp(PHLWORKSPACE workspace, Desktop::eFocusReason reason) {
+    PHLWINDOW target;
+    const auto& windows = Desktop::windowState()->windows();
+    for (auto it = windows.rbegin(); it != windows.rend(); ++it) {
+        const auto& window = *it;
+        if (!window->mapped() || window->isHidden() || !window->focusAvailable() ||
+            window->metadata().appID() == "mpv")
+            continue;
+        if (window->m_workspace == workspace) {
+            target = window;
+            break;
+        }
+    }
+    Desktop::focusState()->rawWindowFocus(target, reason);
+}
 
 APICALL EXPORT std::string PLUGIN_API_VERSION() {
     return HYPRLAND_API_VERSION;
@@ -60,23 +78,20 @@ APICALL EXPORT PLUGIN_DESCRIPTION_INFO PLUGIN_INIT(HANDLE handle) {
         // Workspace entry must never select MPV, even if it was the last
         // focused window there. Prefer an eligible normal app on that workspace.
         // Raw focus does not tear down a fullscreen player behind the sidebar.
-        PHLWINDOW target;
-        const auto& windows = Desktop::windowState()->windows();
-        for (auto it = windows.rbegin(); it != windows.rend(); ++it) {
-            const auto& window = *it;
-            if (!window->mapped() || window->isHidden() || !window->focusAvailable() ||
-                window->metadata().appID() == "mpv")
-                continue;
-            if (window->m_workspace == workspace) {
-                target = window;
-                break;
-            }
-        }
-        focus->rawWindowFocus(target, Desktop::FOCUS_REASON_WORKSPACE_CHANGE);
+        focusOtherApp(workspace, Desktop::FOCUS_REASON_WORKSPACE_CHANGE);
     });
-    return {"pip-workspace-focus", "Keep MPV unfocused on workspace entry", "local", "1.2"};
+    fullscreenListener = Event::bus()->m_events.window.fullscreen.listen([](PHLWINDOW window) {
+        if (!window || window->metadata().appID() != "mpv" ||
+            Fullscreen::controller()->isFullscreen(window) || Desktop::focusState()->window() != window)
+            return;
+        const auto monitor = Desktop::focusState()->monitor();
+        if (monitor && monitor->m_activeWorkspace)
+            focusOtherApp(monitor->m_activeWorkspace, Desktop::FOCUS_REASON_OTHER);
+    });
+    return {"pip-workspace-focus", "Keep MPV unfocused on workspace entry", "local", "1.3"};
 }
 
 APICALL EXPORT void PLUGIN_EXIT() {
     workspaceListener.reset();
+    fullscreenListener.reset();
 }

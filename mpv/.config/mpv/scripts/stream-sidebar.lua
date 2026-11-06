@@ -13,7 +13,14 @@ local function navigation(_,layout)
         local binding='sidebar-capture-'..key
         mp.remove_key_binding(binding)
         if active then
-            mp.add_forced_key_binding(key,binding,function() send(action) end,{repeatable=true})
+            if action=='up' or action=='down' then
+                mp.add_forced_key_binding(key,binding,function(event)
+                    if event.event=='down' then send(action..'-start')
+                    elseif event.event=='up' then send('nav-stop') end
+                end,{complex=true})
+            else
+                mp.add_forced_key_binding(key,binding,function() send(action) end)
+            end
         end
     end
 end

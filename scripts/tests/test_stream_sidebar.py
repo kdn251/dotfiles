@@ -2,6 +2,33 @@ import unittest
 from stream_sidebar import rows,choice
 
 class SidebarTests(unittest.TestCase):
+    def test_navigation_repeats_at_fixed_rate_and_stops_on_release(self):
+        import ast
+        from pathlib import Path
+        from types import SimpleNamespace,MethodType
+        source=ast.parse((Path(__file__).resolve().parents[1]/'scripts/stream-sidebar.py').read_text())
+        cls=next(n for n in source.body if isinstance(n,ast.ClassDef) and n.name=='Sidebar')
+        methods=[n for n in cls.body if isinstance(n,ast.FunctionDef) and n.name in ('stop_navigation','start_navigation','key_released')]
+        timers={};intervals=[];moves=[]
+        def timeout(ms,cb):
+            ident=len(intervals)+1;intervals.append(ms);timers[ident]=cb;return ident
+        namespace={'GLib':SimpleNamespace(timeout_add=timeout,source_remove=lambda i:timers.pop(i,None)),
+                   'Gdk':SimpleNamespace(KEY_j=1,KEY_k=2,KEY_Down=3,KEY_Up=4)}
+        exec(compile(ast.Module(body=methods,type_ignores=[]),'repeat','exec'),namespace)
+        obj=SimpleNamespace(held_nav=None,nav_timer=None,move_selection=moves.append)
+        for name in ('stop_navigation','start_navigation','key_released'):setattr(obj,name,MethodType(namespace[name],obj))
+        obj.start_navigation(1)
+        for _ in range(20):obj.start_navigation(1)
+        self.assertEqual(moves,[1])
+        self.assertEqual(intervals,[200])
+        timers[1]()
+        for _ in range(10):timers[2]()
+        self.assertEqual(intervals,[200,80])
+        self.assertEqual(len(moves),12)
+        obj.key_released(None,1,0,0)
+        self.assertIsNone(obj.held_nav)
+        self.assertNotIn(2,timers)
+
     def test_fullscreen_exit_does_not_run_chat_cleanup_on_keyboard_thread(self):
         import ast
         from pathlib import Path
