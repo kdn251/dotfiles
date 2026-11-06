@@ -110,7 +110,7 @@ hl.window_rule({ ["fullscreen"] = true, ["match"] = { ["class"] = "^com\\.moonli
 -- Animations off when the battery is genuinely low, on otherwise. Started
 -- here rather than as a systemd user unit so it inherits
 -- HYPRLAND_INSTANCE_SIGNATURE -- hyprctl needs it.
--- Animations stay disabled regardless of battery or AC power.
+-- Animations stay enabled regardless of battery or AC power.
 -- exec-once = ~/scripts/power-aware-animations.sh --watch
 -- Keeps the YouTube webapp tab numbers contiguous: closing a tab would
 -- otherwise leave a gap (1, 3) since the numbers live in each page title.
@@ -384,7 +384,7 @@ hl.window_rule({ ["opaque"] = true, ["match"] = { ["title"] = "(.*)(Firefox)" } 
 
 
 -- https://wiki.hyprland.org/Configuring/Variables/#animations
-hl.config({ ["animations"] = { ["enabled"] = false } })
+hl.config({ ["animations"] = { ["enabled"] = true } })
 
 -- Default animations, see https://wiki.hyprland.org/Configuring/Animations/ for more
 hl.curve("easeOutQuint", { type = "bezier", points = { {0.23, 1}, {0.32, 1} } })
