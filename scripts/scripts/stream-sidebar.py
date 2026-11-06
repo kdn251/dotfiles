@@ -55,6 +55,7 @@ class Sidebar(Gtk.Application):
         self.pending_g=0
         self.held_nav=None
         self.nav_timer=None
+        self.last_nav_at=0
         self.collapsed=load_collapsed()
         self.connect('shutdown',self.release_video)
         self.connect('shutdown',self.stop_events)
@@ -113,7 +114,7 @@ class Sidebar(Gtk.Application):
         row {padding:10px 10px;border-radius:0;margin:0;}
         row label {color:#efeff1;}
         row:selected {background:#3a3a40;}
-        row:hover {background:#303038;}
+        row:hover:not(:selected) {background:transparent;}
         .name {color:#f7f7f8;font-weight:700;font-size:16px;}
         .category {color:#c4c4cc;font-size:14px;}
         .viewers {color:#ff6269;font-size:14px;font-weight:600;}
@@ -402,23 +403,26 @@ class Sidebar(Gtk.Application):
             self.nav_timer=None
         self.held_nav=None
     def key_released(self,_,key,code,modifiers):
-        if key in (Gdk.KEY_j,Gdk.KEY_k,Gdk.KEY_Down,Gdk.KEY_Up):self.stop_navigation()
+        down=(Gdk.KEY_j,Gdk.KEY_Down)
+        up=(Gdk.KEY_k,Gdk.KEY_Up)
+        if (key in down and self.held_nav in down) or (key in up and self.held_nav in up):
+            self.stop_navigation()
+            self.show_stream_title(None,self.list.get_selected_row())
     def start_navigation(self,key):
-        if self.held_nav==key:return
+        now=time.monotonic()
+        if self.held_nav==key and now-self.last_nav_at<.08:return
         self.stop_navigation()
         self.held_nav=key
-        step=1 if key in (Gdk.KEY_j,Gdk.KEY_Down) else -1
-        self.move_selection(step)
-        def repeat():
-            if self.held_nav!=key:return False
-            self.move_selection(step)
-            return True
-        def begin_repeat():
+        self.last_nav_at=now
+        self.hide_stream_title()
+        self.move_selection(1 if key in (Gdk.KEY_j,Gdk.KEY_Down) else -1)
+        # This timer only expires navigation state. Movement always requires
+        # a real key event, even if focus changes swallow the release event.
+        def idle():
             self.nav_timer=None
-            if not repeat():return False
-            self.nav_timer=GLib.timeout_add(80,repeat)
+            self.held_nav=None
             return False
-        self.nav_timer=GLib.timeout_add(200,begin_repeat)
+        self.nav_timer=GLib.timeout_add(250,idle)
     def move_selection(self,step):
         if not self.catalog:return
         current=self.list.get_selected_row()
@@ -442,7 +446,7 @@ class Sidebar(Gtk.Application):
         self.hide_stream_title()
         return False
     def show_stream_title(self,_,row):
-        if self.rebuilding_rows:return
+        if self.rebuilding_rows or self.held_nav is not None:return
         self.hide_stream_title()
         if not row or not hasattr(row,'data') or not row.data.get('title'):return
         popup=Gtk.Popover()
@@ -472,6 +476,9 @@ class Sidebar(Gtk.Application):
             popup.popup()
             self.title_timer=GLib.timeout_add(2500,self.expire_stream_title)
     def refresh(self):
+        # Replacing focused rows mid-hold can interrupt GTK key delivery.
+        # Apply the next cache refresh once navigation has stopped.
+        if self.held_nav is not None:return True
         # Identity changes only on retarget; do not block the GTK loop on IPC
         # while refreshing cached viewer counts.
         query=self.search.get_text() if self.searching else ""

@@ -15,9 +15,9 @@ local function navigation(_,layout)
         if active then
             if action=='up' or action=='down' then
                 mp.add_forced_key_binding(key,binding,function(event)
-                    if event.event=='down' then send(action..'-start')
+                    if event.event=='down' or event.event=='repeat' then send(action..'-start')
                     elseif event.event=='up' then send('nav-stop') end
-                end,{complex=true})
+                end,{complex=true,repeatable=true})
             else
                 mp.add_forced_key_binding(key,binding,function() send(action) end)
             end
