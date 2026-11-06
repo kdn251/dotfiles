@@ -49,10 +49,24 @@ local function search_binding()
         mp.add_forced_key_binding('/','stream-live-search',function() open_sidebar(true) end)
     end
 end
+local tab_down=false
+local function toggle_sidebar_key(event)
+    if event.event=='down' then
+        tab_down=true
+    elseif event.event=='up' then
+        local toggle=tab_down and not event.canceled
+        tab_down=false
+        -- Open only once the physical Tab press has ended. Otherwise GTK can
+        -- inherit the held key as it gains focus and close the new sidebar.
+        if toggle then open_sidebar(false) end
+    elseif event.event=='press' then
+        open_sidebar(false)
+    end
+end
 mp.observe_property('user-data/stream-service','native',function(_,service)
     mp.remove_key_binding('stream-live-sidebar')
     if service and service~='' then
-        mp.add_forced_key_binding('TAB','stream-live-sidebar',open_sidebar)
+        mp.add_forced_key_binding('TAB','stream-live-sidebar',toggle_sidebar_key,{complex=true})
     end
     search_binding()
 end)

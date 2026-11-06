@@ -475,6 +475,13 @@ class Sidebar(Gtk.Application):
             # Scroll to the selected row while leaving typing focus in the field.
             row.grab_focus();self.search.grab_focus_without_selecting()
         else:row.grab_focus()
+    def restore_input_focus(self):
+        if self.closing or self.leaving_fullscreen or not self.window.get_visible():return False
+        if self.searching and self.search_editing:
+            self.search.grab_focus_without_selecting()
+        else:
+            (self.list.get_selected_row() or self.list).grab_focus()
+        return False
     def hide_stream_title(self,*_):
         if self.title_timer:
             GLib.source_remove(self.title_timer)
@@ -483,6 +490,9 @@ class Sidebar(Gtk.Application):
             self.title_popup.popdown()
             self.title_popup.unparent()
             self.title_popup=None
+            # GTK may clear focus when the popover's surface is removed.
+            # Restore it after GTK has finished that transition.
+            GLib.idle_add(self.restore_input_focus)
     def expire_stream_title(self):
         self.title_timer=None
         self.hide_stream_title()
@@ -516,6 +526,7 @@ class Sidebar(Gtk.Application):
         self.title_popup=popup
         if row.get_mapped():
             popup.popup()
+            GLib.idle_add(self.restore_input_focus)
             self.title_timer=GLib.timeout_add(2500,self.expire_stream_title)
     def refresh(self):
         # Replacing focused rows mid-hold can interrupt GTK key delivery.
@@ -526,7 +537,6 @@ class Sidebar(Gtk.Application):
         query=self.search.get_text() if self.searching else ""
         catalog=search_rows(rows(current=self.current),query)
         if catalog==self.catalog:return True
-        focused=self.window.get_focus() is not None
         selected=self.list.get_selected_row()
         selected_key=choice(selected.data) if selected and hasattr(selected,'data') else None
         self.catalog=catalog
@@ -573,8 +583,9 @@ class Sidebar(Gtk.Application):
         self.rebuilding_rows=False
         # Rebuilding removes the focused GtkListBoxRow. Selection alone does
         # not install a keyboard target, leaving the exclusive layer eating F.
-        if focused and self.window.get_visible():
-            if not self.searching or not self.search_editing:(selected or self.list).grab_focus()
+        # A popup can already have cleared focus before the five-second cache
+        # refresh. Restore the intended target, not the stale GTK focus state.
+        self.restore_input_focus()
         return True
     def check_player(self):
         if self.closing:return False
@@ -601,8 +612,7 @@ class Sidebar(Gtk.Application):
             if visible and not self.window.get_visible():
                 self.reserve_video()
                 self.window.present()
-                if self.searching:self.search.grab_focus_without_selecting()
-                else:self.list.grab_focus()
+                self.restore_input_focus()
             elif not visible and self.window.get_visible():
                 self.window.set_visible(False)
         except (OSError,ValueError,subprocess.SubprocessError):

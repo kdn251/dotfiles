@@ -65,9 +65,13 @@ def visible_on_workspace(player,monitor):
     def key(workspace):
         return workspace.get('name') or workspace.get('address') or workspace.get('id')
     current=key(player.get('workspace',{}))
-    if not current or current!=key(monitor.get('activeWorkspace',{})):return False
     special=monitor.get('specialWorkspace',{})
     name=special.get('name','')
+    if not current:return False
+    # A fullscreen player can belong to the active special workspace (for
+    # example magic). Its normal workspace is necessarily a different one.
+    if current==key(special):return True
+    if current!=key(monitor.get('activeWorkspace',{})):return False
     if name and name!='special:chatterino_chat':return current==key(special)
     return True
 

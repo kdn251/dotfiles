@@ -2,6 +2,29 @@ import unittest
 from stream_sidebar import rows,choice
 
 class SidebarTests(unittest.TestCase):
+    def test_idle_focus_restoration_keeps_browsing_separate_from_search(self):
+        import ast
+        from pathlib import Path
+        from types import SimpleNamespace
+        from unittest.mock import Mock
+        source=ast.parse((Path(__file__).resolve().parents[1]/'scripts/stream-sidebar.py').read_text())
+        cls=next(n for n in source.body if isinstance(n,ast.ClassDef) and n.name=='Sidebar')
+        method=next(n for n in cls.body if isinstance(n,ast.FunctionDef) and n.name=='restore_input_focus')
+        ns={};exec(compile(ast.Module(body=[method],type_ignores=[]),'focus','exec'),ns)
+        row=Mock();search=Mock()
+        sidebar=SimpleNamespace(closing=False,leaving_fullscreen=False,searching=True,search_editing=False,
+                                window=Mock(),list=Mock(),search=search)
+        sidebar.window.get_visible.return_value=True
+        sidebar.list.get_selected_row.return_value=row
+        ns['restore_input_focus'](sidebar)
+        row.grab_focus.assert_called_once();search.grab_focus_without_selecting.assert_not_called()
+        sidebar.search_editing=True
+        ns['restore_input_focus'](sidebar)
+        search.grab_focus_without_selecting.assert_called_once()
+        sidebar.window.get_visible.return_value=False
+        ns['restore_input_focus'](sidebar)
+        search.grab_focus_without_selecting.assert_called_once()
+
     def test_navigation_requires_key_events_even_if_release_is_lost(self):
         import ast
         from pathlib import Path
@@ -101,14 +124,24 @@ package.preload['mp.utils']=function()return {getpid=function()return 42 end}end
 local props={fullscreen=true,['user-data/stream-service']='Twitch'}
 local bindings,observers={},{}
 local launched
+local launches=0
 mp={get_property_native=function(k,d)if props[k]==nil then return d end return props[k]end,
 get_property_bool=function(k,d)if props[k]==nil then return d end return props[k]end,
 set_property_native=function(k,v)props[k]=v end,
 remove_key_binding=function(k)bindings[k]=nil end,
 add_forced_key_binding=function(k,n,f)bindings[n]={key=k,fn=f}end,
 observe_property=function(k,t,f)observers[k]=f;f(k,props[k])end,
-command_native_async=function(cmd,cb)launched=cmd end,osd_message=function()end}
+command_native_async=function(cmd,cb)launched=cmd;launches=launches+1 end,osd_message=function()end}
 dofile(arg[1])
+local tab=bindings['stream-live-sidebar'].fn
+tab({event='down'});tab({event='repeat'})
+assert(launches==0,'Tab must finish before the sidebar takes keyboard focus')
+tab({event='up'})
+assert(launches==1)
+tab({event='up'})
+assert(launches==1,'An inherited release must not reopen the sidebar')
+tab({event='down'});tab({event='up',canceled=true})
+assert(launches==1)
 assert(bindings['stream-live-search'].key=='/')
 bindings['stream-live-search'].fn()
 assert(launched.args[4]=='--search')
@@ -148,6 +181,13 @@ print('Sidebar search shortcut checks passed')
         self.assertTrue(visible_on_workspace(player,monitor))
         monitor['specialWorkspace']={'name':'special:scratch'}
         self.assertFalse(visible_on_workspace(player,monitor))
+        special_player={'workspace':{'name':'special:magic'}}
+        monitor['specialWorkspace']={'name':'special:magic'}
+        self.assertTrue(visible_on_workspace(special_player,monitor))
+        monitor['specialWorkspace']={'name':''}
+        self.assertFalse(visible_on_workspace(special_player,monitor))
+        monitor['specialWorkspace']={'name':'special:scratch'}
+        self.assertFalse(visible_on_workspace(special_player,monitor))
         self.assertFalse(visible_on_workspace({'workspace':{}},monitor))
 
     def test_search_ranks_names_before_category_and_title(self):
