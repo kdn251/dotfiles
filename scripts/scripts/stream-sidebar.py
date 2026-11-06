@@ -413,7 +413,8 @@ class Sidebar(Gtk.Application):
             self.search.set_text('')
             self.catalog=None
             self.refresh()
-            self.list.grab_focus()
+            if not self.collapsed:self.toggle_collapsed()
+            else:self.list.grab_focus()
             return
         if self.collapsed:self.toggle_collapsed()
         self.searching=True

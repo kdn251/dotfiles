@@ -130,9 +130,16 @@ def layout(monitor, youtube=False, video=None):
 
 
 
-def panel_space(state, ratio):
+def panel_space(state, ratio, animate=False):
     from media_panel_layout import update
-    update(lambda *args:ipc(state,*args),state['player']['pid'],'right',ratio,
+    native_slide=(ROOT/'media-chat-slide-enabled').exists()
+    if native_slide:(ROOT/'media-chat-slide-socket').write_text(state['socket']+'\n')
+    def command(*args):
+        # Keep the current visible margin until the compositor starts sliding.
+        # Its animation progress then owns this one property, frame by frame.
+        if native_slide and animate and args[:2]==('set_property','video-margin-ratio-right'):return
+        return ipc(state,*args)
+    update(command,state['player']['pid'],'right',ratio,
            fallback=state.get('properties'))
 
 
@@ -177,11 +184,38 @@ def retire_chat_window(address):
     hypr('eval',script)
 
 
+def chat_slide_style(clients, monitors):
+    players = sorted((c for c in clients if c.get('class') == 'mpv'),
+                     key=lambda c:c.get('focusHistoryID',999))
+    if not players:return 'slide 20%'
+    player=players[0]
+    monitor=next((m for m in monitors if m['id']==player['monitor']),None)
+    if not monitor:return 'slide 20%'
+    visible=monitor.get('specialWorkspace',{}).get('name')=='special:'+WORKSPACE
+    chat=next((c for c in clients if c.get('class') in CLASSES and
+               c.get('workspace',{}).get('name')=='special:'+WORKSPACE),None)
+    # Theater comes from the screen's right edge. Floating chat comes from
+    # the adjacent player: a pane on its right moves left-to-right on entry.
+    from_right=bool(player.get('fullscreen')) or not chat or chat['at'][0]<player['at'][0]
+    direction=('left' if from_right else 'right') if visible else ('right' if from_right else 'left')
+    width=monitor['height'] if monitor.get('transform',0)%2 else monitor['width']
+    width/=monitor.get('scale',1)
+    percent=max(1,round(100*chat['size'][0]/width)) if chat else 20
+    return f'slide {direction} {percent}%'
+
+
 def toggle_workspace():
     """Map/unmap chat without Hyprland exiting the video's fullscreen mode."""
     # The normal policy (2) exits fullscreen when special-workspace focus moves
     # underneath it. Override only inside this compositor transaction, then
     # restore the user's policy before another event or frame can run.
+    try:
+        animation=chat_slide_style(json.loads(hypr('-j','clients')),json.loads(hypr('-j','monitors')))
+    except (OSError,ValueError,KeyError,TypeError):
+        animation='slide 20%'
+    # Apply the rule before toggling so the compositor refreshes the workspace
+    # style first, including when changing between floating and theater chat.
+    hypr('eval','hl.workspace_rule({workspace="special:chatterino_chat",animation='+json.dumps(animation)+'})')
     script=('local previous=hl.get_config("misc.on_focus_under_fullscreen"); '
             'hl.config({misc={on_focus_under_fullscreen=0}}); '
             'local ok,err=pcall(function() '
@@ -206,18 +240,23 @@ def hide_workspace(monitors):
         toggle_on_monitor(visible, monitors)
 
 
-def restore(state, clients, hide=True):
+def restore(state, clients, hide=True, animate=False):
     OWNER.unlink(missing_ok=True)
     if 'special_fallthrough' in state:
         hypr('keyword', 'input:special_fallthrough', str(state['special_fallthrough']))
     try:
-        panel_space(state,0)
+        panel_space(state,0,animate=animate)
     except (OSError,ValueError):
         pass
     old = state['chat']
     chat = next((c for c in clients if c['address'] == old['address'] and c['pid'] == old['pid']), None)
     if hide:
         hide_workspace(json.loads(hypr('-j', 'monitors')))
+        if animate:
+            # Keep the full-height pane in place throughout its native slide
+            # out. Resizing to the PiP bounds earlier makes it shrink mid-slide.
+            # Runs in the chat helper, never on MPV's input/render thread.
+            time.sleep(.22)
     if chat:
         style(chat, False)
         move(chat, old)
@@ -316,7 +355,7 @@ def close(clients):
         PREFERENCE.unlink(missing_ok=True)
         try:(ROOT/'media-chat-cover-cancel').write_text(Path('/tmp/twitch-session.id').read_text().strip())
         except OSError:pass
-        restore(state, clients)
+        restore(state, clients, animate=True)
         return True
 
 
@@ -394,7 +433,7 @@ def begin(clients=None):
             owner_tmp.replace(OWNER)
             try:
                 hypr('keyword', 'input:special_fallthrough', '1')
-                panel_space(state,bounds['ratio'])
+                panel_space(state,bounds['ratio'],animate=True)
                 style(chat, True)
                 move(chat, bounds)
                 hypr('dispatch', 'focusmonitor', str(player['monitor']))

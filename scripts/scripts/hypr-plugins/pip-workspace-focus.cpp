@@ -10,6 +10,8 @@
 #include <fstream>
 #include <cstdlib>
 
+#include "chat-panel-slide.hpp"
+
 static CHyprSignalListener workspaceListener;
 static CHyprSignalListener fullscreenListener;
 static CHyprSignalListener activeListener;
@@ -58,6 +60,7 @@ APICALL EXPORT PLUGIN_DESCRIPTION_INFO PLUGIN_INIT(HANDLE handle) {
     if (std::string(__hyprland_api_get_hash()) != __hyprland_api_get_client_hash())
         throw std::runtime_error("PiP focus: rebuild against the running Hyprland version");
 
+    ChatSlide::start();
     workspaceListener = Event::bus()->m_events.workspace.active.listen([](PHLWORKSPACE workspace) {
         const auto focus = Desktop::focusState();
         // Hide/show fullscreen chat in the workspace transaction itself,
@@ -156,10 +159,11 @@ APICALL EXPORT PLUGIN_DESCRIPTION_INFO PLUGIN_INIT(HANDLE handle) {
     keyboardListener = Event::bus()->m_events.input.keyboard.key.listen([](IKeyboard::SKeyEvent event, Event::SCallbackInfo&) {
         if (event.state == WL_KEYBOARD_KEY_STATE_PRESSED) releaseExitGuard();
     });
-    return {"pip-workspace-focus", "Keep MPV unfocused on workspace entry and fullscreen exit", "local", "1.7"};
+    return {"pip-workspace-focus", "Keep MPV unfocused on workspace entry and fullscreen exit", "local", "1.8"};
 }
 
 APICALL EXPORT void PLUGIN_EXIT() {
+    ChatSlide::stop();
     pendingExit.reset();
     pendingFocus.reset();
     workspaceListener.reset();

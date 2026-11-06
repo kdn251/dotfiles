@@ -16,6 +16,8 @@ class FullscreenChatTests(unittest.TestCase):
         cover.start();self.addCleanup(cover.stop)
         tmp = tempfile.TemporaryDirectory()
         self.addCleanup(tmp.cleanup)
+        root = patch.object(layout, 'ROOT', Path(tmp.name))
+        root.start(); self.addCleanup(root.stop)
         owner = patch.object(layout, 'OWNER', Path(tmp.name)/'owner')
         owner.start(); self.addCleanup(owner.stop)
         preference = patch.object(layout, 'PREFERENCE', Path(tmp.name)/'preference')
@@ -26,6 +28,30 @@ class FullscreenChatTests(unittest.TestCase):
     player = dict(address='p', pid=10, monitor=0, fullscreen=2, workspace={'id':3}, **{'class': 'mpv'})
     chat = dict(address='c', pid=20, at=[500, 600], size=[200, 300],
                 **{'class': 'com.chatterino.chatterino'})
+
+    def test_chat_slide_direction_tracks_player_side_and_visibility(self):
+        chat=dict(self.chat,workspace={'name':'special:chatterino_chat'},size=[288,960])
+        for fullscreen,player_x,chat_x,opening,closing in (
+                (2,0,1152,'right','left'),
+                (0,10,600,'left','right'),
+                (0,900,600,'right','left')):
+            player=dict(self.player,fullscreen=fullscreen,at=[player_x,100])
+            pane=dict(chat,at=[chat_x,100])
+            with self.subTest(fullscreen=fullscreen,player_x=player_x):
+                hidden=dict(self.monitor,specialWorkspace={'name':''})
+                self.assertEqual(layout.chat_slide_style([player,pane],[hidden]),f'slide {opening} 20%')
+                self.assertEqual(layout.chat_slide_style([player,pane],[self.monitor]),f'slide {closing} 20%')
+
+    def test_native_slide_defers_margin_until_chat_is_visible(self):
+        (layout.ROOT/'media-chat-slide-enabled').touch()
+        state={'player':self.player,'socket':'/tmp/test-mpv'}
+        def update(command,*args,**kwargs):
+            command('set_property','video-margin-ratio-right',.2)
+            command('set_property','keepaspect',True)
+        with patch('media_panel_layout.update',side_effect=update),patch.object(layout,'ipc') as ipc:
+            layout.panel_space(state,.2,animate=True)
+            ipc.assert_called_once_with(state,'set_property','keepaspect',True)
+            self.assertEqual((layout.ROOT/'media-chat-slide-socket').read_text(),'/tmp/test-mpv\n')
 
     def test_new_chat_stages_hidden_only_in_fullscreen(self):
         for fullscreen in (0,2):

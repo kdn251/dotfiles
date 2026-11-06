@@ -576,6 +576,15 @@ hl.layer_rule({ ["blur"] = true, ["match"] = { ["namespace"] = "hyprsunset" } })
 -- Clanker popup: slide in/out at the right edge, without changing other layers.
 hl.layer_rule({ ["animation"] = "slide right", ["match"] = { ["namespace"] = "^(computer-notification)$" } })
 
+-- Fullscreen media panels enter and leave through their nearest screen edge.
+hl.layer_rule({ animation = "slide left", match = { namespace = "^stream-sidebar$" } })
+-- Special workspace toggles reverse direction on close: no explicit direction
+-- here means right-to-left on entry and left-to-right on exit.
+hl.workspace_rule({ workspace = "special:chatterino_chat", animation = "slide 20%" })
+-- Only the workspace slides. Independent window resize/move animations would
+-- make chat drift diagonally from its saved PiP position into theater mode.
+hl.window_rule({ no_anim = true, match = { class = "^(com.chatterino.chatterino|newsboat-live-chat|newsboat-youtube-comments)$" } })
+
 -- bind = $mainMod SHIFT, E, exit
 -- Replace the old exit line with this:
 hl.bind("Alt + SHIFT + E", hl.dsp.exec_cmd("zenity --question --text=\"Are you sure you want to exit Hyprland?\" && hyprctl dispatch exit"))
