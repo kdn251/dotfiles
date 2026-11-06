@@ -5,6 +5,33 @@ from stream_menu_metadata import load
 
 SERVICES={'t':'Twitch','y':'YouTube','k':'Kick','r':'Rumble'}
 
+def sidebar_preferences_path():
+    import os
+    return Path(os.environ.get('XDG_STATE_HOME',str(Path.home()/'.local/state')))/'stream-watching/sidebar.json'
+
+
+def load_collapsed():
+    import json
+    try:
+        state=json.loads(sidebar_preferences_path().read_text())
+        return isinstance(state,dict) and state.get('collapsed') is True
+    except (OSError,ValueError):return False
+
+
+def save_collapsed(collapsed):
+    import json,os,tempfile
+    path=sidebar_preferences_path()
+    path.parent.mkdir(parents=True,exist_ok=True)
+    temporary=None
+    try:
+        with tempfile.NamedTemporaryFile(mode='w',dir=path.parent,delete=False) as out:
+            temporary=Path(out.name)
+            json.dump({'collapsed':bool(collapsed)},out)
+        os.replace(temporary,path)
+    finally:
+        if temporary:temporary.unlink(missing_ok=True)
+
+
 def rows(cache=None, now=None, current=None):
     now=time.time() if now is None else now
     result=[]

@@ -1,7 +1,7 @@
 local utils = require 'mp.utils'
 local active = false
 local serial = 0
-local keys = {j='down',k='up',DOWN='down',UP='up',ENTER='choose',ESC='close',['/']='search'}
+local keys = {g='g',G='G',j='down',k='up',DOWN='down',UP='up',ENTER='choose',ESC='close',['/']='search'}
 local function send(action)
     serial=serial+1
     mp.set_property_native('user-data/stream-sidebar-action',{action=action,serial=serial})
@@ -33,5 +33,22 @@ mp.observe_property('user-data/stream-service','native',function(_,service)
     mp.remove_key_binding('stream-live-sidebar')
     if service and service~='' then
         mp.add_forced_key_binding('TAB','stream-live-sidebar',open_sidebar)
+    end
+end)
+
+-- Match Mod+C without leaving fullscreen or blocking playback.
+local chat_busy=false
+local function toggle_chat()
+    if chat_busy or not mp.get_property_bool('fullscreen',false) then return end
+    chat_busy=true
+    mp.command_native_async({name='subprocess',playback_only=false,
+        capture_stdout=false,capture_stderr=false,
+        args={'python3',os.getenv('HOME')..'/scripts/media-chat.py'}},
+        function() chat_busy=false end)
+end
+mp.observe_property('fullscreen','bool',function(_,fullscreen)
+    mp.remove_key_binding('fullscreen-toggle-chat')
+    if fullscreen then
+        mp.add_forced_key_binding('\\','fullscreen-toggle-chat',toggle_chat)
     end
 end)

@@ -2,6 +2,20 @@ import unittest
 from stream_sidebar import rows,choice
 
 class SidebarTests(unittest.TestCase):
+    def test_collapsed_preference_persists_and_tolerates_invalid_state(self):
+        import os,tempfile
+        from unittest.mock import patch
+        from stream_sidebar import load_collapsed,save_collapsed,sidebar_preferences_path
+        with tempfile.TemporaryDirectory() as folder,patch.dict(os.environ,XDG_STATE_HOME=folder):
+            self.assertFalse(load_collapsed())
+            save_collapsed(True)
+            self.assertTrue(load_collapsed())
+            save_collapsed(False)
+            self.assertFalse(load_collapsed())
+            for invalid in ('broken','[]','{"collapsed":"false"}'):
+                sidebar_preferences_path().write_text(invalid)
+                self.assertFalse(load_collapsed())
+
     def test_slash_forwarded_only_while_sidebar_open(self):
         import subprocess,tempfile
         from pathlib import Path

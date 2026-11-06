@@ -18,7 +18,7 @@ gi.require_version('Gtk','4.0')
 gi.require_version('Gdk','4.0')
 gi.require_version('Gtk4LayerShell','1.0')
 from gi.repository import Gtk,Gdk,Gio,GLib,Pango,Gsk,Graphene,Gtk4LayerShell as Layer
-from stream_sidebar import rows,choice,VideoSpace,restore_windowed,visible_on_workspace,search_rows
+from stream_sidebar import rows,choice,VideoSpace,restore_windowed,visible_on_workspace,search_rows,load_collapsed,save_collapsed
 from stream_menu_metadata import highlight
 from media_chat_fullscreen import ipc,socket_for,read as chat_layout
 from mpv_clip import Player
@@ -51,6 +51,8 @@ class Sidebar(Gtk.Application):
         self.pid_watch=None
         self.handoff_until=0
         self.searching=False
+        self.pending_g=0
+        self.collapsed=load_collapsed()
         self.connect('shutdown',self.release_video)
         self.connect('shutdown',self.stop_events)
         self.connect('activate',self.activate_sidebar)
@@ -78,7 +80,7 @@ class Sidebar(Gtk.Application):
         if monitor:
             for m in display.get_monitors():
                 if m.get_connector()==monitor['name']:Layer.set_monitor(self.window,m);break
-        self.window.set_default_size(230,-1)
+        self.window.set_default_size(56 if self.collapsed else 230,-1)
         self.monitor=monitor
         endpoint=socket_for(player)
         if endpoint:
@@ -125,8 +127,8 @@ class Sidebar(Gtk.Application):
         collapse=Gtk.Button.new_from_icon_name('pan-start-symbolic')
         collapse.add_css_class('collapse');collapse.set_valign(Gtk.Align.CENTER)
         collapse.set_margin_end(8)
-        collapse.set_tooltip_text('Collapse live channels (Tab)')
-        collapse.connect('clicked',self.dismiss)
+        collapse.set_tooltip_text('Collapse to profile icons')
+        collapse.connect('clicked',self.toggle_collapsed)
         search_button=Gtk.Button.new_from_icon_name('system-search-symbolic')
         search_button.add_css_class('collapse');search_button.set_tooltip_text('Search live channels (/)')
         search_button.connect('clicked',lambda *_:self.open_search())
@@ -140,10 +142,14 @@ class Sidebar(Gtk.Application):
         self.search.connect('changed',self.search_changed)
         box.append(self.search)
         self.collapse=collapse
+        self.heading=title
+        self.search_button=search_button
         self.list=Gtk.ListBox(selection_mode=Gtk.SelectionMode.SINGLE)
         self.list.set_activate_on_single_click(True)
         self.list.connect('row-activated',self.choose)
         self.title_popup=None
+        self.title_timer=None
+        self.rebuilding_rows=False
         self.list.connect('row-selected',self.show_stream_title)
         scroll=Gtk.ScrolledWindow(vexpand=True)
         scroll.set_policy(Gtk.PolicyType.NEVER,Gtk.PolicyType.EXTERNAL)
@@ -151,12 +157,14 @@ class Sidebar(Gtk.Application):
         self.scroll=scroll
         hint=Gtk.Label(label='/ Search · j/k · Enter to watch · Tab to close')
         hint.add_css_class('hint');hint.set_wrap(True);hint.set_max_width_chars(28);box.append(hint)
+        self.hint=hint
         self.window.set_child(box)
         keys=Gtk.EventControllerKey()
         keys.set_propagation_phase(Gtk.PropagationPhase.CAPTURE)
         keys.connect('key-pressed',self.key);self.window.add_controller(keys)
         self.catalog=None
         self.refresh()
+        self.apply_collapsed()
         GLib.timeout_add(200,self.check_player)
         GLib.timeout_add_seconds(5,self.refresh)
         self.window.present()
@@ -267,6 +275,8 @@ class Sidebar(Gtk.Application):
         if action=='search':self.open_search()
         elif action=='close':self.dismiss()
         elif action=='choose':self.choose(self.list,self.list.get_selected_row())
+        elif action in ('g','G'):
+            self.key(None,Gdk.KEY_g if action=='g' else Gdk.KEY_G,0,0)
         elif action in ('up','down'):
             self.key(None,Gdk.KEY_j if action=='down' else Gdk.KEY_k,0,0)
         return False
@@ -284,7 +294,7 @@ class Sidebar(Gtk.Application):
         if self.video_space and self.monitor:
             dimension='height' if self.monitor.get('transform',0)%2 else 'width'
             width=self.monitor[dimension]/self.monitor.get('scale',1)
-            try:self.video_space.reserve(self.window.get_width() or 230,width)
+            try:self.video_space.reserve((56 if self.collapsed else 230),width)
             except (OSError,ValueError):self.quit()
         return False
     def dismiss(self,*_):
@@ -311,7 +321,34 @@ class Sidebar(Gtk.Application):
             GLib.source_remove(self.pid_watch);self.pid_watch=None
         if self.pidfd is not None:
             os.close(self.pidfd);self.pidfd=None
+    def toggle_collapsed(self,*_):
+        self.collapsed=not self.collapsed
+        try:save_collapsed(self.collapsed)
+        except OSError as error:print(f'Could not save sidebar preference: {error}',file=sys.stderr)
+        self.apply_collapsed()
+    def apply_collapsed(self):
+        self.hide_stream_title()
+        self.heading.set_visible(not self.collapsed)
+        self.search_button.set_visible(not self.collapsed)
+        self.hint.set_visible(not self.collapsed)
+        if self.collapsed:
+            self.searching=False
+            self.search.set_text('')
+            self.search.set_visible(False)
+        self.collapse.set_icon_name('pan-end-symbolic' if self.collapsed else 'pan-start-symbolic')
+        self.collapse.set_tooltip_text('Expand live channels' if self.collapsed else 'Collapse to profile icons')
+        self.collapse.set_margin_end(0 if self.collapsed else 8)
+        self.collapse.set_halign(Gtk.Align.CENTER if self.collapsed else Gtk.Align.END)
+        row=self.list.get_first_child()
+        while row:
+            if hasattr(row,'details'):
+                for widget in row.details:widget.set_visible(not self.collapsed)
+            row=row.get_next_sibling()
+        self.window.set_default_size(56 if self.collapsed else 230,-1)
+        self.reserve_video()
+        self.list.grab_focus()
     def open_search(self):
+        if self.collapsed:self.toggle_collapsed()
         self.searching=True
         self.search.set_visible(True)
         # Search may arrive through MPV while the video owns keyboard focus.
@@ -322,6 +359,13 @@ class Sidebar(Gtk.Application):
         self.catalog=None
         self.refresh()
         self.list.select_row(self.list.get_row_at_index(0))
+    def jump_selection(self,last=False):
+        if not self.catalog:return
+        row=self.list.get_row_at_index(len(self.catalog)-1 if last else 0)
+        self.list.select_row(row)
+        row.grab_focus()
+        adjustment=self.scroll.get_vadjustment()
+        adjustment.set_value(max(adjustment.get_lower(),adjustment.get_upper()-adjustment.get_page_size()) if last else adjustment.get_lower())
     def move_selection(self,step):
         if not self.catalog:return
         current=self.list.get_selected_row()
@@ -333,11 +377,19 @@ class Sidebar(Gtk.Application):
             row.grab_focus();self.search.grab_focus_without_selecting()
         else:row.grab_focus()
     def hide_stream_title(self,*_):
+        if self.title_timer:
+            GLib.source_remove(self.title_timer)
+            self.title_timer=None
         if self.title_popup:
             self.title_popup.popdown()
             self.title_popup.unparent()
             self.title_popup=None
+    def expire_stream_title(self):
+        self.title_timer=None
+        self.hide_stream_title()
+        return False
     def show_stream_title(self,_,row):
+        if self.rebuilding_rows:return
         self.hide_stream_title()
         if not row or not hasattr(row,'data') or not row.data.get('title'):return
         popup=Gtk.Popover()
@@ -347,16 +399,25 @@ class Sidebar(Gtk.Application):
         popup.set_focusable(False)
         popup.set_can_focus(False)
         popup.set_position(Gtk.PositionType.RIGHT)
-        label=Gtk.Label(label=row.data['title'],xalign=0)
+        content=Gtk.Box(orientation=Gtk.Orientation.VERTICAL,spacing=4)
+        content.set_margin_top(8);content.set_margin_bottom(8)
+        content.set_margin_start(10);content.set_margin_end(10)
+        label=Gtk.Label(label=(row.data['name']+'\n' if self.collapsed else '')+row.data['title'],xalign=0)
         label.set_wrap(True)
         label.set_wrap_mode(Pango.WrapMode.WORD_CHAR)
         label.set_max_width_chars(42)
-        label.set_margin_top(8);label.set_margin_bottom(8)
-        label.set_margin_start(10);label.set_margin_end(10)
-        popup.set_child(label)
+        content.append(label)
+        if row.data.get('category'):
+            game=Gtk.Label(label=row.data['category'],xalign=0)
+            game.add_css_class('category')
+            game.set_wrap(True);game.set_max_width_chars(42)
+            content.append(game)
+        popup.set_child(content)
         popup.set_parent(row)
         self.title_popup=popup
-        if row.get_mapped():popup.popup()
+        if row.get_mapped():
+            popup.popup()
+            self.title_timer=GLib.timeout_add(2500,self.expire_stream_title)
     def refresh(self):
         try:self.current=identity(self.player) or self.current
         except (OSError,ValueError):pass
@@ -367,6 +428,7 @@ class Sidebar(Gtk.Application):
         selected=self.list.get_selected_row()
         selected_key=choice(selected.data) if selected and hasattr(selected,'data') else None
         self.catalog=catalog
+        self.rebuilding_rows=True
         self.hide_stream_title()
         while child:=self.list.get_first_child():self.list.remove(child)
         preferred=None
@@ -392,10 +454,12 @@ class Sidebar(Gtk.Application):
             count=data['viewers']
             count='—' if count is None else (f'{count/1000:.1f}k' if count>=1000 else str(int(count)))
             live=Gtk.Label(label='● '+count);live.add_css_class('viewers');body.append(live)
+            row.details=(labels,live)
+            for widget in row.details:widget.set_visible(not self.collapsed)
             row.set_child(body)
             motion=Gtk.EventControllerMotion()
             motion.connect('enter',lambda controller,x,y,r=row:self.show_stream_title(None,r))
-            motion.connect('leave',lambda *_:self.show_stream_title(None,self.list.get_selected_row()))
+            motion.connect('leave',self.hide_stream_title)
             row.add_controller(motion)
             self.list.append(row)
             if choice(data)==selected_key or (selected_key is None and current):preferred=row
@@ -404,6 +468,7 @@ class Sidebar(Gtk.Application):
             self.list.append(empty)
         selected=preferred or self.list.get_row_at_index(0)
         self.list.select_row(selected)
+        self.rebuilding_rows=False
         # Rebuilding removes the focused GtkListBoxRow. Selection alone does
         # not install a keyboard target, leaving the exclusive layer eating F.
         if focused and self.window.get_visible():
@@ -458,6 +523,8 @@ class Sidebar(Gtk.Application):
                 self.list.grab_focus()
     def key(self,_,key,code,modifiers):
         if self.searching:
+            self.pending_g=0
+            if key==Gdk.KEY_BackSpace and not self.search.get_text():return True
             if key==Gdk.KEY_Escape:
                 if self.search.get_text():self.search.set_text('')
                 else:
@@ -469,6 +536,21 @@ class Sidebar(Gtk.Application):
                 self.choose(self.list,self.list.get_selected_row());return True
             if key in (Gdk.KEY_Tab,Gdk.KEY_ISO_Left_Tab):self.dismiss();return True
             return False
+        if key==Gdk.KEY_g:
+            now=time.monotonic()
+            if self.pending_g and now-self.pending_g<1:
+                self.pending_g=0
+                self.jump_selection()
+            else:self.pending_g=now
+            return True
+        self.pending_g=0
+        if key==Gdk.KEY_G:
+            self.jump_selection(last=True)
+            return True
+        if key==Gdk.KEY_backslash:
+            try:ipc({'socket':socket_for(self.player),'player':self.player},'keypress','\\')
+            except (OSError,ValueError):pass
+            return True
         if key in (Gdk.KEY_less,Gdk.KEY_greater):
             try:
                 ipc({'socket':socket_for(self.player),'player':self.player},
