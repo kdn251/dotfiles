@@ -18,6 +18,21 @@ YOUTUBE_DARK = r'''
 })();
 '''
 
+RUMBLE_DARK = r'''
+(() => {
+  if (!["rumble.com", "www.rumble.com"].includes(location.hostname)) return;
+  function apply() {
+    const root = document.documentElement;
+    if (!root) return;
+    // Use Rumble's native dark palette, including inputs and chat messages.
+    if (root.getAttribute("data-theme") !== "dark") root.setAttribute("data-theme", "dark");
+    root.style.colorScheme = "dark";
+  }
+  apply();
+  new MutationObserver(apply).observe(document, {childList:true, subtree:true, attributes:true, attributeFilter:["data-theme"]});
+})();
+'''
+
 
 def main(url, title):
     if not valid_chat_url(url):raise ValueError('Unsupported live chat URL')
@@ -43,6 +58,11 @@ def main(url, title):
         script.setInjectionPoint(QWebEngineScript.InjectionPoint.DocumentCreation)
         script.setWorldId(QWebEngineScript.ScriptWorldId.ApplicationWorld)
         script.setSourceCode(YOUTUBE_DARK);view.page().scripts().insert(script)
+    elif urlparse(url).hostname in ('rumble.com','www.rumble.com'):
+        script=QWebEngineScript();script.setName('rumble-live-chat-dark')
+        script.setInjectionPoint(QWebEngineScript.InjectionPoint.DocumentCreation)
+        script.setWorldId(QWebEngineScript.ScriptWorldId.ApplicationWorld)
+        script.setSourceCode(RUMBLE_DARK);view.page().scripts().insert(script)
     body=QWidget();stack=QStackedLayout(body);stack.setContentsMargins(0,0,0,0)
     stack.setStackingMode(QStackedLayout.StackingMode.StackAll)
     cover=QLabel();cover.setAlignment(Qt.AlignmentFlag.AlignCenter);cover.setWordWrap(True)

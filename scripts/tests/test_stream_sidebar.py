@@ -92,31 +92,34 @@ class SidebarTests(unittest.TestCase):
                 sidebar_preferences_path().write_text(invalid)
                 self.assertFalse(load_collapsed())
 
-    def test_slash_forwarded_only_while_sidebar_open(self):
+    def test_slash_opens_search_without_sidebar_and_toggles_existing_search(self):
         import subprocess,tempfile
         from pathlib import Path
         script=Path(__file__).resolve().parents[2]/'mpv/.config/mpv/scripts/stream-sidebar.lua'
         harness="""
-package.preload['mp.utils']=function() return {} end
-local keys,observers={},{}
-local sent
-local opened=true
-mp={
- get_property_native=function(k,d) if k=='user-data/stream-sidebar-open' then return opened end return d end,
- observe_property=function(k,t,cb) observers[k]=cb end,
- remove_key_binding=function(n) keys[n]=nil end,
- add_forced_key_binding=function(k,n,cb) keys[n]=cb end,
- set_property_native=function(k,v) sent=v end,
-}
+package.preload['mp.utils']=function()return {getpid=function()return 42 end}end
+local props={fullscreen=true,['user-data/stream-service']='Twitch'}
+local bindings,observers={},{}
+local launched
+mp={get_property_native=function(k,d)if props[k]==nil then return d end return props[k]end,
+get_property_bool=function(k,d)if props[k]==nil then return d end return props[k]end,
+set_property_native=function(k,v)props[k]=v end,
+remove_key_binding=function(k)bindings[k]=nil end,
+add_forced_key_binding=function(k,n,f)bindings[n]={key=k,fn=f}end,
+observe_property=function(k,t,f)observers[k]=f;f(k,props[k])end,
+command_native_async=function(cmd,cb)launched=cmd end,osd_message=function()end}
 dofile(arg[1])
-local layout=observers['user-data/media-panel-layout']
-layout('',{left=.15})
-assert(keys['sidebar-capture-/'])
-keys['sidebar-capture-/']()
-assert(sent.action=='search')
-layout('',{left=0})
-assert(keys['sidebar-capture-/']==nil)
-opened=false;layout('',{left=.15});assert(keys['sidebar-capture-/']==nil)
+assert(bindings['stream-live-search'].key=='/')
+bindings['stream-live-search'].fn()
+assert(launched.args[4]=='--search')
+props['user-data/stream-sidebar-open']=true
+props['user-data/media-panel-layout']={left=.1}
+observers['user-data/media-panel-layout'](nil,props['user-data/media-panel-layout'])
+bindings['stream-live-search'].fn()
+assert(props['user-data/stream-sidebar-action'].action=='search')
+props.fullscreen=false;observers.fullscreen(nil,false)
+assert(bindings['stream-live-search']==nil)
+print('Sidebar search shortcut checks passed')
 """
         with tempfile.TemporaryDirectory() as tmp:
             path=Path(tmp)/'check.lua';path.write_text(harness)

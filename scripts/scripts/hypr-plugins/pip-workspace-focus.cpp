@@ -5,12 +5,25 @@
 #include <hyprland/src/desktop/state/WindowState.hpp>
 #include <hyprland/src/output/Monitor.hpp>
 #include <hyprland/src/managers/fullscreen/FullscreenController.hpp>
+#include <hyprland/src/managers/eventLoop/EventLoopManager.hpp>
 #include <stdexcept>
 #include <fstream>
 #include <cstdlib>
 
 static CHyprSignalListener workspaceListener;
 static CHyprSignalListener fullscreenListener;
+static CHyprSignalListener activeListener;
+static CHyprSignalListener layerClosedListener;
+static CHyprSignalListener mouseButtonListener;
+static CHyprSignalListener keyboardListener;
+static PHLWINDOWREF unfocusedPlayer;
+static UP<SEventLoopDoLaterLock> pendingExit;
+static UP<SEventLoopDoLaterLock> pendingFocus;
+
+static void releaseExitGuard() {
+    unfocusedPlayer.reset();
+    pendingFocus.reset();
+}
 
 static void focusOtherApp(PHLWORKSPACE workspace, Desktop::eFocusReason reason) {
     PHLWINDOW target;
@@ -26,6 +39,15 @@ static void focusOtherApp(PHLWORKSPACE workspace, Desktop::eFocusReason reason) 
         }
     }
     Desktop::focusState()->rawWindowFocus(target, reason);
+}
+
+static void finishExitFocus() {
+    const auto window = unfocusedPlayer.lock();
+    if (!window || Desktop::focusState()->window() != window ||
+        Fullscreen::controller()->isFullscreen(window)) return;
+    const auto monitor = Desktop::focusState()->monitor();
+    if (monitor && monitor->m_activeWorkspace)
+        focusOtherApp(monitor->m_activeWorkspace, Desktop::FOCUS_REASON_OTHER);
 }
 
 APICALL EXPORT std::string PLUGIN_API_VERSION() {
@@ -81,17 +103,70 @@ APICALL EXPORT PLUGIN_DESCRIPTION_INFO PLUGIN_INIT(HANDLE handle) {
         focusOtherApp(workspace, Desktop::FOCUS_REASON_WORKSPACE_CHANGE);
     });
     fullscreenListener = Event::bus()->m_events.window.fullscreen.listen([](PHLWINDOW window) {
-        if (!window || window->metadata().appID() != "mpv" ||
-            Fullscreen::controller()->isFullscreen(window) || Desktop::focusState()->window() != window)
+        if (!window || window->metadata().appID() != "mpv")
             return;
-        const auto monitor = Desktop::focusState()->monitor();
-        if (monitor && monitor->m_activeWorkspace)
-            focusOtherApp(monitor->m_activeWorkspace, Desktop::FOCUS_REASON_OTHER);
+        // Fullscreen and chat teardown can both change focus within the same
+        // compositor transaction. Read the final state at the idle boundary.
+        pendingExit = g_pEventLoopManager->doLaterLock([weak = PHLWINDOWREF(window)] {
+            const auto window = weak.lock();
+            if (!window || !window->mapped()) return;
+            if (Fullscreen::controller()->isFullscreen(window)) {
+                if (unfocusedPlayer.lock() == window) unfocusedPlayer.reset();
+                return;
+            }
+            // The sidebar can unmap after this event and restore player focus.
+            // Keep guarding that restoration until the user explicitly selects MPV.
+            unfocusedPlayer = window;
+            if (Desktop::focusState()->window() != window) return;
+            const auto monitor = Desktop::focusState()->monitor();
+            if (monitor && monitor->m_activeWorkspace)
+                focusOtherApp(monitor->m_activeWorkspace, Desktop::FOCUS_REASON_OTHER);
+        });
     });
-    return {"pip-workspace-focus", "Keep MPV unfocused on workspace entry", "local", "1.3"};
+    activeListener = Event::bus()->m_events.window.active.listen([](PHLWINDOW window, Desktop::eFocusReason reason) {
+        if (!window || unfocusedPlayer.lock() != window) return;
+        // CLICK alone is also used for compositor refocus when layers vanish;
+        // it is not evidence of a physical mouse click. Deferred chat helpers
+        // can likewise issue FOCUSWINDOW. Neither should release this guard.
+        const bool explicitClick = reason == Desktop::FOCUS_REASON_CLICK_DOWN ||
+                                   reason == Desktop::FOCUS_REASON_CLICK_UP;
+        if (Fullscreen::controller()->isFullscreen(window) || explicitClick ||
+            reason == Desktop::FOCUS_REASON_KEYBIND) {
+            unfocusedPlayer.reset();
+            return;
+        }
+        // Do not refocus recursively inside another focus transaction: its
+        // remaining work can overwrite our keyboard target afterwards.
+        pendingFocus = g_pEventLoopManager->doLaterLock(finishExitFocus);
+    });
+    layerClosedListener = Event::bus()->m_events.layer.closed.listen([](PHLLS) {
+        // rawWindowFocus is refused while an exclusive keyboard layer exists.
+        // The closed event precedes removal from that exclusive-layer list,
+        // so finish on idle after removal, even if no new focus event fires.
+        if (!unfocusedPlayer.expired())
+            pendingFocus = g_pEventLoopManager->doLaterLock(finishExitFocus);
+    });
+    // Focus reasons alone cannot distinguish our focus hotkey from a delayed
+    // helper, or a real click from layer teardown. A fresh input press after
+    // exit ends automatic-focus protection before that input is processed.
+    // Releases of the F key which initiated exit must not end protection.
+    mouseButtonListener = Event::bus()->m_events.input.mouse.button.listen([](IPointer::SButtonEvent event, Event::SCallbackInfo&) {
+        if (event.state == WL_POINTER_BUTTON_STATE_PRESSED) releaseExitGuard();
+    });
+    keyboardListener = Event::bus()->m_events.input.keyboard.key.listen([](IKeyboard::SKeyEvent event, Event::SCallbackInfo&) {
+        if (event.state == WL_KEYBOARD_KEY_STATE_PRESSED) releaseExitGuard();
+    });
+    return {"pip-workspace-focus", "Keep MPV unfocused on workspace entry and fullscreen exit", "local", "1.7"};
 }
 
 APICALL EXPORT void PLUGIN_EXIT() {
+    pendingExit.reset();
+    pendingFocus.reset();
     workspaceListener.reset();
     fullscreenListener.reset();
+    activeListener.reset();
+    layerClosedListener.reset();
+    mouseButtonListener.reset();
+    keyboardListener.reset();
+    unfocusedPlayer.reset();
 }

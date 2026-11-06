@@ -11,7 +11,9 @@ import threading
 import time
 import socket
 import sys
-os.environ.setdefault('GSK_RENDERER','gl')
+# This is a small text list. Cairo avoids stale GL damage fragments when a
+# search replaces a full viewport with only one result on a layer surface.
+os.environ.setdefault('GSK_RENDERER','cairo')
 ctypes.CDLL('libgtk4-layer-shell.so',mode=ctypes.RTLD_GLOBAL)
 import gi
 gi.require_version('Gtk','4.0')
@@ -56,12 +58,14 @@ class Sidebar(Gtk.Application):
         self.held_nav=None
         self.nav_timer=None
         self.last_nav_at=0
+        self.saved_repeat_delay=None
         self.collapsed=load_collapsed()
         self.connect('shutdown',self.release_video)
         self.connect('shutdown',self.stop_events)
         self.connect('activate',self.activate_sidebar)
         GLib.unix_signal_add(GLib.PRIORITY_DEFAULT,signal.SIGTERM,self.dismiss)
         GLib.unix_signal_add(GLib.PRIORITY_DEFAULT,signal.SIGUSR1,self.dismiss)
+        GLib.unix_signal_add(GLib.PRIORITY_DEFAULT,signal.SIGUSR2,self.start_search)
     def activate_sidebar(self,_):
         player=next((c for c in clients() if c.get('pid')==self.pid and c.get('fullscreen')),None)
         if not player:self.quit();return
@@ -110,8 +114,8 @@ class Sidebar(Gtk.Application):
         entry.sidebar-search image {color:#adadb8;margin-right:6px;}
         entry.sidebar-search text {background:transparent;color:#efeff1;}
         entry.sidebar-search selection {background:#664795;color:#ffffff;}
-        list {background:transparent;}
-        row {padding:10px 10px;border-radius:0;margin:0;}
+        scrolledwindow, list {background:#1f1f23;}
+        row {padding:10px 10px;border-radius:0;margin:0;outline:none;box-shadow:none;}
         row label {color:#efeff1;}
         row:selected {background:#3a3a40;}
         row:hover:not(:selected) {background:transparent;}
@@ -168,7 +172,7 @@ class Sidebar(Gtk.Application):
         keys.connect('key-pressed',self.key)
         keys.connect('key-released',self.key_released)
         self.window.add_controller(keys)
-        self.window.connect('notify::visible',lambda *_:self.stop_navigation() if not self.window.get_visible() else None)
+        self.window.connect('notify::visible',self.visibility_changed)
         self.catalog=None
         self.refresh()
         self.apply_collapsed()
@@ -177,6 +181,23 @@ class Sidebar(Gtk.Application):
         self.window.present()
         self.list.grab_focus()
         self.start_workspace_events()
+        if '--search' in sys.argv:self.start_search()
+    def visibility_changed(self,*_):
+        visible=self.window.get_visible()
+        if not visible:self.stop_navigation()
+        self.update_repeat_delay(visible)
+    def update_repeat_delay(self,enabled):
+        try:
+            if enabled and self.saved_repeat_delay is None:
+                value=json.loads(subprocess.check_output(['/usr/bin/hyprctl','-j','getoption','input:repeat_delay'],timeout=.5))['int']
+                if value<=100:return
+                self.saved_repeat_delay=value
+                subprocess.run(['/usr/bin/hyprctl','eval','hl.config({input={repeat_delay=100}})'],stdout=subprocess.DEVNULL,timeout=.5,check=True)
+            elif not enabled and self.saved_repeat_delay is not None:
+                value=self.saved_repeat_delay
+                subprocess.run(['/usr/bin/hyprctl','eval',f'hl.config({{input={{repeat_delay={value}}}}})'],stdout=subprocess.DEVNULL,timeout=.5,check=True)
+                self.saved_repeat_delay=None
+        except (OSError,ValueError,KeyError,subprocess.SubprocessError):pass
     def start_workspace_events(self):
         # React immediately; polling remains a fallback if the compositor reconnects.
         path=Path(os.environ.get("XDG_RUNTIME_DIR","/tmp"))/"hypr"/os.environ.get("HYPRLAND_INSTANCE_SIGNATURE","")/".socket2.sock"
@@ -310,6 +331,7 @@ class Sidebar(Gtk.Application):
             self.key(None,Gdk.KEY_j if action=='down' else Gdk.KEY_k,0,0)
         return False
     def stop_events(self,*_):
+        self.update_repeat_delay(False)
         self.stop_navigation()
         self.closing=True
         if self.workspace_events:
@@ -377,8 +399,22 @@ class Sidebar(Gtk.Application):
         self.window.set_default_size(56 if self.collapsed else 230,-1)
         self.reserve_video()
         self.list.grab_focus()
+    def start_search(self):
+        if not self.searching:self.open_search()
+        else:
+            self.window.present()
+            self.search.grab_focus_without_selecting()
+        return True  # Keep the signal handler installed.
     def open_search(self):
         self.stop_navigation()
+        if self.searching:
+            self.searching=False
+            self.search.set_visible(False)
+            self.search.set_text('')
+            self.catalog=None
+            self.refresh()
+            self.list.grab_focus()
+            return
         if self.collapsed:self.toggle_collapsed()
         self.searching=True
         self.search.set_visible(True)
@@ -390,6 +426,8 @@ class Sidebar(Gtk.Application):
         self.catalog=None
         self.refresh()
         self.list.select_row(self.list.get_row_at_index(0))
+        self.scroll.get_vadjustment().set_value(0)
+        self.scroll.queue_draw()
     def jump_selection(self,last=False):
         if not self.catalog:return
         row=self.list.get_row_at_index(len(self.catalog)-1 if last else 0)
@@ -410,7 +448,7 @@ class Sidebar(Gtk.Application):
             self.show_stream_title(None,self.list.get_selected_row())
     def start_navigation(self,key):
         now=time.monotonic()
-        if self.held_nav==key and now-self.last_nav_at<.08:return
+        if self.held_nav==key and now-self.last_nav_at<.04:return
         self.stop_navigation()
         self.held_nav=key
         self.last_nav_at=now
@@ -585,6 +623,8 @@ class Sidebar(Gtk.Application):
     def key(self,_,key,code,modifiers):
         if self.searching:
             self.pending_g=0
+            if key==Gdk.KEY_slash:
+                self.open_search();return True
             if key==Gdk.KEY_BackSpace and not self.search.get_text():return True
             if key==Gdk.KEY_Escape:
                 if self.search.get_text():self.search.set_text('')
@@ -660,7 +700,7 @@ if __name__=='__main__':
         try:fcntl.flock(lock,fcntl.LOCK_EX|fcntl.LOCK_NB)
         except BlockingIOError:
             lock.seek(0)
-            try:os.kill(int(lock.read()),signal.SIGUSR1)
+            try:os.kill(int(lock.read()),signal.SIGUSR2 if '--search' in sys.argv else signal.SIGUSR1)
             except (ProcessLookupError,ValueError):pass
             sys.exit(0)
         lock.seek(0);lock.truncate();lock.write(str(os.getpid()));lock.flush()
