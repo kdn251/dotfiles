@@ -19,6 +19,22 @@ class ChatTests(unittest.TestCase):
             mock = patch.object(chat.fullscreen_chat, method, return_value=False)
             mock.start(); self.addCleanup(mock.stop)
 
+    def test_late_handoff_does_not_show_windowed_chat(self):
+        import json
+        with patch.object(chat.sys,'argv',['media-chat.py','--handoff']), \
+             patch.object(chat.fullscreen_chat,'read',return_value=None), \
+             patch.object(chat,'hypr',return_value=json.dumps([{'class':'mpv','fullscreen':0}])):
+            chat.show_workspace()
+        self.toggle.assert_not_called()
+
+    def test_exit_intent_blocks_chat_before_fullscreen_ack(self):
+        with patch.object(chat.sys,'argv',['media-chat.py','--handoff']), \
+             patch.object(chat.fullscreen_chat,'read',return_value={'exiting':True}), \
+             patch.object(chat,'hypr') as query:
+            chat.show_workspace()
+        query.assert_not_called()
+        self.toggle.assert_not_called()
+
     def test_theater_reveal_focuses_video_after_showing_chat(self):
         events=[]
         self.toggle.side_effect=lambda:events.append('show')

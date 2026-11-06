@@ -54,6 +54,7 @@ class ToggleTests(unittest.TestCase):
                     properties[key]=args[0]
                 with patch('media_chat_fullscreen.socket_for',return_value='player.sock'), \
                         patch('media_chat_fullscreen.ipc',side_effect=ipc) as command, \
+                        patch('media_chat_fullscreen.leave_fullscreen') as leave, \
                         patch.object(toggle.subprocess,'run') as native, \
                         patch.object(toggle,'query',return_value=[dict(client,fullscreen=0)]), \
                         patch('stream_sidebar.restore_windowed') as restore:
@@ -62,6 +63,7 @@ class ToggleTests(unittest.TestCase):
                     toggle.toggle(dict(client,fullscreen=2,pinned=False),Path(tmp))
                     self.assertFalse(properties['fullscreen'])
                     restore.assert_called_once()
+                    leave.assert_called_once_with(123)
                     for call in native.call_args_list:
                         self.assertNotIn('window.fullscreen',call.args[0][-1])
                         self.assertNotIn('hl.dsp.focus',call.args[0][-1])

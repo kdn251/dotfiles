@@ -46,7 +46,7 @@ def write(path, value):
     temp.replace(path)
 
 
-def managed_stream_toggle(client,runtime):
+def managed_stream_toggle(client,runtime,force_exit=False):
     if client.get('class')!='mpv':return False
     from media_chat_fullscreen import socket_for,ipc
     try:
@@ -58,13 +58,16 @@ def managed_stream_toggle(client,runtime):
     prefix=runtime/f"pip-fullscreen-{os.getuid()}-{client['address']}"
     geometry=Path(str(prefix)+'.geometry');snapshot=Path(str(geometry)+'.return')
     target='address:'+client['address']
-    fullscreen=bool(client.get('fullscreen') or ipc(state,'get_property','fullscreen'))
+    fullscreen=force_exit or bool(client.get('fullscreen') or ipc(state,'get_property','fullscreen'))
     if not fullscreen:
         write(geometry,client);write(snapshot,client)
         if client.get('pinned'):
             subprocess.run([HYPRCTL,'eval',dispatch('window.pin',window=target)],check=True,stdout=subprocess.DEVNULL)
         ipc(state,'set_property','fullscreen',True)
     else:
+        from media_chat_fullscreen import leave_fullscreen
+        try:leave_fullscreen(client['pid'])
+        except (OSError,ValueError,subprocess.SubprocessError):pass
         ipc(state,'set_property','fullscreen',False)
         # Wait only for the compositor acknowledgment, not a fixed sleep.
         deadline=time.monotonic()+.25
@@ -79,8 +82,8 @@ def managed_stream_toggle(client,runtime):
     return True
 
 
-def toggle(client, runtime):
-    if managed_stream_toggle(client,runtime):return
+def toggle(client, runtime,force_exit=False):
+    if managed_stream_toggle(client,runtime,force_exit):return
     address = client.get('address')
     if not address:
         return
@@ -146,7 +149,7 @@ def main():
                           and c['at'][1] <= pointer['y'] < c['at'][1] + c['size'][1]]
             candidates.sort(key=lambda c: c['focusHistoryID'] if c['focusHistoryID'] >= 0 else 999999)
             client = candidates[0] if candidates else query('activewindow')
-        toggle(client, runtime)
+        toggle(client, runtime,force_exit='--exit' in sys.argv)
 
 
 if __name__ == '__main__':

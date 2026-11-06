@@ -56,6 +56,11 @@ def close_panels(clients, panel_class):
 
 
 def show_workspace():
+    if '--handoff' in sys.argv:
+        if (fullscreen_chat.read() or {}).get('exiting'):return
+        clients=json.loads(hypr('-j','clients'))
+        # A slow browser can map after F has already returned to windowed mode.
+        if not any(c.get('class')=='mpv' and c.get('fullscreen')==2 for c in clients):return
     theater = fullscreen_chat.begin(json.loads(hypr('-j', 'clients')))
     monitors=json.loads(hypr('-j','monitors'))
     focused=next((m for m in monitors if m.get('focused')), {})

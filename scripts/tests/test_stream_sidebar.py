@@ -2,6 +2,25 @@ import unittest
 from stream_sidebar import rows,choice
 
 class SidebarTests(unittest.TestCase):
+    def test_fullscreen_exit_does_not_run_chat_cleanup_on_keyboard_thread(self):
+        import ast
+        from pathlib import Path
+        from types import SimpleNamespace
+        from unittest.mock import Mock
+        source=ast.parse((Path(__file__).resolve().parents[1]/'scripts/stream-sidebar.py').read_text())
+        cls=next(n for n in source.body if isinstance(n,ast.ClassDef) and n.name=='Sidebar')
+        key=next(n for n in cls.body if isinstance(n,ast.FunctionDef) and n.name=='key')
+        names={n.attr:n.attr for n in ast.walk(key) if isinstance(n,ast.Attribute) and isinstance(n.value,ast.Name) and n.value.id=='Gdk'}
+        launch=Mock();ipc=Mock()
+        namespace={'Gdk':SimpleNamespace(**names),'subprocess':SimpleNamespace(Popen=launch,DEVNULL=-3),
+                   'SCRIPTS':Path('/scripts'),'socket_for':lambda _: 'socket','ipc':ipc}
+        exec(compile(ast.Module(body=[key],type_ignores=[]),'sidebar-key','exec'),namespace)
+        sidebar=SimpleNamespace(searching=False,pending_g=0,player={'pid':123},pid=123)
+        self.assertTrue(namespace['key'](sidebar,None,'KEY_f',0,0))
+        self.assertTrue(sidebar.leaving_fullscreen)
+        self.assertEqual(launch.call_args.args[0],['/scripts/toggle-pip-fullscreen.sh','--pid','123','--exit'])
+        ipc.assert_not_called()
+
     def test_old_player_events_cannot_control_replacement(self):
         import ast
         from pathlib import Path

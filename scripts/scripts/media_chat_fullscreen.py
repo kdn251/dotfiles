@@ -224,6 +224,27 @@ def restore(state, clients, hide=True):
     STATE.unlink(missing_ok=True)
 
 
+def leave_fullscreen(pid):
+    """Hide chat before the video shrinks, and cancel a pending chat handoff."""
+    clients=json.loads(hypr('-j','clients'))
+    player=next((c for c in clients if c.get('pid')==pid),None)
+    if not player:return
+    hide_workspace(json.loads(hypr('-j','monitors')))
+    try:(ROOT/'media-chat-cover-cancel').write_text(Path('/tmp/twitch-session.id').read_text().strip())
+    except OSError:pass
+    with STATE.with_suffix('.lock').open('a') as lock:
+        try:fcntl.flock(lock,fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except BlockingIOError:return
+        state=read()
+        if state:
+            chat=next((c for c in clients if c.get('class') in CLASSES),None)
+            remember_theater(player,chat)
+            state.pop('transition',None)
+            state.update(player=player,socket=socket_for(player),exiting=True)
+            if chat and state['chat'].get('pid')!=chat['pid']:state['chat']=chat
+            STATE.write_text(json.dumps(state))
+
+
 def focus_player():
     """After revealing theater chat, return keyboard focus to its video once."""
     state = read()
@@ -409,6 +430,7 @@ def maintain(clients):
                 PREFERENCE.unlink(missing_ok=True)
             restore(state, clients, hide=True)
             return False
+        if state.get('exiting'):return True
         monitors = json.loads(hypr('-j', 'monitors'))
         monitor = next((m for m in monitors if m['id'] == player['monitor']), None)
         # Special workspaces otherwise remain visible over unrelated normal
@@ -587,7 +609,7 @@ def resume_transition(session):
                 player=restore_transition_fullscreen(player)
                 # The ordinary opener supplies the matching platform's chat and
                 # reapplies the fullscreen layout once its window is ready.
-                subprocess.run(['python3', str(Path(__file__).with_name('media-chat.py'))], timeout=20)
+                subprocess.run(['python3', str(Path(__file__).with_name('media-chat.py')), '--handoff'], timeout=20)
                 return
         except (OSError, ValueError, subprocess.SubprocessError):
             pass

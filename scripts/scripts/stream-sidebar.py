@@ -588,8 +588,13 @@ class Sidebar(Gtk.Application):
                     # toggle while this layer still owns focus. Address MPV's
                     # fullscreen property directly and wait for its actual exit.
                     self.leaving_fullscreen=True
-                    ipc(state,'set_property','fullscreen',False)
-                    self.suspend_fullscreen()
+                    # Chat teardown can wait on the handoff lock. Never do it
+                    # on GTK's keyboard thread; target an explicit exit, not a
+                    # toggle which could race with the compositor's state.
+                    subprocess.Popen([str(SCRIPTS/'toggle-pip-fullscreen.sh'),
+                                      '--pid',str(self.pid),'--exit'],
+                                     stdin=subprocess.DEVNULL,stdout=subprocess.DEVNULL,
+                                     stderr=subprocess.DEVNULL,start_new_session=True)
                 else:
                     self.release_video()
                     ipc(state,'quit')
