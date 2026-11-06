@@ -6,11 +6,13 @@
 #include <hyprland/src/output/Monitor.hpp>
 #include <hyprland/src/managers/fullscreen/FullscreenController.hpp>
 #include <hyprland/src/managers/eventLoop/EventLoopManager.hpp>
+#include <hyprland/src/config/ConfigValue.hpp>
 #include <stdexcept>
 #include <fstream>
 #include <cstdlib>
 
 #include "chat-panel-slide.hpp"
+#include "sidebar-panel-slide.hpp"
 
 static CHyprSignalListener workspaceListener;
 static CHyprSignalListener fullscreenListener;
@@ -61,6 +63,7 @@ APICALL EXPORT PLUGIN_DESCRIPTION_INFO PLUGIN_INIT(HANDLE handle) {
         throw std::runtime_error("PiP focus: rebuild against the running Hyprland version");
 
     ChatSlide::start();
+    SidebarSlide::start();
     workspaceListener = Event::bus()->m_events.workspace.active.listen([](PHLWORKSPACE workspace) {
         const auto focus = Desktop::focusState();
         // Hide/show fullscreen chat in the workspace transaction itself,
@@ -68,6 +71,16 @@ APICALL EXPORT PLUGIN_DESCRIPTION_INFO PLUGIN_INIT(HANDLE handle) {
         const auto monitorForChat = workspace ? workspace->m_monitor.lock() : PHLMONITOR{};
         const auto runtime = std::getenv("XDG_RUNTIME_DIR");
         if (runtime && workspace && monitorForChat && monitorForChat->m_activeWorkspace == workspace) {
+            // Showing/hiding the chat workspace may refocus a normal window.
+            // Suppress only the resulting automatic fullscreen exit, in this
+            // compositor transaction; restore the user's policy immediately.
+            static CConfigValue<Config::INTEGER> focusPolicy("misc:on_focus_under_fullscreen");
+            struct RestorePolicy {
+                Config::INTEGER* value;
+                Config::INTEGER previous;
+                ~RestorePolicy() { *value=previous; }
+            } restorePolicy{focusPolicy.ptr(),*focusPolicy};
+            *focusPolicy.ptr()=0;
             std::ifstream owner(std::string(runtime) + "/media-chat-workspace-owner");
             int64_t workspaceID = 0, monitorID = -1, specialID = 0;
             if ((owner >> workspaceID >> monitorID >> specialID) &&
@@ -159,11 +172,12 @@ APICALL EXPORT PLUGIN_DESCRIPTION_INFO PLUGIN_INIT(HANDLE handle) {
     keyboardListener = Event::bus()->m_events.input.keyboard.key.listen([](IKeyboard::SKeyEvent event, Event::SCallbackInfo&) {
         if (event.state == WL_KEYBOARD_KEY_STATE_PRESSED) releaseExitGuard();
     });
-    return {"pip-workspace-focus", "Keep MPV unfocused on workspace entry and fullscreen exit", "local", "1.8"};
+    return {"pip-workspace-focus", "Keep MPV unfocused on workspace entry and fullscreen exit", "local", "1.10"};
 }
 
 APICALL EXPORT void PLUGIN_EXIT() {
     ChatSlide::stop();
+    SidebarSlide::stop();
     pendingExit.reset();
     pendingFocus.reset();
     workspaceListener.reset();

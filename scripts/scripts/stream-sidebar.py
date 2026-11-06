@@ -93,6 +93,7 @@ class Sidebar(Gtk.Application):
         self.monitor=monitor
         endpoint=socket_for(player)
         if endpoint:
+            (Path(os.environ.get('XDG_RUNTIME_DIR','/tmp'))/'media-sidebar-slide-socket').write_text(str(endpoint))
             self.connection=Player(endpoint,self.pid)
             self.connection.socket.settimeout(.4)
             self.connection.command("set_property","user-data/stream-sidebar-open",True)
@@ -123,8 +124,8 @@ class Sidebar(Gtk.Application):
         .name {color:#f7f7f8;font-weight:700;font-size:16px;}
         .category {color:#c4c4cc;font-size:14px;}
         .viewers {color:#ff6269;font-size:14px;font-weight:600;}
-        popover.stream-title > contents {background:#26262c;color:#efeff1;border:1px solid #484850;border-radius:6px;}
-        popover.stream-title label {font-size:14px;}
+        window.stream-title {background:#26262c;color:#efeff1;border:1px solid #484850;border-radius:6px;}
+        window.stream-title label {font-size:14px;}
         .playing {color:#cfadff;}
         row.current {border-left:3px solid #a970ff;padding-left:7px;}
         """)
@@ -185,7 +186,9 @@ class Sidebar(Gtk.Application):
         if '--search' in sys.argv:self.start_search()
     def visibility_changed(self,*_):
         visible=self.window.get_visible()
-        if not visible:self.stop_navigation()
+        if not visible:
+            self.stop_navigation()
+            self.hide_stream_title()
         self.update_repeat_delay(visible)
     def update_repeat_delay(self,enabled):
         try:
@@ -297,6 +300,7 @@ class Sidebar(Gtk.Application):
             print(f'Sidebar event connection failed: {error}',file=sys.stderr)
             self.dismiss()
             return False
+        (Path(os.environ.get('XDG_RUNTIME_DIR','/tmp'))/'media-sidebar-slide-socket').write_text(str(endpoint))
         self.video_space=VideoSpace(connection.command,new_pid)
         self.reserve_video()
         if old_connection:
@@ -334,6 +338,7 @@ class Sidebar(Gtk.Application):
     def stop_events(self,*_):
         self.update_repeat_delay(False)
         self.stop_navigation()
+        self.hide_stream_title()
         self.closing=True
         if self.workspace_events:
             try:self.workspace_events.shutdown(socket.SHUT_RDWR)
@@ -487,12 +492,8 @@ class Sidebar(Gtk.Application):
             GLib.source_remove(self.title_timer)
             self.title_timer=None
         if self.title_popup:
-            self.title_popup.popdown()
-            self.title_popup.unparent()
+            self.title_popup.destroy()
             self.title_popup=None
-            # GTK may clear focus when the popover's surface is removed.
-            # Restore it after GTK has finished that transition.
-            GLib.idle_add(self.restore_input_focus)
     def expire_stream_title(self):
         self.title_timer=None
         self.hide_stream_title()
@@ -501,13 +502,21 @@ class Sidebar(Gtk.Application):
         if self.rebuilding_rows or self.held_nav is not None:return
         self.hide_stream_title()
         if not row or not hasattr(row,'data') or not row.data.get('title'):return
-        popup=Gtk.Popover()
+        # A separate, keyboard-inert layer cannot acquire an xdg-popup grab
+        # or leave the sidebar's keyboard routed to a destroyed popup surface.
+        popup=Gtk.Window(application=self)
         popup.add_css_class('stream-title')
-        popup.set_has_arrow(False)
-        popup.set_autohide(False)
         popup.set_focusable(False)
         popup.set_can_focus(False)
-        popup.set_position(Gtk.PositionType.RIGHT)
+        Layer.init_for_window(popup)
+        Layer.set_namespace(popup,'stream-sidebar-title')
+        Layer.set_layer(popup,Layer.Layer.OVERLAY)
+        Layer.set_exclusive_zone(popup,-1)
+        Layer.set_keyboard_mode(popup,Layer.KeyboardMode.NONE)
+        Layer.set_anchor(popup,Layer.Edge.LEFT,True)
+        Layer.set_anchor(popup,Layer.Edge.TOP,True)
+        monitor=Layer.get_monitor(self.window)
+        if monitor:Layer.set_monitor(popup,monitor)
         content=Gtk.Box(orientation=Gtk.Orientation.VERTICAL,spacing=4)
         content.set_margin_top(8);content.set_margin_bottom(8)
         content.set_margin_start(10);content.set_margin_end(10)
@@ -522,11 +531,16 @@ class Sidebar(Gtk.Application):
             game.set_wrap(True);game.set_max_width_chars(42)
             content.append(game)
         popup.set_child(content)
-        popup.set_parent(row)
+        popup.set_default_size(330,-1)
+        ok,bounds=row.compute_bounds(self.window)
+        top=max(0,int(bounds.get_y())) if ok else 0
+        height=content.measure(Gtk.Orientation.VERTICAL,330)[1]+20
+        top=min(top,max(0,self.window.get_height()-height))
+        Layer.set_margin(popup,Layer.Edge.LEFT,self.window.get_width()+8)
+        Layer.set_margin(popup,Layer.Edge.TOP,top)
         self.title_popup=popup
         if row.get_mapped():
-            popup.popup()
-            GLib.idle_add(self.restore_input_focus)
+            popup.present()
             self.title_timer=GLib.timeout_add(2500,self.expire_stream_title)
     def refresh(self):
         # Replacing focused rows mid-hold can interrupt GTK key delivery.

@@ -83,16 +83,20 @@ class VideoSpace:
         self.active=False
         self.fallback=fallback
 
+    def animated(self):
+        import os
+        return (Path(os.environ.get('XDG_RUNTIME_DIR','/tmp'))/'media-sidebar-slide-enabled').exists()
+
     def reserve(self, width, monitor_width):
         from media_panel_layout import update
-        update(self.command,self.pid,'left',width/monitor_width,self.fallback)
+        update(self.command,self.pid,'left',width/monitor_width,self.fallback,defer_left=self.animated())
         self.active=True
 
     def restore(self):
         if not self.active:return
         self.active=False
         from media_panel_layout import update
-        try:update(self.command,self.pid,'left',0)
+        try:update(self.command,self.pid,'left',0,defer_left=self.animated())
         except (OSError,ValueError):pass
 
 

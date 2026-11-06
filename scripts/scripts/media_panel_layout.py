@@ -9,7 +9,7 @@ FIT={'keepaspect':True,'panscan':0,'video-zoom':0,'video-pan-x':0,'video-pan-y':
      'video-margin-ratio-left':0,'video-margin-ratio-right':0,
      'video-margin-ratio-top':0,'video-margin-ratio-bottom':0}
 
-def update(command, pid, side, ratio, fallback=None):
+def update(command, pid, side, ratio, fallback=None, defer_left=False):
     if fallback:
         # Theater snapshots can be taken while the sidebar is already open.
         # Its reserved margin is not part of the underlying video layout.
@@ -37,6 +37,8 @@ def update(command, pid, side, ratio, fallback=None):
                               'video-margin-ratio-right':state['right']})
         else:
             values=state['original']
-        for key,value in values.items():command('set_property',key,value)
+        for key,value in values.items():
+            if defer_left and key=='video-margin-ratio-left':continue
+            command('set_property',key,value)
         if not state['left'] and not state['right']:
             command('set_property',PROPERTY,{})
