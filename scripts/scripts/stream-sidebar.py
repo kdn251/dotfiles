@@ -112,6 +112,8 @@ class Sidebar(Gtk.Application):
         .name {color:#f7f7f8;font-weight:700;font-size:16px;}
         .category {color:#c4c4cc;font-size:14px;}
         .viewers {color:#ff6269;font-size:14px;font-weight:600;}
+        popover.stream-title > contents {background:#26262c;color:#efeff1;border:1px solid #484850;border-radius:6px;}
+        popover.stream-title label {font-size:14px;}
         .playing {color:#cfadff;}
         row.current {border-left:3px solid #a970ff;padding-left:7px;}
         """)
@@ -141,6 +143,8 @@ class Sidebar(Gtk.Application):
         self.list=Gtk.ListBox(selection_mode=Gtk.SelectionMode.SINGLE)
         self.list.set_activate_on_single_click(True)
         self.list.connect('row-activated',self.choose)
+        self.title_popup=None
+        self.list.connect('row-selected',self.show_stream_title)
         scroll=Gtk.ScrolledWindow(vexpand=True)
         scroll.set_policy(Gtk.PolicyType.NEVER,Gtk.PolicyType.EXTERNAL)
         scroll.set_child(self.list);box.append(scroll)
@@ -328,6 +332,31 @@ class Sidebar(Gtk.Application):
             # Scroll to the selected row while leaving typing focus in the field.
             row.grab_focus();self.search.grab_focus_without_selecting()
         else:row.grab_focus()
+    def hide_stream_title(self,*_):
+        if self.title_popup:
+            self.title_popup.popdown()
+            self.title_popup.unparent()
+            self.title_popup=None
+    def show_stream_title(self,_,row):
+        self.hide_stream_title()
+        if not row or not hasattr(row,'data') or not row.data.get('title'):return
+        popup=Gtk.Popover()
+        popup.add_css_class('stream-title')
+        popup.set_has_arrow(False)
+        popup.set_autohide(False)
+        popup.set_focusable(False)
+        popup.set_can_focus(False)
+        popup.set_position(Gtk.PositionType.RIGHT)
+        label=Gtk.Label(label=row.data['title'],xalign=0)
+        label.set_wrap(True)
+        label.set_wrap_mode(Pango.WrapMode.WORD_CHAR)
+        label.set_max_width_chars(42)
+        label.set_margin_top(8);label.set_margin_bottom(8)
+        label.set_margin_start(10);label.set_margin_end(10)
+        popup.set_child(label)
+        popup.set_parent(row)
+        self.title_popup=popup
+        if row.get_mapped():popup.popup()
     def refresh(self):
         try:self.current=identity(self.player) or self.current
         except (OSError,ValueError):pass
@@ -338,6 +367,7 @@ class Sidebar(Gtk.Application):
         selected=self.list.get_selected_row()
         selected_key=choice(selected.data) if selected and hasattr(selected,'data') else None
         self.catalog=catalog
+        self.hide_stream_title()
         while child:=self.list.get_first_child():self.list.remove(child)
         preferred=None
         for data in catalog:
@@ -363,7 +393,10 @@ class Sidebar(Gtk.Application):
             count='—' if count is None else (f'{count/1000:.1f}k' if count>=1000 else str(int(count)))
             live=Gtk.Label(label='● '+count);live.add_css_class('viewers');body.append(live)
             row.set_child(body)
-            row.set_tooltip_text(data['service']+' · '+data['title'])
+            motion=Gtk.EventControllerMotion()
+            motion.connect('enter',lambda controller,x,y,r=row:self.show_stream_title(None,r))
+            motion.connect('leave',lambda *_:self.show_stream_title(None,self.list.get_selected_row()))
+            row.add_controller(motion)
             self.list.append(row)
             if choice(data)==selected_key or (selected_key is None and current):preferred=row
         if not catalog:
@@ -410,6 +443,7 @@ class Sidebar(Gtk.Application):
             pass
         return True
     def choose(self,_,row):
+        self.hide_stream_title()
         if self.searching:self.search.grab_focus_without_selecting()
         if not row or not hasattr(row,'data'):return
         data=row.data
