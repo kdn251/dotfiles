@@ -771,7 +771,9 @@ end
 
 -- Stream portraits share the title's visibility and geometry, not video space.
 local portrait = {generation=0, path=nil, shown=false, keys={}}
+local color_title={generation=0,shown=false}
 local function hide_portrait()
+    if color_title.shown then mp.commandv('overlay-remove',46);color_title.shown=false;color_title.overlay_key=nil end
     if portrait.shown then
         mp.commandv('overlay-remove', 43)
         mp.commandv('overlay-remove', 45)
@@ -844,6 +846,29 @@ local function live_timeline()
     return first, last, mp.get_property_number('time-pos', 0), ranges
 end
 
+-- libass cannot render bitmap-only color emoji. Select an outline emoji
+-- font for emoji runs while leaving ordinary title text in the user's font.
+local function title_emoji(text)
+    local normal=mp.get_property('options/osd-font','sans-serif')
+    local out,emoji={},false
+    for char in text:gmatch('[%z\1-\127\194-\244][\128-\191]*') do
+        local a,b,c,d=char:byte(1,4)
+        local cp=a
+        if d then cp=(a-240)*262144+(b-128)*4096+(c-128)*64+d-128
+        elseif c then cp=(a-224)*4096+(b-128)*64+c-128
+        elseif b then cp=(a-192)*64+b-128 end
+        local is_emoji=(cp>=0x1F000 and cp<=0x1FAFF) or (cp>=0x2600 and cp<=0x27BF)
+            or cp==0xFE0F or cp==0x200D or cp==0x20E3
+        if is_emoji~=emoji then
+            out[#out+1]='{\\fn'..(is_emoji and 'Stream Emoji' or normal)..'}'
+            emoji=is_emoji
+        end
+        out[#out+1]=char
+    end
+    if emoji then out[#out+1]='{\\fn'..normal..'}' end
+    return table.concat(out)
+end
+
 local function card_escape(text)
     return (text or ''):gsub('[\r\n]', ' '):gsub('\\', ''):gsub('{', '\\{')
 end
@@ -853,7 +878,7 @@ local function portrait_title(element, ass)
     if (element.name ~= 'title' and element.name ~= 'wctitle' and element.name ~= 'streamidentity') or not portrait.path then return element end
     local overlay_id = element.name == 'wctitle' and 45 or 43
     local geo = element.layout.geometry
-    local size = element.name == 'streamidentity' and 34 or math.max(18, geo.h * 1.25)
+    local size = element.name == 'streamidentity' and 30 or math.max(18, geo.h * 1.25)
     if geo.w < size + 60 then hide_portrait(); return element end
     local column = (geo.an - 1) % 3
     local left = geo.x - (column == 1 and geo.w/2 or column == 2 and geo.w or 0)
@@ -886,6 +911,54 @@ title_measure.hidden = true
 title_measure.compute_bounds = true
 local title_marquee = {}
 local title_scrolling = false
+
+local function draw_color_title(element)
+    if element.name~='title' or not stream_card_enabled() then return false end
+    local _,text=stream_card_parts()
+    if text=='' then return false end
+    local font=mp.get_property('options/osd-font','sans-serif')
+    local key=text..'\n'..font
+    if color_title.key~=key then
+        color_title.key=key;color_title.data=nil;color_title.generation=color_title.generation+1
+        if color_title.shown then mp.commandv('overlay-remove',46);color_title.shown=false end
+        if color_title.job then mp.abort_async_command(color_title.job) end
+        local version=color_title.generation
+        color_title.job=mp.command_native_async({name='subprocess',playback_only=false,
+            args={'python3',os.getenv('HOME')..'/scripts/stream-title-color.py',text,font},
+            capture_stdout=true,capture_stderr=true},function(ok,result)
+                if version~=color_title.generation then return end
+                color_title.job=nil
+                if ok and result and result.status==0 then
+                    color_title.data=utils.parse_json(result.stdout)
+                    color_title.started=mp.get_time();color_title.overlay_key=nil;request_tick()
+                end
+            end)
+    end
+    local data=color_title.data
+    if not data then return false end
+    local geo=element.layout.geometry
+    local scale=15/data.font_size
+    local span=math.max(1,math.min(data.width,math.floor(geo.w/scale)))
+    local overflow=math.max(0,data.width-span)
+    local offset=0
+    if overflow>0 then
+        title_scrolling=true
+        local travel=overflow*scale/35
+        local phase=(mp.get_time()-(color_title.started or mp.get_time()))%(travel+2.4)
+        offset=math.min(overflow,math.floor(math.max(0,phase-.9)*35/scale))
+    end
+    local w,h=mp.get_osd_size()
+    local sx,sy=w/osc_param.playresx,h/osc_param.playresy
+    local x=math.floor(geo.x*sx)
+    local y=math.floor((geo.y-data.height*scale/2)*sy)
+    local dw,dh=math.max(1,math.floor(span*scale*sx)),math.max(1,math.floor(data.height*scale*sy))
+    local overlay_key=table.concat({key,x,y,dw,dh,offset,span},':')
+    if color_title.overlay_key~=overlay_key then
+        mp.command_native({'overlay-add',46,x,y,data.path,offset*4,'bgra',span,data.height,data.width*4,dw,dh})
+        color_title.overlay_key=overlay_key;color_title.shown=true
+    end
+    return true
+end
 
 local function scroll_title(element, text)
     local geo = element.layout.geometry
@@ -1229,6 +1302,11 @@ function render_elements(master_ass)
             end
 
         elseif (element.type == "button") then
+            if draw_color_title(element) then
+                -- Keep the ASS event boundary even though the text itself is
+                -- now a bitmap; otherwise adjacent labels can merge events.
+                elem_ass:append('{\\alpha&HFF&} ')
+            else
             element = portrait_title(element, elem_ass)
 
             local buttontext
@@ -1269,6 +1347,7 @@ function render_elements(master_ass)
                 end, 1)
             end
             elem_ass:append(buttontext)
+            end -- color title or standard ASS text
         end
 
         master_ass:merge(elem_ass)
@@ -1568,7 +1647,7 @@ function window_controls(topbar)
         local title = mp.command_native({"expand-text", user_opts.title})
         -- escape ASS, and strip newlines and trailing slashes
         title = title:gsub("\\n", " "):gsub("\\$", ""):gsub("{","\\{")
-        return not (title == "") and title or "mpv"
+        return not (title == "") and title_emoji(title) or "mpv"
     end
     local left_pad = 5
     local right_pad = 10
@@ -1961,7 +2040,7 @@ function bar_layout(direction)
         left=math.max(0,math.min(.45,left));right=math.max(0,math.min(.45,right))
         osc_geo.x=osc_param.playresx*left
         osc_geo.w=osc_param.playresx*(1-left-right)
-        osc_geo.h=94
+        osc_geo.h=72
         osc_geo.y=osc_param.playresy-osc_geo.h-user_opts.barmargin
         osc_param.areas.input={}
         add_area("input", get_hitbox_coords(osc_geo.x, osc_geo.y, osc_geo.an, osc_geo.w, osc_geo.h))
@@ -2014,23 +2093,23 @@ function bar_layout(direction)
         -- Channel identity and content get separate lines instead of sharing
         -- one long technical window title. Keep controls at the bottom.
         local x=osc_geo.x
-        local text_x=x+53
+        local text_x=x+49
         local right=x+osc_geo.w-12
         lo = add_layout("streamidentity")
-        lo.geometry = {x=x+12,y=osc_geo.y+15,an=4,w=osc_geo.w-24,h=18}
-        lo.style = "{\\q2\\fs17\\b1\\bord0\\shad0\\1c&HF7F7F8&}"
+        lo.geometry = {x=x+12,y=osc_geo.y+13,an=4,w=osc_geo.w-180,h=16}
+        lo.style = "{\\q2\\fs16\\b1\\bord0\\shad0\\1c&HF7F7F8&}"
         lo = add_layout("title")
-        lo.geometry = {x=text_x,y=osc_geo.y+36,an=4,w=right-text_x,h=18}
-        lo.style = string.format("{\\q2\\fs16\\bord0\\shad0\\clip(%f,%f,%f,%f)}",text_x,0,right,osc_param.playresy)
+        lo.geometry = {x=text_x,y=osc_geo.y+32,an=4,w=right-text_x,h=18}
+        lo.style = string.format("{\\q2\\fs15\\bord0\\shad0\\clip(%f,%f,%f,%f)}",text_x,0,right,osc_param.playresy)
         lo = add_layout("streamdetails")
-        lo.geometry = {x=text_x,y=osc_geo.y+56,an=4,w=right-text_x,h=16}
-        lo.style = string.format("{\\q2\\fs13\\bord0\\shad0\\1c&HCCC4C4&\\clip(%f,%f,%f,%f)}",text_x,0,right,osc_param.playresy)
+        lo.geometry = {x=text_x,y=osc_geo.y+50,an=4,w=right-text_x,h=16}
+        lo.style = string.format("{\\q2\\fs12\\bord0\\shad0\\1c&HCCC4C4&\\clip(%f,%f,%f,%f)}",text_x,0,right,osc_param.playresy)
         -- Their previous locations sit in the new metadata block.
         elements.pl_prev.layout = nil
         elements.pl_next.layout = nil
         elements.cache.layout = nil
         -- A thin buffered timeline, without the transport-button row.
-        local track = {x=x+12,y=osc_geo.y+73,an=4,w=osc_geo.w-24,h=3}
+        local track = {x=x+12,y=osc_geo.y+65,an=4,w=osc_geo.w-24,h=3}
         lo = add_layout("liveseek")
         lo.geometry = track
         lo.style = "{\\bord0\\shad0\\1c&HFF70A9&}"
@@ -2041,7 +2120,7 @@ function bar_layout(direction)
         lo.slider.tooltip_style = "{\\q2\\fs16\\bord1\\shad0\\1c&HFFFFFF&}"
         lo.slider.tooltip_an = 2
         lo = add_layout("livestatus")
-        lo.geometry = {x=x+12,y=osc_geo.y+86,an=4,w=osc_geo.w-24,h=14}
+        lo.geometry = {x=right,y=osc_geo.y+13,an=6,w=145,h=14}
         lo.style = "{\\q2\\fs12\\bord0\\shad0\\1c&HCCC4C4&}"
         state.slider_element = nil
         osc_param.video_margins.b = osc_geo.h / osc_param.playresy
@@ -2298,13 +2377,13 @@ function osc_init()
     ne = new_element("streamidentity", "button")
     ne.content = function()
         local name = stream_card_parts()
-        return card_escape(name) .. "  {\\fs12\\b1\\1c&H4646EB&}LIVE"
+        return title_emoji(card_escape(name))
     end
     ne.eventresponder["mbtn_left_up"] = open_stream
     ne = new_element("streamdetails", "button")
     ne.content = function()
         local _, _, details = stream_card_parts()
-        return card_escape(details):gsub('(􀀁 [%d%.]+k?)', function(count)
+        return title_emoji(card_escape(details)):gsub('(􀀁 [%d%.]+k?)', function(count)
             return '{\\1c&H4646EB&}' .. count .. '{\\1c&HCCC4C4&}'
         end, 1)
     end
