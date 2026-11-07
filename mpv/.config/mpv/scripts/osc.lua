@@ -622,6 +622,10 @@ function prepare_elements()
         -- Calculate the hitbox
         local bX1, bY1, bX2, bY2 = get_hitbox_coords_geo(elem_geo)
         element.hitbox = {x1 = bX1, y1 = bY1, x2 = bX2, y2 = bY2}
+        if element.name == 'liveseek' then
+            element.hitbox.y1 = bY1 - 7
+            element.hitbox.y2 = bY2 + 7
+        end
 
         local style_ass = assdraw.ass_new()
 
@@ -810,18 +814,49 @@ mp.observe_property('user-data/stream-name', 'native', refresh_portrait)
 mp.observe_property('user-data/stream-service', 'native', refresh_portrait)
 mp.register_event('shutdown', hide_portrait)
 
+local function stream_card_enabled()
+    return user_opts.layout == 'bottombar' and mp.get_property_native('user-data/stream-name', '') ~= ''
+end
+local function stream_card_parts()
+    local full = mp.get_property('media-title', '')
+    local heading, title = full:match('^(.-) | (.*)$')
+    heading = heading or full
+    local name, details = heading:match('^(.-) — (.*)$')
+    name = name or mp.get_property_native('user-data/stream-name', '')
+    return name, title or '', details or ''
+end
+-- Live HLS clocks often start at a nonzero timestamp. Use the same
+-- buffered bounds as stream-live-seek, rather than file-duration percentages.
+local function live_timeline()
+    local cache = mp.get_property_native('demuxer-cache-state', {}) or {}
+    local first, last
+    local ranges = cache['seekable-ranges'] or {}
+    for _, range in ipairs(ranges) do
+        if range.start and range['end'] then
+            first = math.min(first or range.start, range.start)
+            last = math.max(last or range['end'], range['end'])
+        end
+    end
+    return first, last, mp.get_property_number('time-pos', 0), ranges
+end
+
+local function card_escape(text)
+    return (text or ''):gsub('[\r\n]', ' '):gsub('\\', ''):gsub('{', '\\{')
+end
+
 local function portrait_title(element, ass)
-    if (element.name ~= 'title' and element.name ~= 'wctitle') or not portrait.path then return element end
+    if element.name == 'title' and stream_card_enabled() then return element end
+    if (element.name ~= 'title' and element.name ~= 'wctitle' and element.name ~= 'streamidentity') or not portrait.path then return element end
     local overlay_id = element.name == 'wctitle' and 45 or 43
     local geo = element.layout.geometry
-    local size = math.max(18, geo.h * 1.25)
+    local size = element.name == 'streamidentity' and 52 or math.max(18, geo.h * 1.25)
     if geo.w < size + 60 then hide_portrait(); return element end
     local column = (geo.an - 1) % 3
     local left = geo.x - (column == 1 and geo.w/2 or column == 2 and geo.w or 0)
     local top = geo.y - (geo.an <= 3 and geo.h or geo.an <= 6 and geo.h/2 or 0)
     local width, height = mp.get_osd_size()
     local sx, sy = width/osc_param.playresx, height/osc_param.playresy
-    local x, y = math.floor(left*sx), math.floor((top+(geo.h-size)/2)*sy)
+    local x, y = math.floor(left*sx), math.floor((top+(element.name == 'streamidentity' and 0 or (geo.h-size)/2))*sy)
     local w, h = math.max(1, math.floor(size*sx)), math.max(1, math.floor(size*sy))
     local key = portrait.path .. ':' .. x .. ':' .. y .. ':' .. w .. ':' .. h
     if portrait.keys[overlay_id] ~= key then
@@ -837,7 +872,7 @@ local function portrait_title(element, ass)
     layout.geometry = {x=text_x, y=top, an=7, w=geo.w-size-7, h=geo.h}
     ass.text = ass.text:gsub('\\pos%b()', ''):gsub('\\an%d', ''):gsub('\\clip%b()', '')
     ass:append(string.format('{\\an7\\pos(%f,%f)\\clip(%f,%f,%f,%f)}',
-        text_x, top, text_x, top-geo.h, left+geo.w, top+geo.h*2))
+        text_x, top, text_x, 0, left+geo.w, osc_param.playresy))
     return copy
 end
 
@@ -859,7 +894,7 @@ local function scroll_title(element, text)
         title_measure.res_x = osc_param.playresx
         title_measure.res_y = osc_param.playresy
         title_measure.data = '{\\an7\\pos(0,0)}' ..
-            element.layout.style:gsub('{\\clip%b()}', '') .. text
+            element.layout.style:gsub('\\clip%b()', '') .. text
         local bounds = title_measure:update()
         local width = bounds and bounds.x1 and (bounds.x1 - bounds.x0) or 0
         saved = {key=key, width=width, started=mp.get_time()}
@@ -875,7 +910,7 @@ local function scroll_title(element, text)
     local x = geo.x - (column == 1 and geo.w / 2 or column == 2 and geo.w or 0)
     local y = geo.y - (geo.an <= 3 and geo.h or geo.an <= 6 and geo.h / 2 or 0)
     return string.format('{\\an7\\pos(%f,%f)\\clip(%f,%f,%f,%f)}',
-        x - offset, y, x, y - geo.h, x + geo.w, y + geo.h * 2) .. text
+        x - offset, y, x, 0, x + geo.w, osc_param.playresy) .. text
 end
 
 mp.add_periodic_timer(0.05, function()
@@ -1878,7 +1913,13 @@ function bar_layout(direction)
     local lo, geo
 
     -- Make one extra compact row only when the video supplies chapters.
-    local has_chapter = direction < 0 and mp.get_property_number('chapters', 0) > 0
+    local stream_card = direction < 0 and stream_card_enabled()
+    local has_chapter = not stream_card and direction < 0 and mp.get_property_number('chapters', 0) > 0
+    if stream_card then
+        osc_geo.y = osc_geo.y - 76
+        osc_geo.h = osc_geo.h + 76
+        add_area("input", get_hitbox_coords(osc_geo.x, osc_geo.y, osc_geo.an, osc_geo.w, osc_geo.h))
+    end
     -- Background bar
     new_element("bgbox", "box")
     lo = add_layout("bgbox")
@@ -1923,6 +1964,45 @@ function bar_layout(direction)
         geo.x, geo.y-geo.h, geo.x+geo.w, geo.y+geo.h)
 
 
+    if stream_card then
+        -- Channel identity and content get separate lines instead of sharing
+        -- one long technical window title. Keep controls at the bottom.
+        lo = add_layout("streamidentity")
+        lo.geometry = {x=14,y=osc_geo.y+20,an=4,w=osc_geo.w-34,h=20}
+        lo.style = "{\\q2\\fs22\\b1\\bord0\\shad0\\1c&HF7F7F8&}"
+        lo = add_layout("title")
+        lo.geometry = {x=80,y=osc_geo.y+50,an=4,w=osc_geo.w-100,h=20}
+        lo.style = string.format("{\\q2\\fs20\\bord0\\shad0\\clip(%f,%f,%f,%f)}",80,0,osc_geo.w-20,osc_param.playresy)
+        lo = add_layout("streamdetails")
+        lo.geometry = {x=80,y=osc_geo.y+80,an=4,w=osc_geo.w-100,h=18}
+        lo.style = string.format("{\\q2\\fs17\\bord0\\shad0\\1c&HCCC4C4&\\clip(%f,%f,%f,%f)}",80,0,osc_geo.w-20,osc_param.playresy)
+        -- Their previous locations sit in the new metadata block.
+        elements.pl_prev.layout = nil
+        elements.pl_next.layout = nil
+        elements.cache.layout = nil
+        -- A thin buffered timeline, without the transport-button row.
+        local track = {x=16,y=osc_geo.y+110,an=4,w=osc_geo.w-260,h=6}
+        new_element("livetrack", "box")
+        lo = add_layout("livetrack")
+        lo.geometry = track
+        lo.layer = 15
+        lo.style = "{\\bord0\\shad0\\1c&H55504A&}"
+        lo = add_layout("liveseek")
+        lo.geometry = track
+        lo.style = "{\\bord0\\shad0\\1c&HFF70A9&}"
+        lo.slider.border = 0
+        lo.slider.gap = 0
+        lo.slider.stype = "bar"
+        lo.slider.rtype = "line"
+        lo.slider.tooltip_style = "{\\q2\\fs16\\bord1\\shad0\\1c&HFFFFFF&}"
+        lo.slider.tooltip_an = 2
+        lo = add_layout("livestatus")
+        lo.geometry = {x=osc_geo.w-16,y=osc_geo.y+110,an=6,w=224,h=20}
+        lo.style = "{\\q2\\fs15\\bord0\\shad0\\1c&HCCC4C4&}"
+        state.slider_element = nil
+        osc_param.video_margins.b = osc_geo.h / osc_param.playresy
+        return
+    end
     if has_chapter then
         lo = add_layout("chaptername")
         lo.geometry = {x=t_l, y=line1-22, an=4, w=osc_geo.w-t_l-padX, h=18}
@@ -2138,6 +2218,10 @@ function osc_init()
     ne.content = function ()
         local title = state.forced_title or
                       mp.command_native({"expand-text", user_opts.title})
+        if stream_card_enabled() then
+            local _, stream_title = stream_card_parts()
+            title = stream_title ~= '' and stream_title or title
+        end
         -- escape ASS, and strip newlines and trailing slashes
         title = title:gsub("\\n", " "):gsub("\\$", ""):gsub("{","\\{")
         return not (title == "") and title or "mpv"
@@ -2165,6 +2249,23 @@ function osc_init()
 
     ne.eventresponder["mbtn_right_up"] =
         function () show_message(mp.get_property_osd("filename")) end
+
+    local open_stream = ne.eventresponder["mbtn_left_up"]
+    ne = new_element("streamidentity", "button")
+    ne.content = function()
+        local name = stream_card_parts()
+        return card_escape(name) .. "  {\\fs12\\b1\\1c&H4646EB&}LIVE"
+    end
+    ne.eventresponder["mbtn_left_up"] = open_stream
+    ne = new_element("streamdetails", "button")
+    ne.content = function()
+        local _, _, details = stream_card_parts()
+        return card_escape(details):gsub('(􀀁 [%d%.]+k?)', function(count)
+            return '{\\1c&H4646EB&}' .. count .. '{\\1c&HCCC4C4&}'
+        end, 1)
+    end
+    ne.eventresponder["mbtn_left_up"] = open_stream
+
 
     -- playlist buttons
 
@@ -2342,6 +2443,57 @@ function osc_init()
     end
     ne.eventresponder["mbtn_left_up"] =
         function () mp.commandv("cycle", "fullscreen") end
+
+    ne = new_element("liveseek", "slider")
+    ne.slider.posF = function()
+        local first,last,pos = live_timeline()
+        if not first or last <= first then return 0 end
+        return math.max(0,math.min(100,(pos-first)/(last-first)*100))
+    end
+    ne.slider.seekRangesF = function()
+        local first,last,_,ranges = live_timeline()
+        if not first or last <= first then return nil end
+        local result = {}
+        for _,r in ipairs(ranges) do
+            result[#result+1] = {start=(r.start-first)/(last-first)*100,
+                ['end']=(r['end']-first)/(last-first)*100}
+        end
+        return result
+    end
+    ne.slider.tooltipF = function(percent)
+        local first,last = live_timeline()
+        if not first or last <= first then return 'Waiting for buffer' end
+        local behind = math.max(0,(last-first)*(1-percent/100))
+        return behind < 1 and 'Live edge' or ('−' .. mp.format_time(behind))
+    end
+    local function seek_live(element)
+        if not element.state.bounds then
+            local first,last = live_timeline()
+            if not first or last <= first then return end
+            element.state.bounds = {first,last}
+        end
+        local bounds = element.state.bounds
+        local target = bounds[1]+(bounds[2]-bounds[1])*get_slider_value(element)/100
+        if target ~= element.state.lastseek then
+            stream_aware_seek(target,'absolute+exact')
+            element.state.lastseek = target
+        end
+    end
+    ne.eventresponder['mbtn_left_down'] = seek_live
+    ne.eventresponder['mouse_move'] = seek_live
+    ne.eventresponder['reset'] = function(e) e.state.bounds=nil;e.state.lastseek=nil end
+    ne = new_element("livestatus", "button")
+    ne.content = function()
+        local first,last,pos = live_timeline()
+        if not first then return 'Waiting for buffer' end
+        local ahead = math.max(0,last-pos)
+        local status = ahead <= 5 and '{\\1c&HFF70A9&}● LIVE' or ('−' .. mp.format_time(ahead))
+        return status .. '{\\1c&HCCC4C4&} · ' .. math.floor(ahead+.5) .. 's buffered'
+    end
+    ne.eventresponder['mbtn_left_up'] = function()
+        stream_aware_seek(100,'absolute-percent')
+        mp.set_property_native('pause',false)
+    end
 
     --seekbar
     ne = new_element("seekbar", "slider")
@@ -3201,6 +3353,7 @@ mp.observe_property("demuxer-cache-state", "native", cache_state)
 mp.observe_property("vo-configured", "bool", function(name, val)
     request_tick()
 end)
+mp.observe_property("user-data/stream-name", "native", request_init_resize)
 mp.observe_property("user-data/stream-uptime", "native", function()
     request_tick()
 end)

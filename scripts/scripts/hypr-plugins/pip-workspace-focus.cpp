@@ -23,6 +23,7 @@ static CHyprSignalListener keyboardListener;
 static PHLWINDOWREF unfocusedPlayer;
 static UP<SEventLoopDoLaterLock> pendingExit;
 static UP<SEventLoopDoLaterLock> pendingFocus;
+static UP<SEventLoopDoLaterLock> pendingWorkspaceFocus;
 
 static void releaseExitGuard() {
     unfocusedPlayer.reset();
@@ -65,6 +66,7 @@ APICALL EXPORT PLUGIN_DESCRIPTION_INFO PLUGIN_INIT(HANDLE handle) {
     ChatSlide::start();
     SidebarSlide::start();
     workspaceListener = Event::bus()->m_events.workspace.active.listen([](PHLWORKSPACE workspace) {
+        pendingWorkspaceFocus.reset();
         const auto focus = Desktop::focusState();
         // Hide/show fullscreen chat in the workspace transaction itself,
         // before another frame renders. The Python controller owns this file.
@@ -107,14 +109,37 @@ APICALL EXPORT PLUGIN_DESCRIPTION_INFO PLUGIN_INIT(HANDLE handle) {
                 }
             }
         }
-        const auto active = focus->window();
+        // Workspace restoration can focus chat before its player. Once the
+        // transaction finishes, return keyboard input to the fullscreen video.
+        // rawWindowFocus respects an exclusive sidebar layer and does not
+        // invoke the policy that exits fullscreen when another app is focused.
         const auto monitor = focus->monitor();
+        if (workspace && monitor && monitor->m_activeWorkspace == workspace) {
+            for (const auto& candidate : Desktop::windowState()->windows()) {
+                if (!candidate->mapped() || candidate->isHidden() ||
+                    candidate->metadata().appID() != "mpv" ||
+                    candidate->m_workspace != workspace || candidate->m_monitor != monitor ||
+                    !Fullscreen::controller()->isFullscreen(candidate)) continue;
+                pendingWorkspaceFocus = g_pEventLoopManager->doLaterLock([weak = PHLWINDOWREF(candidate)] {
+                    const auto player = weak.lock();
+                    const auto monitor = Desktop::focusState()->monitor();
+                    if (!player || !player->mapped() || player->isHidden() || !monitor ||
+                        player->m_monitor != monitor || player->m_workspace != monitor->m_activeWorkspace ||
+                        !Fullscreen::controller()->isFullscreen(player)) return;
+                    const auto special = monitor->m_activeSpecialWorkspace;
+                    if (special && special->addressableName() != "special:chatterino_chat") return;
+                    Desktop::focusState()->rawWindowFocus(player, Desktop::FOCUS_REASON_WORKSPACE_CHANGE);
+                });
+                return;
+            }
+        }
+        const auto active = focus->window();
         if (!workspace || !monitor || monitor->m_activeWorkspace != workspace ||
             !active || active->metadata().appID() != "mpv" || active->m_monitor != monitor)
             return;
 
-        // Workspace entry must never select MPV, even if it was the last
-        // focused window there. Prefer an eligible normal app on that workspace.
+        // Windowed PiP must not steal focus on workspace entry. Fullscreen
+        // playback above is an intentional keyboard destination instead.
         // Raw focus does not tear down a fullscreen player behind the sidebar.
         focusOtherApp(workspace, Desktop::FOCUS_REASON_WORKSPACE_CHANGE);
     });
@@ -172,7 +197,7 @@ APICALL EXPORT PLUGIN_DESCRIPTION_INFO PLUGIN_INIT(HANDLE handle) {
     keyboardListener = Event::bus()->m_events.input.keyboard.key.listen([](IKeyboard::SKeyEvent event, Event::SCallbackInfo&) {
         if (event.state == WL_KEYBOARD_KEY_STATE_PRESSED) releaseExitGuard();
     });
-    return {"pip-workspace-focus", "Keep MPV unfocused on workspace entry and fullscreen exit", "local", "1.10"};
+    return {"pip-workspace-focus", "Keep MPV unfocused on workspace entry and fullscreen exit", "local", "1.11"};
 }
 
 APICALL EXPORT void PLUGIN_EXIT() {
@@ -180,6 +205,7 @@ APICALL EXPORT void PLUGIN_EXIT() {
     SidebarSlide::stop();
     pendingExit.reset();
     pendingFocus.reset();
+    pendingWorkspaceFocus.reset();
     workspaceListener.reset();
     fullscreenListener.reset();
     activeListener.reset();
