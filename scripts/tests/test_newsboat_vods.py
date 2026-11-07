@@ -52,7 +52,7 @@ class VODTests(unittest.TestCase):
                 self.assertTrue((folder/'bob - Busy - 123456791.mp4').exists())
 
     def test_local_playback_passes_title(self):
-        with patch.object(vods,'entries',return_value=[dict(url='https://www.twitch.tv/videos/123456789',title='Stream title')]), patch.object(vods.subprocess,'run') as run:
+        with patch.object(vods,'scan',return_value=[]),patch.object(vods,'entries',return_value=[dict(url='https://www.twitch.tv/videos/123456789',title='Stream title')]), patch.object(vods.subprocess,'run') as run:
             vods.play('https://www.twitch.tv/videos/123456789')
             self.assertEqual(run.call_args.args[0][-2:],['https://www.twitch.tv/videos/123456789','Stream title'])
             with self.assertRaises(ValueError):vods.play('https://www.twitch.tv/videos/999999999')
@@ -155,11 +155,30 @@ class VODResponsivenessTests(unittest.TestCase):
             index=state/'vod-items.json';index.write_text(json.dumps([dict(path=str(p),url='https://www.twitch.tv/videos/'+str(i)) for i,p in enumerate([complete,busy,partial])]))
             with (state/'.library.lock').open('w') as lock:
                 fcntl.flock(lock,fcntl.LOCK_EX)
-                with patch.multiple(vods,STATE=state,INDEX=index),patch.object(media,'busy_paths',return_value={busy.resolve()}),patch.object(media,'playable',side_effect=AssertionError('Interactive open must not probe')),patch.object(vods.subprocess,'Popen') as launch:
+                with patch.multiple(vods,STATE=state,INDEX=index,DIRECTORY=folder),patch.object(media,'busy_paths',return_value={busy.resolve()}),patch.object(media,'playable',side_effect=AssertionError('Interactive open must not probe')),patch.object(vods.subprocess,'Popen') as launch:
                     started=time.monotonic();rows=vods.view_entries()
                     self.assertLess(time.monotonic()-started,.2)
                     self.assertEqual([row['path'] for row in rows],[str(complete)])
                     self.assertEqual(launch.call_args.args[0][-1],'refresh')
+
+    def test_failed_probe_expires_and_new_completed_vod_appears_on_first_open(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root=Path(directory);state=root/'state';folder=root/'twitch-vods';folder.mkdir()
+            path=folder/'alice - New - 123456789.mp4';path.write_bytes(b'video')
+            with patch.multiple(vods,STATE=state,INDEX=state/'vod-items.json',DIRECTORY=folder),patch.object(media,'ROOT',root),patch.object(media,'inside',return_value=True),patch.object(media,'busy_paths',return_value=set()),patch.object(media,'playable',side_effect=[False,True]) as probe,patch.object(vods.time,'time',return_value=1000) as clock,patch.object(vods.subprocess,'Popen'):
+                self.assertEqual(vods.scan(),[])
+                self.assertEqual(vods.scan(),[])
+                self.assertEqual(probe.call_count,1)
+                (root/'.downloaded-twitch-vods').write_text('alice:123456789\n')
+                rows=vods.view_entries()
+                self.assertEqual([r['id'] for r in rows],['123456789'])
+                self.assertEqual(probe.call_count,1,'Opening must not wait for a probe')
+                Path(str(path)+'.incomplete').touch()
+                self.assertEqual(vods.view_entries(),[])
+                Path(str(path)+'.incomplete').unlink()
+                clock.return_value=1301
+                self.assertEqual([r['id'] for r in vods.scan()],['123456789'])
+                self.assertEqual(probe.call_count,2)
 
     def test_unchanged_invalid_files_are_not_repeatedly_probed(self):
         with tempfile.TemporaryDirectory() as directory:

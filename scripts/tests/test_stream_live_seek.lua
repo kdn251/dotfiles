@@ -1,6 +1,8 @@
+package.preload['mp.utils']=function()return {}end
 local properties={['user-data/stream-service']='Twitch',['time-pos']=1249,duration=277,['demuxer-cache-state']={['seekable-ranges']={{start=970,['end']=1250}}}}
 local callback,commands,keys=nil,{},{}
-mp={get_property_native=function(k,default) return properties[k] or default end,
+mp={add_timeout=function()end,add_periodic_timer=function()end,register_event=function()end,
+get_property_native=function(k,default) return properties[k] or default end,
 get_property_number=function(k) return properties[k] end,
 register_script_message=function(_,f) callback=f end,
 observe_property=function(_,_,f) f() end,

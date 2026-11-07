@@ -1,3 +1,4 @@
+local dvr=dofile((os.getenv('HOME') or '')..'/scripts/stream-twitch-dvr.lua')
 -- Live HLS timestamps need not start at zero. Seek within the actual buffered
 -- range, never duration-based percentages or a position beyond available data.
 local function active()
@@ -19,6 +20,7 @@ local function seek(value,flags)
     value=tonumber(value)
     if not value or not active() then return end
     flags=flags or 'relative'
+    if dvr.seek(value,flags) then return end
     local first,last=bounds()
     local position=mp.get_property_number('time-pos')
     if not first or not last or not position then return end

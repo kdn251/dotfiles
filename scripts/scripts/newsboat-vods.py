@@ -9,6 +9,7 @@ from pathlib import Path
 import subprocess
 import sys
 import tempfile
+import time
 import newsboat_vod_progress as progress
 import xml.etree.ElementTree as ET
 import newsboat_media as media
@@ -28,7 +29,7 @@ def entries():
         return []
 
 
-def scan():
+def scan(fast=False):
     old = {row['path']: row for row in entries()}
     busy = media.busy_paths()
     rows = {}
@@ -38,6 +39,10 @@ def scan():
     except (OSError, ValueError):
         previous_probes = {}
     probes = {}
+    try:
+        completed = set((media.ROOT/'.downloaded-twitch-vods').read_text().splitlines())
+    except OSError:
+        completed = set()
     # Only the daily downloader's top-level files; ,d downloads live in manual/.
     for path in DIRECTORY.glob('*'):
         if path.suffix.lower() not in media.MEDIA or not path.is_file() or not media.inside(path):
@@ -53,8 +58,19 @@ def scan():
         row = old.get(str(path))
         if not row or row.get('signature') != signature:
             cached = previous_probes.get(str(path), {})
-            valid = cached.get('valid') if cached.get('signature') == signature else media.playable(path)
-            probes[str(path)] = dict(signature=signature, valid=valid)
+            unchanged = cached.get('signature') == signature
+            if fast:
+                # A successful downloader exit is recorded before publishing
+                # the index. Read it directly without ffprobe or a library lock.
+                valid = stat.st_size > 0 and (parts[0]+':'+key[1] in completed or
+                        (unchanged and cached.get('valid') is True))
+            elif unchanged and (cached.get('valid') is True or
+                    time.time()-cached.get('checked_at',0)<300):
+                valid = cached.get('valid')
+            else:
+                valid = media.playable(path)
+                cached = dict(signature=signature,valid=valid,checked_at=time.time())
+            probes[str(path)] = cached
             if not valid:
                 continue
             row = dict(url='https://www.twitch.tv/videos/'+key[1], title=parts[1].rsplit(' - ',1)[0],
@@ -62,7 +78,7 @@ def scan():
         previous = rows.get(key[1])
         if not previous or row['saved'] > previous['saved']:
             rows[key[1]] = row
-    media.atomic_write(probe_index,json.dumps(probes))
+    if not fast:media.atomic_write(probe_index,json.dumps(probes))
     return sorted(rows.values(),key=lambda row:int(row['id']),reverse=True)
 
 
@@ -124,6 +140,9 @@ def view_entries():
     busy = media.busy_paths()
     rows = [row for row in entries() if Path(row['path']).resolve() not in busy
             and not any(Path(row['path']+suffix).exists() for suffix in ('.part','.ytdl','.incomplete'))]
+    # Merge newly completed archive entries on this very first open. Preserve
+    # cached legacy entries; the background scan validates unrecognized files.
+    rows = list({row['url']:row for row in rows+scan(fast=True)}.values())
     subprocess.Popen([sys.executable,str(Path(__file__).resolve()),'refresh'],
                      stdin=subprocess.DEVNULL,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL,
                      start_new_session=True)
@@ -142,9 +161,10 @@ def prepare_view(directory):
     command,config=history.prepare_view(directory)
     write_view(directory,rows)
     lines=[line for line in config.read_text().splitlines() if not line.startswith(
-        ('macro D ','macro C ','bind o ','bind O ','macro v ','article-sort-order '))]
+        ('macro D ','macro C ','bind o ','bind O ','macro v ','article-sort-order ','articlelist-format ','datetime-format '))]
     action='set browser "python3 ~/scripts/newsboat-vods.py play %u" ; open-in-browser-noninteractively ; set browser "~/scripts/newsboat-brave-app.sh %u" ; toggle-article-read "read" "stay"'
-    lines += ['articlelist-format " %f  %D  %-9p %-20a │ %t"',
+    lines += ['articlelist-format " %f %D %-6p %-14a │ %t"',
+              'datetime-format "%b %d"',
               'article-sort-order date-asc', 'prepopulate-query-feeds yes',
               'bind o articlelist,article,searchresultslist '+action,
               'bind O articlelist,article,searchresultslist '+action,
@@ -178,6 +198,7 @@ def play(url):
     if any(row['url']==url for row in progress.active_rows()):
         raise ValueError('This VOD is still downloading; its progress is shown in the list')
     row=next((row for row in entries() if row['url']==url),None)
+    if not row:row=next((row for row in scan(fast=True) if row['url']==url),None)
     if not row:
         raise ValueError('This VOD is no longer on disk; reopen VODs to refresh the list')
     subprocess.run([sys.executable,str(SCRIPTS/'newsboat-play-video.py'),url,row['title']],check=True)
