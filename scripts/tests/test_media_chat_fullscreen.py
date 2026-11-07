@@ -138,6 +138,18 @@ class FullscreenChatTests(unittest.TestCase):
             self.assertFalse(layout.resume_theater([dict(self.player, pid=999)]))
             self.assertFalse(layout.PREFERENCE.exists())
 
+    def test_instant_reveal_marker_is_scoped_to_dispatch_even_on_failure(self):
+        marker=layout.ROOT/'media-chat-slide-instant'
+        def dispatch(*args):
+            if args[:1]==('-j',):return '[]'
+            if args[0]=='eval' and 'toggle_special' in args[1]:
+                self.assertTrue(marker.exists())
+                raise RuntimeError('dispatch failed')
+            return ''
+        with patch.object(layout,'hypr',side_effect=dispatch):
+            with self.assertRaises(RuntimeError):layout.toggle_workspace(animate=False)
+        self.assertFalse(marker.exists())
+
     def test_fullscreen_return_reuses_loaded_chat_without_opener(self):
         layout.remember_theater(self.player,self.chat)
         monitor=dict(self.monitor,specialWorkspace={'name':''})
@@ -147,8 +159,8 @@ class FullscreenChatTests(unittest.TestCase):
                 patch.object(layout,'focus_player') as focus, \
                 patch.object(layout.subprocess,'Popen') as launch:
             self.assertTrue(layout.resume_theater([self.player,self.chat]))
-            begin.assert_called_once_with([self.player,self.chat])
-            reveal.assert_called_once()
+            begin.assert_called_once_with([self.player,self.chat],animate=False)
+            reveal.assert_called_once_with(monitor,[monitor],animate=False)
             focus.assert_called_once()
             launch.assert_not_called()
 

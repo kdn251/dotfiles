@@ -58,6 +58,17 @@ static void start() {
         const auto ws=chat->m_workspace;
         // Workspace navigation retains the existing instant-hide behavior.
         if (opened && opened!=ws) return;
+        // Fullscreen restoration is not an explicit chat toggle. Reveal the
+        // already-sized pane immediately, without resetting the video margin.
+        if (opened) {
+            const auto runtime=std::getenv("XDG_RUNTIME_DIR");
+            if (runtime && ::access((std::string(runtime)+"/media-chat-slide-instant").c_str(),F_OK)==0) {
+                cleanup();
+                ws->m_renderOffset->setValueAndWarp(Vector2D{});
+                ws->m_alpha->setValueAndWarp(1.f);
+                return;
+            }
+        }
         cleanup();pane=chat;player=video;workspace=ws;showing=bool(opened);
         width=chat->size(Desktop::View::IGeometric::GEOMETRIC_GOAL).x;
         const bool theater=Fullscreen::controller()->isFullscreen(video);

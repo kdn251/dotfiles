@@ -197,7 +197,7 @@ APICALL EXPORT PLUGIN_DESCRIPTION_INFO PLUGIN_INIT(HANDLE handle) {
     keyboardListener = Event::bus()->m_events.input.keyboard.key.listen([](IKeyboard::SKeyEvent event, Event::SCallbackInfo&) {
         if (event.state == WL_KEYBOARD_KEY_STATE_PRESSED) releaseExitGuard();
     });
-    return {"pip-workspace-focus", "Keep MPV unfocused on workspace entry and fullscreen exit", "local", "1.11"};
+    return {"pip-workspace-focus", "Keep MPV unfocused on workspace entry and fullscreen exit", "local", "1.12"};
 }
 
 APICALL EXPORT void PLUGIN_EXIT() {

@@ -204,7 +204,7 @@ def chat_slide_style(clients, monitors):
     return f'slide {direction} {percent}%'
 
 
-def toggle_workspace():
+def toggle_workspace(animate=True):
     """Map/unmap chat without Hyprland exiting the video's fullscreen mode."""
     # The normal policy (2) exits fullscreen when special-workspace focus moves
     # underneath it. Override only inside this compositor transaction, then
@@ -222,14 +222,24 @@ def toggle_workspace():
             'hl.dispatch(hl.dsp.workspace.toggle_special("chatterino_chat")) end); '
             'hl.config({misc={on_focus_under_fullscreen=previous}}); '
             'if not ok then error(err) end')
-    hypr('eval',script)
+    instant = ROOT / 'media-chat-slide-instant'
+    if not animate:
+        instant.write_text('1\n')
+    try:
+        hypr('eval',script)
+    finally:
+        if not animate:
+            instant.unlink(missing_ok=True)
 
 
-def toggle_on_monitor(monitor, monitors):
+def toggle_on_monitor(monitor, monitors, animate=True):
     focused = next((m for m in monitors if m.get('focused')), None)
     if focused and focused['id'] != monitor['id']:
         hypr('dispatch', 'focusmonitor', str(monitor['id']))
-    toggle_workspace()
+    if animate:
+        toggle_workspace()
+    else:
+        toggle_workspace(animate=False)
     if focused and focused['id'] != monitor['id']:
         hypr('dispatch', 'focusmonitor', str(focused['id']))
 
@@ -328,11 +338,11 @@ def resume_theater(clients):
     if any(c.get('pid')==previous.get('pid') and c.get('address')==previous.get('address') for c in clients):
         # The existing chat is already loaded: restore it here, without launching
         # another Python opener or rediscovering/reloading the stream's chat.
-        if begin(clients):
+        if begin(clients, animate=False):
             monitors=json.loads(hypr('-j','monitors'))
             monitor=next((m for m in monitors if m['id']==player['monitor']),None)
             if monitor and monitor.get('specialWorkspace',{}).get('name')!='special:'+WORKSPACE:
-                toggle_on_monitor(monitor,monitors)
+                toggle_on_monitor(monitor,monitors,animate=False)
             focus_player()
             return True
     if time.monotonic() - saved.get('attempt', 0) < 10:
@@ -393,7 +403,7 @@ def adopt_chat(state, clients):
     return True
 
 
-def begin(clients=None):
+def begin(clients=None, animate=True):
     with STATE.with_suffix('.lock').open('a') as lock:
         fcntl.flock(lock, fcntl.LOCK_EX)
         existing = read()
@@ -433,7 +443,7 @@ def begin(clients=None):
             owner_tmp.replace(OWNER)
             try:
                 hypr('keyword', 'input:special_fallthrough', '1')
-                panel_space(state,bounds['ratio'],animate=True)
+                panel_space(state,bounds['ratio'],animate=animate)
                 style(chat, True)
                 move(chat, bounds)
                 hypr('dispatch', 'focusmonitor', str(player['monitor']))

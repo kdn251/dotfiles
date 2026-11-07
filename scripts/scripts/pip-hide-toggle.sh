@@ -75,11 +75,12 @@ done
 
 batch=""
 if [ "${#hidden[@]}" -gt 0 ]; then
-  # --- RESTORE: bring every hidden PiP back to the current workspace ---
+  # Restore without changing the focused application. The non-silent move
+  # focuses each restored PiP, even though Mod+H only requests visibility.
   repin=""
   [ -r "$STATE" ] && repin=$(<"$STATE")
   for addr in "${hidden[@]}"; do
-    batch+="dispatch movetoworkspace e+0,address:$addr; "
+    batch+="dispatch movetoworkspacesilent e+0,address:$addr; "
     # pin is a toggle; these windows are unpinned (we unpinned them), so one
     # toggle == pin. Only re-pin what was pinned before we hid it.
     if grep -qx "$addr" <<<"$repin"; then
