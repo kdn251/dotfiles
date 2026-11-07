@@ -937,7 +937,7 @@ local function draw_color_title(element)
     local data=color_title.data
     if not data then return false end
     local geo=element.layout.geometry
-    local scale=15/data.font_size
+    local scale=12/data.font_size
     local span=math.max(1,math.min(data.width,math.floor(geo.w/scale)))
     local overflow=math.max(0,data.width-span)
     local offset=0
@@ -1070,6 +1070,8 @@ function render_elements(master_ass)
                 -- One full-width track: gray unbuffered, light gray cached,
                 -- Twitch purple played. No second thin stripe underneath.
                 elem_ass = assdraw.ass_new()
+                -- Preserve the separator from the preceding label event.
+                elem_ass:append("{}")
                 local left, cy = elem_geo.x, elem_geo.y
                 local hovering = mouse_hit(element) or state.active_element == n
                 local thickness = hovering and 5 or 3
@@ -2100,7 +2102,7 @@ function bar_layout(direction)
         lo.style = "{\\q2\\fs16\\b1\\bord0\\shad0\\1c&HF7F7F8&}"
         lo = add_layout("title")
         lo.geometry = {x=text_x,y=osc_geo.y+32,an=4,w=right-text_x,h=18}
-        lo.style = string.format("{\\q2\\fs15\\bord0\\shad0\\clip(%f,%f,%f,%f)}",text_x,0,right,osc_param.playresy)
+        lo.style = string.format("{\\q2\\fs12\\bord0\\shad0\\clip(%f,%f,%f,%f)}",text_x,0,right,osc_param.playresy)
         lo = add_layout("streamdetails")
         lo.geometry = {x=text_x,y=osc_geo.y+50,an=4,w=right-text_x,h=16}
         lo.style = string.format("{\\q2\\fs12\\bord0\\shad0\\1c&HCCC4C4&\\clip(%f,%f,%f,%f)}",text_x,0,right,osc_param.playresy)
