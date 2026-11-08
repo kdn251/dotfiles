@@ -138,6 +138,35 @@ APICALL EXPORT PLUGIN_DESCRIPTION_INFO PLUGIN_INIT(HANDLE handle) {
                 }
             }
         }
+        // Scope windowed chat in the workspace transaction, before its first
+        // frame. Do not rely on a polling helper that can reveal the old chat
+        // while the user is already switching to another workspace.
+        if (runtime && workspace && monitorForChat && monitorForChat->m_activeWorkspace==workspace) {
+            std::ifstream input(std::string(runtime)+"/media-chat-windowed.json");
+            const std::string saved((std::istreambuf_iterator<char>(input)),{});
+            PHLWINDOW video,chat;
+            for (const auto& window:Desktop::windowState()->windows()) {
+                if (!window->mapped() || window->m_monitor!=monitorForChat) continue;
+                if (window->metadata().appID()=="mpv" &&
+                    saved.find(std::format("0x{:x}",reinterpret_cast<uintptr_t>(window.get())))!=std::string::npos) video=window;
+                if (window->m_workspace && window->m_workspace->addressableName()=="special:chatterino_chat") chat=window;
+            }
+            if (video && chat && !Fullscreen::controller()->isFullscreen(video)) {
+                const bool visible=(video->m_state & Desktop::View::WINDOW_STATE_PINNED) || video->m_workspace==workspace;
+                const auto special=monitorForChat->m_activeSpecialWorkspace;
+                if (!visible && special==chat->m_workspace) {
+                    monitorForChat->setSpecialWorkspace(PHLWORKSPACE{});
+                    chat->m_workspace->m_alpha->setValueAndWarp(0.f);
+                    chat->m_workspace->m_renderOffset->setValueAndWarp(Vector2D{});
+                    focusOtherApp(workspace,Desktop::FOCUS_REASON_WORKSPACE_CHANGE);
+                } else if (visible && !special) {
+                    monitorForChat->setSpecialWorkspace(chat->m_workspace);
+                    chat->m_workspace->m_alpha->setValueAndWarp(1.f);
+                    chat->m_workspace->m_renderOffset->setValueAndWarp(Vector2D{});
+                    focusOtherApp(workspace,Desktop::FOCUS_REASON_WORKSPACE_CHANGE);
+                }
+            }
+        }
         // Workspace restoration can focus chat before its player. Once the
         // transaction finishes, return keyboard input to the fullscreen video.
         // rawWindowFocus respects an exclusive sidebar layer and does not
@@ -232,7 +261,7 @@ APICALL EXPORT PLUGIN_DESCRIPTION_INFO PLUGIN_INIT(HANDLE handle) {
     keyboardListener = Event::bus()->m_events.input.keyboard.key.listen([](IKeyboard::SKeyEvent event, Event::SCallbackInfo&) {
         if (event.state == WL_KEYBOARD_KEY_STATE_PRESSED) releaseExitGuard();
     });
-    return {"pip-workspace-focus", "Keep MPV unfocused on workspace entry and fullscreen exit", "local", "1.14"};
+    return {"pip-workspace-focus", "Keep MPV unfocused on workspace entry and fullscreen exit", "local", "1.18"};
 }
 
 APICALL EXPORT void PLUGIN_EXIT() {

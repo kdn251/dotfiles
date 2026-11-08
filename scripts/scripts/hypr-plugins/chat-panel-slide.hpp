@@ -12,8 +12,14 @@ namespace ChatSlide {
 class Clip : public Render::IWindowTransformer {
   public:
     bool enabled = true;
-    CBox bounds;
-    explicit Clip(CBox box) : bounds(box) {}
+    CBox bounds, logicalBounds;
+    Clip(CBox box, double scale) : bounds(CBox(box).scale(scale).round()), logicalBounds(box) {}
+    // Crop the entire transformed window, including its decorations. Clipping
+    // only the main surface still lets special-workspace chat paint over an
+    // unpinned MPV (pinned MPV happens to cover it through stacking order).
+    CBox transformedExtents(const CBox& box) const override { return box.intersection(logicalBounds); }
+    CBox sourceBoxForOutput(const CBox& output, const CBox& input) const override { return output.intersection(input); }
+    CBox transformBoxForDamage(const CBox& box) const override { return box.intersection(logicalBounds); }
     bool active() const override { return enabled; }
     bool allocatesOutputBuffer() const override { return false; }
     Render::SWindowTransformBuffer transform(Render::CRenderContext&, const Render::SWindowTransformBuffer& in,
@@ -23,6 +29,7 @@ class Clip : public Render::IWindowTransformer {
     }
 };
 static CHyprSignalListener specialListener, frameListener;
+static UP<SEventLoopDoLaterLock> pendingChatFocus;
 static PHLWINDOWREF pane, player;
 static PHLWORKSPACEREF workspace;
 static int endpoint = -1;
@@ -52,23 +59,41 @@ static void start() {
         for (const auto& window:Desktop::windowState()->windows()) {
             if (!window->mapped() || window->m_monitor!=monitor) continue;
             if (window->m_workspace && window->m_workspace->addressableName()=="special:chatterino_chat") chat=window;
-            if (window->metadata().appID()=="mpv" && window->m_workspace==monitor->m_activeWorkspace) video=window;
+            if (window->metadata().appID()=="mpv" && (window->m_workspace==monitor->m_activeWorkspace || (window->m_state & Desktop::View::WINDOW_STATE_PINNED))) video=window;
         }
-        if (!chat || !video) return;
+        if (!chat) return;
         const auto ws=chat->m_workspace;
-        // Workspace navigation retains the existing instant-hide behavior.
-        if (opened && opened!=ws) return;
-        // Fullscreen restoration is not an explicit chat toggle. Reveal the
-        // already-sized pane immediately, without resetting the video margin.
-        if (opened) {
-            const auto runtime=std::getenv("XDG_RUNTIME_DIR");
-            if (runtime && ::access((std::string(runtime)+"/media-chat-slide-instant").c_str(),F_OK)==0) {
-                cleanup();
-                ws->m_renderOffset->setValueAndWarp(Vector2D{});
-                ws->m_alpha->setValueAndWarp(1.f);
-                return;
+        const auto runtime=std::getenv("XDG_RUNTIME_DIR");
+        // A normal focuswindow dispatch closes the special workspace again.
+        // Restore keyboard focus directly, after mapping has completed, so
+        // the chat's slide animation and visibility are left untouched.
+        if (runtime) {
+            std::ifstream input(std::string(runtime)+"/media-chat-restore-focus");
+            std::string address;std::getline(input,address);
+            for (const auto& target:Desktop::windowState()->windows()) {
+                if (address.empty() || std::format("0x{:x}",reinterpret_cast<uintptr_t>(target.get()))!=address) continue;
+                pendingChatFocus=g_pEventLoopManager->doLaterLock([weak=PHLWINDOWREF(target)] {
+                    const auto target=weak.lock();
+                    const auto monitor=Desktop::focusState()->monitor();
+                    // A workspace change can land between the toggle and this
+                    // idle callback. Never focus a window on the old workspace.
+                    if (target && target->mapped() && !target->isHidden() && monitor &&
+                        target->m_monitor==monitor && target->m_workspace==monitor->m_activeWorkspace)
+                        Desktop::focusState()->rawWindowFocus(target,Desktop::FOCUS_REASON_OTHER);
+                });
+                break;
             }
         }
+        // Workspace restoration/removal isn't a manual toggle: show/hide on
+        // the first frame, including when MPV lives on a different workspace.
+        if (runtime && ::access((std::string(runtime)+"/media-chat-slide-instant").c_str(),F_OK)==0) {
+            cleanup();
+            ws->m_renderOffset->setValueAndWarp(Vector2D{});
+            ws->m_alpha->setValueAndWarp(opened?1.f:0.f);
+            return;
+        }
+        if (!video) return;
+        if (opened && opened!=ws) return;
         cleanup();pane=chat;player=video;workspace=ws;showing=bool(opened);
         width=chat->size(Desktop::View::IGeometric::GEOMETRIC_GOAL).x;
         const bool theater=Fullscreen::controller()->isFullscreen(video);
@@ -82,7 +107,7 @@ static void start() {
         ws->m_alpha->setValueAndWarp(1.f);
         CBox bounds{chat->position(Desktop::View::IGeometric::GEOMETRIC_GOAL)-monitor->m_position,
                     chat->size(Desktop::View::IGeometric::GEOMETRIC_GOAL)};
-        chat->effects().transformers()->emplace<Clip>(bounds.scale(monitor->m_scale).round());
+        chat->effects().transformers()->emplace<Clip>(bounds,monitor->m_scale);
         if (!theater) return;
         try {
             const auto runtime=std::getenv("XDG_RUNTIME_DIR");
@@ -113,7 +138,7 @@ static void start() {
         }
     });
 }
-static void stop() { specialListener.reset();frameListener.reset();cleanup();
+static void stop() { specialListener.reset();frameListener.reset();pendingChatFocus.reset();cleanup();
     if(auto runtime=std::getenv("XDG_RUNTIME_DIR")) ::unlink((std::string(runtime)+"/media-chat-slide-enabled").c_str());
 }
 }

@@ -138,6 +138,62 @@ class FullscreenChatTests(unittest.TestCase):
             self.assertFalse(layout.resume_theater([dict(self.player, pid=999)]))
             self.assertFalse(layout.PREFERENCE.exists())
 
+    def test_windowed_toggle_preserves_application_focus(self):
+        player=dict(self.player,fullscreen=0,pinned=True)
+        def reply(*args):
+            if args==('-j','clients'):return json.dumps([player,self.chat])
+            if args==('-j','monitors'):return json.dumps([self.monitor])
+            if args==('-j','activewindow'):return json.dumps({'address':'0xbeef','class':'kitty'})
+            if args[0]=='eval' and 'toggle_special' in args[1]:
+                self.assertEqual((layout.ROOT/'media-chat-restore-focus').read_text().strip(),'0xbeef')
+            return 'ok'
+        with patch.object(layout,'hypr',side_effect=reply) as call:
+            layout.toggle_workspace()
+            transaction=call.call_args.args[1]
+            self.assertIn('toggle_special',transaction)
+            self.assertNotIn('hl.dsp.focus',transaction)
+            self.assertFalse((layout.ROOT/'media-chat-restore-focus').exists())
+
+    def test_windowed_chat_follows_only_pinned_player_and_stops_when_hidden(self):
+        player=dict(self.player,fullscreen=0,pinned=True)
+        chat=dict(self.chat,workspace={'name':'special:chatterino_chat'})
+        monitor=dict(self.monitor,specialWorkspace={'name':''},activeWorkspace={'id':99})
+        layout.windowed_chat_path().write_text(json.dumps({'pid':player['pid'],'address':player['address']}))
+        with patch.object(layout,'hypr',return_value=json.dumps([monitor])), patch.object(layout,'toggle_on_monitor') as reveal:
+            layout.maintain_windowed_chat([dict(player,pinned=False),chat])
+            reveal.assert_not_called()
+            layout.maintain_windowed_chat([player,chat])
+            reveal.assert_called_once_with(monitor,[monitor],animate=False)
+            reveal.reset_mock()
+            layout.windowed_chat_path().unlink()
+            layout.maintain_windowed_chat([player,chat])
+            reveal.assert_not_called()
+
+    def test_follower_cannot_race_manual_chat_toggle(self):
+        import fcntl
+        with (layout.ROOT/'media-chat-windowed.lock').open('a') as lock:
+            fcntl.flock(lock,fcntl.LOCK_EX)
+            with patch.object(layout,'_maintain_windowed_chat') as maintain:
+                layout.maintain_windowed_chat([])
+                maintain.assert_not_called()
+        with patch.object(layout,'_maintain_windowed_chat') as maintain:
+            layout.maintain_windowed_chat([])
+            maintain.assert_called_once_with([])
+
+    def test_unpinned_chat_hides_away_and_returns_to_its_workspace(self):
+        player=dict(self.player,fullscreen=0,pinned=False)
+        chat=dict(self.chat,workspace={'name':'special:chatterino_chat'})
+        layout.windowed_chat_path().write_text(json.dumps({'pid':player['pid'],'address':player['address']}))
+        away=dict(self.monitor,activeWorkspace={'id':99})
+        home=dict(self.monitor,specialWorkspace={'name':''})
+        with patch.object(layout,'hypr',return_value=json.dumps([away])), patch.object(layout,'toggle_on_monitor') as toggle:
+            layout.maintain_windowed_chat([player,chat])
+            toggle.assert_called_once_with(away,[away],animate=False)
+            self.assertTrue(layout.windowed_chat_path().exists())
+        with patch.object(layout,'hypr',return_value=json.dumps([home])), patch.object(layout,'toggle_on_monitor') as toggle:
+            layout.maintain_windowed_chat([player,chat])
+            toggle.assert_called_once_with(home,[home],animate=False)
+
     def test_instant_reveal_marker_is_scoped_to_dispatch_even_on_failure(self):
         marker=layout.ROOT/'media-chat-slide-instant'
         def dispatch(*args):

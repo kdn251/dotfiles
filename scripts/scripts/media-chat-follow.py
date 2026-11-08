@@ -99,6 +99,7 @@ def run():
                 if theater_needed and fullscreen_chat.maintain(clients):
                     wake.wait(.12);wake.clear()
                     continue
+                fullscreen_chat.maintain_windowed_chat(clients)
                 chats=[c for c in clients if c.get('class') in CHAT_CLASSES and c.get('floating')
                        and c.get('workspace',{}).get('name')=='special:chatterino_chat']
                 players=[c for c in clients if c.get('class','').lower()=='mpv' and c.get('floating') and not c.get('fullscreen')]

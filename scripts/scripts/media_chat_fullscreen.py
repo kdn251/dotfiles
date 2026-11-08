@@ -216,20 +216,92 @@ def toggle_workspace(animate=True):
     # Apply the rule before toggling so the compositor refreshes the workspace
     # style first, including when changing between floating and theater chat.
     hypr('eval','hl.workspace_rule({workspace="special:chatterino_chat",animation='+json.dumps(animation)+'})')
+    keep_focus=''
+    try:
+        clients=json.loads(hypr('-j','clients'))
+        if animate and not any(c.get('class')=='mpv' and c.get('fullscreen')==2 for c in clients):
+            active=json.loads(hypr('-j','activewindow'))
+            if isinstance(active,dict) and active.get('address') and active.get('class') not in CLASSES|{'newsboat-youtube-comments'}:
+                keep_focus=active['address']
+    except (OSError,ValueError,TypeError):pass
     script=('local previous=hl.get_config("misc.on_focus_under_fullscreen"); '
             'hl.config({misc={on_focus_under_fullscreen=0}}); '
             'local ok,err=pcall(function() '
             'hl.dispatch(hl.dsp.workspace.toggle_special("chatterino_chat")) end); '
             'hl.config({misc={on_focus_under_fullscreen=previous}}); '
             'if not ok then error(err) end')
+    focus_marker = ROOT / 'media-chat-restore-focus'
+    if keep_focus:focus_marker.write_text(keep_focus+'\n')
     instant = ROOT / 'media-chat-slide-instant'
     if not animate:
         instant.write_text('1\n')
     try:
         hypr('eval',script)
     finally:
+        focus_marker.unlink(missing_ok=True)
         if not animate:
             instant.unlink(missing_ok=True)
+
+
+def windowed_chat_path():
+    return ROOT / 'media-chat-windowed.json'
+
+
+def toggle_windowed_chat():
+    with (ROOT/'media-chat-windowed.lock').open('a') as lock:
+        fcntl.flock(lock,fcntl.LOCK_EX)
+        _toggle_windowed_chat()
+
+
+def maintain_windowed_chat(clients):
+    with (ROOT/'media-chat-windowed.lock').open('a') as lock:
+        try:fcntl.flock(lock,fcntl.LOCK_EX|fcntl.LOCK_NB)
+        except BlockingIOError:return
+        _maintain_windowed_chat(clients)
+
+
+def _toggle_windowed_chat():
+    """Toggle chat without taking keyboard focus from the current app."""
+    clients=json.loads(hypr('-j','clients'))
+    players=[c for c in clients if c.get('class')=='mpv' and not c.get('fullscreen')]
+    players.sort(key=lambda c:c.get('focusHistoryID',999))
+    if not players:
+        toggle_workspace();return
+    player=players[0]
+    monitors=json.loads(hypr('-j','monitors'))
+    monitor=next((m for m in monitors if m['id']==player['monitor']),None)
+    if not monitor or (not player.get('pinned') and monitor.get('activeWorkspace',{}).get('id')!=player.get('workspace',{}).get('id')):return
+    visible=any(m.get('specialWorkspace',{}).get('name')=='special:'+WORKSPACE for m in monitors)
+    path=windowed_chat_path()
+    if visible:path.unlink(missing_ok=True)
+    else:
+        path.write_text(json.dumps({'pid':player['pid'],'address':player['address']}))
+        # Allow mouse/keyboard focus to remain on regular application windows.
+        hypr('keyword','input:special_fallthrough','1')
+    toggle_workspace()
+
+
+def _maintain_windowed_chat(clients):
+    """An explicitly opened chat follows its pinned, windowed player."""
+    path=windowed_chat_path()
+    try:saved=json.loads(path.read_text())
+    except (OSError,ValueError):return
+    player=next((c for c in clients if c.get('pid')==saved['pid'] and c.get('address')==saved['address']),None)
+    if not player or player.get('fullscreen'):
+        path.unlink(missing_ok=True);return
+    if not any(c.get('class') in CLASSES|{'newsboat-youtube-comments'} and
+               c.get('workspace',{}).get('name')=='special:'+WORKSPACE for c in clients):
+        path.unlink(missing_ok=True);return
+    monitors=json.loads(hypr('-j','monitors'))
+    monitor=next((m for m in monitors if m['id']==player['monitor']),None)
+    if not monitor:return
+    visible=monitor.get('specialWorkspace',{}).get('name')=='special:'+WORKSPACE
+    owner_visible=not player.get('workspace',{}).get('name','').startswith('special:') and (
+        player.get('pinned') or monitor.get('activeWorkspace',{}).get('id')==player.get('workspace',{}).get('id'))
+    if visible and not owner_visible:
+        toggle_on_monitor(monitor,monitors,animate=False)
+    elif owner_visible and not monitor.get('specialWorkspace',{}).get('name'):
+        toggle_on_monitor(monitor,monitors,animate=False)
 
 
 def toggle_on_monitor(monitor, monitors, animate=True):
@@ -436,6 +508,7 @@ def begin(clients=None, animate=True):
                      'special_fallthrough': json.loads(hypr('-j', 'getoption', 'input:special_fallthrough')).get('int', 0)}
             for prop in PROPERTIES:
                 state['properties'][prop] = ipc(state, 'get_property', prop)
+            windowed_chat_path().unlink(missing_ok=True)
             STATE.write_text(json.dumps(state)); STATE.chmod(0o600)
             PREFERENCE.unlink(missing_ok=True)
             owner_tmp = OWNER.with_suffix('.tmp')
