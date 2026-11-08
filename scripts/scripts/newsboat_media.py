@@ -203,10 +203,10 @@ def playback_file(url):
 
 
 @contextlib.contextmanager
-def library_lock():
+def library_lock(blocking=True):
     STATE.mkdir(parents=True, exist_ok=True)
     with (STATE / '.library.lock').open('w') as lock:
-        fcntl.flock(lock, fcntl.LOCK_EX)
+        fcntl.flock(lock, fcntl.LOCK_EX | (0 if blocking else fcntl.LOCK_NB))
         yield
 
 

@@ -7,6 +7,8 @@
 #include <hyprland/src/managers/fullscreen/FullscreenController.hpp>
 #include <hyprland/src/managers/eventLoop/EventLoopManager.hpp>
 #include <hyprland/src/config/ConfigValue.hpp>
+#include <hyprland/src/managers/input/InputManager.hpp>
+#include <algorithm>
 #include <stdexcept>
 #include <fstream>
 #include <cstdlib>
@@ -29,6 +31,32 @@ static UP<SEventLoopDoLaterLock> pendingWorkspaceFocus;
 static void releaseExitGuard() {
     unfocusedPlayer.reset();
     pendingFocus.reset();
+}
+
+struct PointerMotionListeners {
+    SP<IPointer> device;
+    CHyprSignalListener relative, absolute;
+};
+static std::vector<PointerMotionListeners> pointerMotionListeners;
+
+static void watchPointerMotion() {
+    const auto& devices = g_pInputManager->m_pointers;
+    std::erase_if(pointerMotionListeners, [&](const auto& entry) {
+        return std::find(devices.begin(), devices.end(), entry.device) == devices.end();
+    });
+    for (const auto& device : devices) {
+        if (std::any_of(pointerMotionListeners.begin(), pointerMotionListeners.end(),
+                        [&](const auto& entry) { return entry.device == device; })) continue;
+        PointerMotionListeners entry;
+        entry.device = device;
+        entry.relative = device->m_pointerEvents.motion.listen([](IPointer::SMotionEvent event) {
+            if (event.delta.x != 0 || event.delta.y != 0) releaseExitGuard();
+        });
+        entry.absolute = device->m_pointerEvents.motionAbsolute.listen([](IPointer::SMotionAbsoluteEvent) {
+            releaseExitGuard();
+        });
+        pointerMotionListeners.push_back(std::move(entry));
+    }
 }
 
 static void focusOtherApp(PHLWORKSPACE workspace, Desktop::eFocusReason reason) {
@@ -192,11 +220,11 @@ APICALL EXPORT PLUGIN_DESCRIPTION_INFO PLUGIN_INIT(HANDLE handle) {
     // helper, or a real click from layer teardown. A fresh input press after
     // exit ends automatic-focus protection before that input is processed.
     // Releases of the F key which initiated exit must not end protection.
-    // Real pointer movement ends the exit guard too, so follow_mouse can
-    // focus windowed MPV on hover. A stationary pointer during fullscreen
-    // teardown or Mod+H reveal must not count as a request to focus it.
+    // Compositor mouse.move also fires during layer teardown/refocus, with
+    // no physical movement. Only device motion may release the exit guard.
+    watchPointerMotion();
     mouseMoveListener = Event::bus()->m_events.input.mouse.move.listen([](Vector2D, Event::SCallbackInfo&) {
-        releaseExitGuard();
+        watchPointerMotion(); // include newly attached mice/touchpads
     });
     mouseButtonListener = Event::bus()->m_events.input.mouse.button.listen([](IPointer::SButtonEvent event, Event::SCallbackInfo&) {
         if (event.state == WL_POINTER_BUTTON_STATE_PRESSED) releaseExitGuard();
@@ -204,7 +232,7 @@ APICALL EXPORT PLUGIN_DESCRIPTION_INFO PLUGIN_INIT(HANDLE handle) {
     keyboardListener = Event::bus()->m_events.input.keyboard.key.listen([](IKeyboard::SKeyEvent event, Event::SCallbackInfo&) {
         if (event.state == WL_KEYBOARD_KEY_STATE_PRESSED) releaseExitGuard();
     });
-    return {"pip-workspace-focus", "Keep MPV unfocused on workspace entry and fullscreen exit", "local", "1.13"};
+    return {"pip-workspace-focus", "Keep MPV unfocused on workspace entry and fullscreen exit", "local", "1.14"};
 }
 
 APICALL EXPORT void PLUGIN_EXIT() {
@@ -219,6 +247,7 @@ APICALL EXPORT void PLUGIN_EXIT() {
     layerClosedListener.reset();
     mouseButtonListener.reset();
     mouseMoveListener.reset();
+    pointerMotionListeners.clear();
     keyboardListener.reset();
     unfocusedPlayer.reset();
 }

@@ -66,10 +66,23 @@ def publish(rows):
     media.atomic_write(state()/'viewing-queue.tsv',''.join(row['url']+'\t'+row['queue_token']+'\n' for row in rows))
     stop=next((row for row in rows if row.get('stop_after')),None)
     media.atomic_write(state()/'viewing-queue.tsv.stop', stop['url']+'\t'+stop['queue_token']+'\n' if stop else '')
+    try:
+        publish_urls(blocking=False)
+    except BlockingIOError:
+        # Downloads may probe/rebuild the library under this lock. Never make
+        # Newsboat's synchronous queue macro wait for that disk/network work.
+        subprocess.Popen([sys.executable,str(Path(__file__).resolve()),'publish-urls'],
+                         stdin=subprocess.DEVNULL,stdout=subprocess.DEVNULL,
+                         stderr=subprocess.DEVNULL,start_new_session=True)
+
+
+def publish_urls(blocking=True):
     urls=Path(os.environ.get('NEWSBOAT_URLS_FILE',Path.home()/'.newsboat/urls'))
-    # Serialize with the other generated collections, preserving their changes.
-    with media.library_lock():
+    with media.library_lock(blocking=blocking):
         if not urls.exists():return
+        # Read the latest atomic queue snapshot after taking the library lock.
+        # A delayed add must not resurrect Queue after a subsequent removal.
+        rows=entries()
         original=urls.read_text()
         lines=[line for line in original.splitlines() if not line.startswith('"'+PREFIX)]
         if rows:
@@ -329,7 +342,8 @@ def resume():
 
 
 if __name__=='__main__':
-    if sys.argv[1]=='menu-json':print(json.dumps(menu_rows()))
+    if sys.argv[1]=='publish-urls':publish_urls()
+    elif sys.argv[1]=='menu-json':print(json.dumps(menu_rows()))
     elif sys.argv[1]=='show':sys.exit(show())
     elif sys.argv[1]=='resume':sys.exit(resume())
     elif sys.argv[1]=='ensure-playing':sys.exit(ensure_playing())
