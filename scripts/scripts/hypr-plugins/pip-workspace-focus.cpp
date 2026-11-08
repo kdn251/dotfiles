@@ -19,6 +19,7 @@ static CHyprSignalListener fullscreenListener;
 static CHyprSignalListener activeListener;
 static CHyprSignalListener layerClosedListener;
 static CHyprSignalListener mouseButtonListener;
+static CHyprSignalListener mouseMoveListener;
 static CHyprSignalListener keyboardListener;
 static PHLWINDOWREF unfocusedPlayer;
 static UP<SEventLoopDoLaterLock> pendingExit;
@@ -191,13 +192,19 @@ APICALL EXPORT PLUGIN_DESCRIPTION_INFO PLUGIN_INIT(HANDLE handle) {
     // helper, or a real click from layer teardown. A fresh input press after
     // exit ends automatic-focus protection before that input is processed.
     // Releases of the F key which initiated exit must not end protection.
+    // Real pointer movement ends the exit guard too, so follow_mouse can
+    // focus windowed MPV on hover. A stationary pointer during fullscreen
+    // teardown or Mod+H reveal must not count as a request to focus it.
+    mouseMoveListener = Event::bus()->m_events.input.mouse.move.listen([](Vector2D, Event::SCallbackInfo&) {
+        releaseExitGuard();
+    });
     mouseButtonListener = Event::bus()->m_events.input.mouse.button.listen([](IPointer::SButtonEvent event, Event::SCallbackInfo&) {
         if (event.state == WL_POINTER_BUTTON_STATE_PRESSED) releaseExitGuard();
     });
     keyboardListener = Event::bus()->m_events.input.keyboard.key.listen([](IKeyboard::SKeyEvent event, Event::SCallbackInfo&) {
         if (event.state == WL_KEYBOARD_KEY_STATE_PRESSED) releaseExitGuard();
     });
-    return {"pip-workspace-focus", "Keep MPV unfocused on workspace entry and fullscreen exit", "local", "1.12"};
+    return {"pip-workspace-focus", "Keep MPV unfocused on workspace entry and fullscreen exit", "local", "1.13"};
 }
 
 APICALL EXPORT void PLUGIN_EXIT() {
@@ -211,6 +218,7 @@ APICALL EXPORT void PLUGIN_EXIT() {
     activeListener.reset();
     layerClosedListener.reset();
     mouseButtonListener.reset();
+    mouseMoveListener.reset();
     keyboardListener.reset();
     unfocusedPlayer.reset();
 }
