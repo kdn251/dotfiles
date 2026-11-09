@@ -442,7 +442,7 @@ def close(clients):
 
 
 def player_service(player, endpoint):
-    from stream_player_identity import identity
+    from stream_player_identity import chat_identity as identity
     current = identity(player)
     if current:
         return current[0]

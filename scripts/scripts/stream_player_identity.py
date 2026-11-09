@@ -12,3 +12,19 @@ def identity(player):
         return (service, name) if service in ('Twitch', 'YouTube', 'Kick', 'Rumble') else None
     except (OSError, ValueError):
         return None
+
+
+def expanded_chat_target(player):
+    """Chat identity is separate from the native decoder's stream identity."""
+    try:
+        endpoint=socket_for(player)
+        if not endpoint:return None
+        state={'socket':endpoint,'player':player}
+        target=ipc(state,'get_property','user-data/stream-multiview-chat')
+        return target if isinstance(target,dict) and target.get('service') in ('Twitch','YouTube','Kick','Rumble') and target.get('name') else None
+    except (OSError,ValueError):return None
+
+
+def chat_identity(player):
+    target=expanded_chat_target(player)
+    return (target['service'],target['name']) if target else identity(player)

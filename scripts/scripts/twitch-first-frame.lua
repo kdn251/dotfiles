@@ -84,3 +84,6 @@ end)
 dofile((os.getenv('HOME') or '') .. '/scripts/stream-watch-controls.lua')
 
 dofile((os.getenv('HOME') or '') .. '/scripts/stream-live-seek.lua')
+
+-- Preserve the decoded frame and indicate temporary buffering without a blackout.
+dofile((os.getenv('HOME') or '') .. '/scripts/stream-buffering.lua')

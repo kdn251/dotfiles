@@ -56,6 +56,9 @@ def close_panels(clients, panel_class):
 
 
 def show_workspace():
+    from stream_multiview import active
+    from stream_player_identity import expanded_chat_target
+    if active() and not any(expanded_chat_target(c) for c in json.loads(hypr('-j','clients')) if c.get('class')=='mpv'):return
     if '--handoff' in sys.argv:
         if (fullscreen_chat.read() or {}).get('exiting'):return
         clients=json.loads(hypr('-j','clients'))
@@ -72,7 +75,7 @@ def show_workspace():
 
 
 def twitch_player(clients):
-    from stream_player_identity import identity
+    from stream_player_identity import chat_identity as identity
     for client in clients:
         if client.get('class', '').lower() != 'mpv':
             continue
@@ -107,7 +110,9 @@ def twitch_player(clients):
 
 def main():
     from stream_multiview import active
-    if active():return
+    if active():
+        from stream_player_identity import expanded_chat_target
+        if not any(expanded_chat_target(c) for c in json.loads(hypr('-j','clients')) if c.get('class')=='mpv'):return
     preload='--preload' in sys.argv
     clients=json.loads(hypr('-j','clients'))
     if preload:

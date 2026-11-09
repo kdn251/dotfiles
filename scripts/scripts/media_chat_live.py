@@ -1,5 +1,5 @@
 """Read chat context only for the selected, running live player."""
-from stream_player_identity import identity
+from stream_player_identity import chat_identity as identity, expanded_chat_target
 import json
 from pathlib import Path
 import re
@@ -28,7 +28,9 @@ def live_target(clients, focused):
         if current: service = current[0].lower()
         if service not in ('youtube', 'rumble', 'kick'):return None
         root=Path.home()/'.cache'
-        context=json.loads((root/f'{service}-live-player.json').read_text())
+        expanded=expanded_chat_target(players[0])
+        context=expanded.get('context',{}) if expanded else json.loads((root/f'{service}-live-player.json').read_text())
+        if expanded:context=dict(context,channel=expanded.get('page',''),url=context.get('url') or expanded.get('page',''))
         url=context.get('chat_url')
         channel=context.get('channel','')
         # Upgrade metadata for a player launched before chat support was added.

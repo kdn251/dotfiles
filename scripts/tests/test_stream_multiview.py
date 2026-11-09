@@ -294,7 +294,7 @@ assert not player.endpoint.exists()
         process=Mock();process.check_output.return_value=json.dumps([{'id':0,'activeWorkspace':{'id':1},'width':1920,'height':1080}]).encode()
         tick.__globals__.update(clients=lambda:[player],subprocess=process,json=json)
         obj=SimpleNamespace(closed=False,pid=1,suspended=True,selected=2,
-                            get=Mock(return_value=False),window=Mock(),promote_for_windowed=Mock(),restore_windowed_geometry=Mock())
+                            get=Mock(return_value=False),window=Mock(),promote_for_windowed=Mock(),restore_windowed_geometry=Mock(),sync_expanded_chat=Mock())
         tick(obj)
         obj.window.hide.assert_called_once();obj.window.set_visible.assert_not_called()
         obj.promote_for_windowed.assert_called_once()
@@ -330,6 +330,43 @@ assert not player.endpoint.exists()
         obj.restore_windowed_geometry.reset_mock()
         self.theater_method('native_ready')(obj)
         obj.restore_windowed_geometry.assert_not_called()
+
+    def test_buffering_keeps_ready_frame_and_only_indicates_stalled_pane(self):
+        props={'paused-for-cache':'yes','pause':'no','eof-reached':'no'}
+        video=Mock();video.get.side_effect=lambda k:props.get(k)
+        entry={'ready':True,'video':video}
+        obj=SimpleNamespace(update_loading=Mock())
+        update=self.theater_method('update_buffering')
+        with patch.object(update.__globals__['time'],'monotonic',return_value=10):
+            update(obj,entry)
+        obj.update_loading.assert_not_called()
+        with patch.object(update.__globals__['time'],'monotonic',return_value=10.6):
+            update(obj,entry)
+        self.assertTrue(entry['buffering']);self.assertTrue(entry['ready'])
+        video.load.assert_not_called();video.command.assert_not_called()
+        props['pause']='yes';update(obj,entry)
+        self.assertFalse(entry['buffering'])
+        props['pause']='no';props['paused-for-cache']='no';update(obj,entry)
+        self.assertNotIn('buffering_since',entry)
+
+    def test_expanded_chat_follows_selected_identity_and_hides_on_grid(self):
+        sync=self.theater_method('sync_expanded_chat')
+        chat=Mock();chat.read.return_value=None
+        process=Mock()
+        sync.__globals__.update(chat=chat,clients=lambda:[],subprocess=process,sys=sys,SCRIPTS=Path('/scripts'))
+        entries=[dict(name='one',service='Twitch',page='one'),
+                 dict(name='two',service='Kick',page='two',context={'chat_url':'chat'})]
+        obj=SimpleNamespace(entries=entries,selected=1,zoomed=True,suspended=False,pid=123,set=Mock())
+        sync(obj)
+        obj.set.assert_called_with('user-data/stream-multiview-chat',entries[1])
+        process.Popen.assert_not_called()
+        state={'player':{'pid':123}};chat.read.return_value=state
+        obj.selected=0;sync(obj)
+        chat.restore.assert_called_once_with(state,[],hide=True,animate=False)
+        process.Popen.assert_called_once()
+        process.Popen.reset_mock();obj.zoomed=False;sync(obj)
+        obj.set.assert_called_with('user-data/stream-multiview-chat',{})
+        process.Popen.assert_not_called()
 
     def test_directional_navigation_two_three_four(self):
         self.assertEqual(neighbor(2,0,'l'),1)

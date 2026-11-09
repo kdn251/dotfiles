@@ -92,6 +92,7 @@ window { background-color: transparent; }
         os.chmod(self.endpoint,0o600)
         threading.Thread(target=self.listen,daemon=True).start()
         self.set('user-data/stream-multiview',True)
+        self.set('user-data/stream-multiview-chat',{})
         self.add(row)
         self.timer=GLib.timeout_add(80,self.tick)
         threading.Thread(target=self.observe_fullscreen,daemon=True).start()
@@ -254,9 +255,25 @@ window { background-color: transparent; }
     def update_loading(self,entry):
         spinner=entry.get('spinner')
         if spinner is None:return
-        loading=not entry.get('ready') and not entry.get('failed')
+        loading=(not entry.get('ready') or entry.get('buffering',False)) and not entry.get('failed')
         if loading:spinner.start();spinner.show()
         else:spinner.stop();spinner.hide()
+
+    def update_buffering(self,entry):
+        video=entry.get('video')
+        get=video.get if video else self.get
+        stalled=(entry.get('ready') and not entry.get('failed')
+                 and get('paused-for-cache') in (True,'yes','true')
+                 and get('pause') not in (True,'yes','true')
+                 and get('eof-reached') not in (True,'yes','true'))
+        if stalled:
+            entry.setdefault('buffering_since',time.monotonic())
+        else:
+            entry.pop('buffering_since',None)
+        buffering=bool(stalled and time.monotonic()-entry['buffering_since']>=.5)
+        if buffering!=entry.get('buffering',False):
+            entry['buffering']=buffering
+            self.update_loading(entry)
 
     def native_ready(self):
         if self.closed:return False
@@ -301,9 +318,10 @@ window { background-color: transparent; }
         else:
             layout=self.get('user-data/media-panel-layout') or {}
             left=float(layout.get('left',0))
+            available=1-left-(float(layout.get('right',0)) if self.zoomed else 0)
             columns=1 if single else 2;rows=2 if len(self.entries)>2 and not single else 1
-            viewport=(left+(x+vx/max(1,w))*(1-left)/columns,y/rows,
-                      vw/max(1,w)*(1-left)/columns,1/rows)
+            viewport=(left+(x+vx/max(1,w))*available/columns,y/rows,
+                      vw/max(1,w)*available/columns,1/rows)
         card_scale=max(1,self.window.get_allocated_height()/max(1,h)) if video and not self.suspended else 1
         viewport=(*viewport,card_scale)
         if entry.get('card_viewport')!=viewport:
@@ -398,9 +416,28 @@ window { background-color: transparent; }
                 entry['video'].set('video-align-y',0 if self.zoomed or self.suspended or len(self.entries)<3 else (1 if y==0 else -1))
         if self.blank:self.blank.set_visible(not (self.zoomed or self.suspended))
 
+    def sync_expanded_chat(self):
+        target=None
+        if self.zoomed and not self.suspended:
+            entry=self.entries[self.selected]
+            target={k:entry[k] for k in ('name','service','page','context') if k in entry}
+        previous=getattr(self,'expanded_chat',None)
+        if target==previous:return
+        self.expanded_chat=target
+        self.set('user-data/stream-multiview-chat',target or {})
+        state=chat.read()
+        was_open=bool(state and state.get('player',{}).get('pid')==self.pid)
+        if was_open:
+            chat.restore(state,clients(),hide=True,animate=False)
+            chat.PREFERENCE.unlink(missing_ok=True)
+        if target and was_open:
+            subprocess.Popen([sys.executable,str(SCRIPTS/'media-chat.py'),'--handoff'],
+                             stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)
+
     def set_zoomed(self,zoomed):
         self.zoomed=zoomed
         self.set('user-data/stream-multiview-zoomed',zoomed)
+        self.sync_expanded_chat()
         self.arrange();self.last_layout=None;self.tick()
 
     def toggle_fullscreen(self):
@@ -421,7 +458,7 @@ window { background-color: transparent; }
 
     def load(self,entry):
         generation=entry.get('generation',0)+1;entry['generation']=generation
-        entry.update(ready=False,failed=False,started=time.monotonic());self.update_loading(entry)
+        entry.update(ready=False,failed=False,buffering=False,started=time.monotonic());entry.pop('buffering_since',None);self.update_loading(entry)
         name,service,page=entry['name'],entry['service'],entry['page']
         def worker():
             try:
@@ -507,7 +544,7 @@ window { background-color: transparent; }
         entry=self.entries[self.selected]
         if self.selected==0:
             generation=entry.get('generation',0)+1;entry['generation']=generation
-            entry.update(ready=False,failed=False,started=time.monotonic());self.update_loading(entry)
+            entry.update(ready=False,failed=False,buffering=False,started=time.monotonic());entry.pop('buffering_since',None);self.update_loading(entry)
             # Resolve asynchronously before touching the current native stream.
             def worker():
                 try:
@@ -542,6 +579,7 @@ window { background-color: transparent; }
     def tick(self):
         if self.closed:return False
         try:
+            self.sync_expanded_chat()
             windows=clients();player=next((c for c in windows if c['pid']==self.pid),None)
             if not player:self.finish(restore=False);return False
             monitors=json.loads(subprocess.check_output(['/usr/bin/hyprctl','-j','monitors'],timeout=1))
@@ -552,6 +590,7 @@ window { background-color: transparent; }
             if not fullscreen:
                 if not self.suspended:
                     self.suspended=True
+                    self.sync_expanded_chat()
                     self.set('user-data/stream-multiview',False)
                     self.arrange();self.select(self.selected)
                     ipc(self.state,'script-message','stream-card-viewport')
@@ -567,13 +606,16 @@ window { background-color: transparent; }
             for edge in (Layer.Edge.RIGHT,Layer.Edge.TOP,Layer.Edge.BOTTOM):Layer.set_margin(self.window,edge,0)
             layout=self.get('user-data/media-panel-layout') or {}
             left=layout.get('left',0);width=mon['width']/mon.get('scale',1);height=mon['height']/mon.get('scale',1)
+            state=chat.read() if self.zoomed else None
+            chat_right=chat.layout(mon)['ratio'] if state and state.get('player',{}).get('pid')==self.pid else 0
+            Layer.set_margin(self.window,Layer.Edge.RIGHT,round(chat_right*width))
             nx,ny=self.pane_positions()[0]
             columns=1 if self.zoomed else 2;rows=2 if len(self.entries)>2 and not self.zoomed else 1
             if self.zoomed:nx=ny=0
-            native_left=left+nx*(1-left)/columns
-            right=1-(left+(nx+1)*(1-left)/columns)
+            native_left=left+nx*(1-left-chat_right)/columns
+            right=1-(left+(nx+1)*(1-left-chat_right)/columns)
             top=ny/rows;bottom=1-(ny+1)/rows
-            geometry=(left,width,height,bottom,nx,ny,self.zoomed)
+            geometry=(left,chat_right,width,height,bottom,nx,ny,self.zoomed)
             if geometry!=self.last_layout:
                 self.last_layout=geometry
                 Layer.set_margin(self.window,Layer.Edge.LEFT,round(left*width))
@@ -588,6 +630,7 @@ window { background-color: transparent; }
                 self.metadata=metadata.load();self.metadata_updated=time.monotonic()
                 for entry in self.entries:self.update_card(entry)
             for entry in self.entries:
+                self.update_buffering(entry)
                 self.position_overlays(entry)
             for entry in self.entries:
                 if not entry['ready'] and not entry.get('failed') and time.monotonic()-entry['started']>65:self.failed(entry)
@@ -606,6 +649,9 @@ window { background-color: transparent; }
             if key=='ESC':self.set_zoomed(False);return True
             if key=='q':self.close_selected();return True
             if key=='f':self.toggle_fullscreen();return True
+            if key=='\\':
+                if self.zoomed:subprocess.Popen([sys.executable,str(SCRIPTS/'media-chat.py')],stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)
+                return True
         if key in ('+','-','_'):
             self.card_command(entry,'add','video-zoom',.1 if key=='+' else -.1)
         else:self.card_command(entry,'keypress',key)
@@ -679,6 +725,7 @@ window { background-color: transparent; }
         if self.closed:return False
         if restore and self.entries and self.selected:
             self.adopt(self.entries[self.selected])
+        self.zoomed=False;self.sync_expanded_chat()
         self.closed=True;self.endpoint.unlink(missing_ok=True);self.server.close()
         for entry in self.entries:
             if entry.get('video'):entry['video'].close()
