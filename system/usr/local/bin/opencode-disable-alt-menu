@@ -1,0 +1,18 @@
+#!/usr/bin/python3
+"""Keep OpenCode's Alt menu activation from conflicting with Hex dictation."""
+from pathlib import Path
+import shutil
+
+path = Path('/usr/lib/opencode-desktop/main.mjs')
+marker = '// Local Hex dictation: suppress standalone Alt menu activation.'
+source = path.read_text()
+if marker in source:
+    raise SystemExit(0)
+anchor = 'await import("./app.asar/out/main/index.js")'
+if source.count(anchor) != 1:
+    raise SystemExit('OpenCode launcher changed; Alt fix was not applied.')
+patch = '// Local Hex dictation: suppress standalone Alt menu activation.\napp.on("browser-window-created", (_event, window) => {\n  window.webContents.on("before-input-event", (event, input) => {\n    if (input.key === "Alt" || input.code === "AltLeft" || input.code === "AltRight") {\n      event.preventDefault()\n    }\n  })\n})\n\n'
+backup = path.with_name('main.mjs.before-hex-alt-fix')
+if not backup.exists():
+    shutil.copy2(path, backup)
+path.write_text(source.replace(anchor, patch + anchor))

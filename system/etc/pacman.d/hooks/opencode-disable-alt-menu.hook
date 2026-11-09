@@ -1,0 +1,10 @@
+[Trigger]
+Operation = Install
+Operation = Upgrade
+Type = Package
+Target = opencode-desktop-bin
+
+[Action]
+Description = Preserve OpenCode Alt menu fix for Hex dictation
+When = PostTransaction
+Exec = /usr/local/bin/opencode-disable-alt-menu

@@ -33,6 +33,15 @@ if [ -d "$DOTFILES_DIR/system/etc" ]; then
   echo "✅ System files synced."
 fi
 
+# Preserve the OpenCode Alt-key fix used by Hex dictation across package upgrades.
+install -Dm755 "$DOTFILES_DIR/system/usr/local/bin/opencode-disable-alt-menu" \
+  /usr/local/bin/opencode-disable-alt-menu
+install -Dm644 "$DOTFILES_DIR/system/etc/pacman.d/hooks/opencode-disable-alt-menu.hook" \
+  /etc/pacman.d/hooks/opencode-disable-alt-menu.hook
+if [ -f /usr/lib/opencode-desktop/main.mjs ]; then
+  /usr/local/bin/opencode-disable-alt-menu
+fi
+
 # --- 3. Hydrate System Services ---
 echo "🚀 Enabling System Services from services.txt..."
 if [ -f "$DOTFILES_DIR/services.txt" ]; then
