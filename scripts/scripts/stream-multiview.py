@@ -50,10 +50,8 @@ class Theater:
             ipc(self.state,'load-script',str(Path.home()/'.config/mpv/scripts/stream-multiview.lua'))
         self.original_layout=self.get('user-data/media-panel-layout') or {}
         self.original_volume=self.get('volume') or 100
-        self.original_brightness=self.get('brightness') or 0
         self.original_keep_open=self.get('keep-open') or 'no'
         self.set('keep-open','yes')
-        self.owner_masked=False
         self.original_align={axis:self.get('video-align-'+axis) or 0 for axis in ('x','y')}
         previous=chat.read()
         self.chat_open=bool(previous and previous.get('player',{}).get('pid')==pid)
@@ -264,7 +262,10 @@ window { background-color: transparent; }
         if self.closed:return False
         entry=self.entries[0]
         if entry.get('waiting_native_url') and self.get('path')==entry['waiting_native_url']:
-            entry.pop('waiting_native_url',None);self.loaded(entry)
+            entry.pop('waiting_native_url',None)
+            for key,value in entry.pop('restore_controls',{}).items():
+                if value not in ('',None):self.set(key,value)
+            self.loaded(entry)
         return False
 
     def reposition_overlay(self,entry):
@@ -457,7 +458,7 @@ window { background-color: transparent; }
             (context.add_class if chosen else context.remove_class)('selected')
             entry['indicator'].set_visible(chosen)
             if entry['video']:entry['video'].set('mute','no' if chosen else 'yes')
-        self.set('mute',index!=0)
+        self.set('mute',index!=0 or bool(self.entries[0].get('restore_controls')))
         if self.zoomed or self.suspended:self.arrange();self.last_layout=None
         return True
 
@@ -542,16 +543,11 @@ window { background-color: transparent; }
                     for axis,value in self.original_align.items():self.set('video-align-'+axis,value)
                     self.arrange();self.select(self.selected)
                     ipc(self.state,'script-message','stream-card-viewport')
-                # Keep the SAME decoder/video and audio. Fit its existing surface
-                # to the native window instead of reloading/adopting another feed.
-                self.mask_owner(self.selected!=0)
-                px,py=player['at'];pw,ph=player['size']
-                margins=(px-mon['x'],width-(px-mon['x'])-pw,py-mon['y'],height-(py-mon['y'])-ph)
-                for edge,value in zip((Layer.Edge.LEFT,Layer.Edge.RIGHT,Layer.Edge.TOP,Layer.Edge.BOTTOM),margins):
-                    Layer.set_margin(self.window,edge,max(0,round(value)))
-                self.window.set_visible(visible and self.selected!=0)
+                # Windowed playback belongs exclusively to the native MPV
+                # window. Embedded panes are never mapped over the desktop.
+                self.window.hide()
+                if self.selected:self.promote_for_windowed()
                 return True
-            self.mask_owner(False)
             if self.suspended:
                 self.suspended=False;self.set('user-data/stream-multiview',True)
                 self.arrange();self.select(self.selected);self.last_layout=None
@@ -627,13 +623,44 @@ window { background-color: transparent; }
         except (OSError,ValueError):pass
         return self.finish(restore=False)
 
-    def mask_owner(self,masked):
-        if self.owner_masked==masked:return
-        self.owner_masked=masked
-        # The native window owns geometry and fullscreen transitions. Its old
-        # feed must never peek through beneath the selected embedded video.
-        self.set('brightness',-100 if masked else self.original_brightness)
-        if masked:ipc(self.state,'script-message','stream-card-hover','no')
+    def promote_for_windowed(self):
+        if not self.selected:return
+        native=self.entries[0];selected=self.entries[self.selected]
+        if not selected.get('url'):
+            # A selection still resolving will be promoted by the next tick.
+            return
+        fields=('name','service','title','url','page','context','slot')
+        old={k:native[k] for k in fields if k in native}
+        old['url']=self.get('path') or old.get('url','')
+        incoming={k:selected[k] for k in fields if k in selected}
+        incoming['url']=selected['video'].get('path') or incoming['url']
+        controls=('video-zoom','video-pan-x','video-pan-y','speed','volume','pause')
+        old_controls={k:self.get(k) for k in controls}
+        incoming_controls={k:selected['video'].get(k) for k in controls}
+        # Preserve each feed's slot, but exchange which decoder owns it. The
+        # native process/window stays the same, so pinning/moving/focus still work.
+        self.set('mute',True)
+        self.adopt(incoming)
+        for field in fields:
+            native.pop(field,None);selected.pop(field,None)
+        native.update(incoming);selected.update(old)
+        for entry in (native,selected):
+            for key in ('card_properties','card_viewport','aspect','video_rect','waiting_native_url','ended'):
+                entry.pop(key,None)
+            entry.update(ready=False,failed=False,started=time.monotonic())
+            entry['generation']=entry.get('generation',0)+1
+            entry['switching_until']=time.monotonic()+2
+            self.update_loading(entry)
+        native['waiting_native_url']=incoming['url']
+        native['restore_controls']=incoming_controls
+        selected['video'].set('mute','yes')
+        selected['video'].load(old['url'],old['service'])
+        for key,value in old_controls.items():
+            if value is not None:selected['video'].set(key,'yes' if value is True else 'no' if value is False else value)
+        self.update_card(selected)
+        self.selected=0
+        self.set('user-data/stream-multiview-selected',0)
+        self.arrange();self.last_layout=None
 
     def finish(self,windowed=False,restore=True):
         if self.closed:return False
@@ -644,7 +671,6 @@ window { background-color: transparent; }
             if entry.get('video'):entry['video'].close()
         if restore:
             try:
-                self.mask_owner(False)
                 self.set('keep-open',self.original_keep_open)
                 layout=self.get('user-data/media-panel-layout') or {}
                 layout.update(right=0)

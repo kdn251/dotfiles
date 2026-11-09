@@ -269,6 +269,36 @@ assert not player.endpoint.exists()
         click(obj,entry,event,'down');self.assertFalse(obj.zoomed)
         obj.card_mouse.assert_called_once_with(entry,event,'down')
 
+    def test_windowed_handoff_preserves_stream_slots_and_controls(self):
+        native=dict(name='First',service='Twitch',url='first',page='first-page',slot=2,video=None)
+        video=Mock();video.get.side_effect=lambda k:'second-current' if k=='path' else '.25' if k=='video-zoom' else 'no' if k=='pause' else '1'
+        selected=dict(name='Second',service='Kick',url='second',page='second-page',slot=0,video=video)
+        untouched=dict(name='Third',slot=1,video=Mock())
+        obj=SimpleNamespace(entries=[native,selected,untouched],selected=1,
+            get=lambda k:'first-current' if k=='path' else 0,
+            set=Mock(),adopt=Mock(),update_loading=Mock(),update_card=Mock(),arrange=Mock())
+        self.theater_method('promote_for_windowed')(obj)
+        self.assertEqual((native['name'],native['slot']),('Second',0))
+        self.assertEqual((selected['name'],selected['slot']),('First',2))
+        self.assertEqual(native['restore_controls']['video-zoom'],'.25')
+        self.assertEqual(native['waiting_native_url'],'second-current')
+        video.load.assert_called_once_with('first-current','Twitch')
+        untouched['video'].load.assert_not_called()
+        self.assertEqual(obj.selected,0)
+        obj.set.assert_any_call('mute',True)
+
+    def test_windowed_mode_never_maps_the_multiview_layer(self):
+        import json
+        tick=self.theater_method('tick')
+        player={'pid':1,'monitor':0,'workspace':{'id':1}}
+        process=Mock();process.check_output.return_value=json.dumps([{'id':0,'activeWorkspace':{'id':1},'width':1920,'height':1080}]).encode()
+        tick.__globals__.update(clients=lambda:[player],subprocess=process,json=json)
+        obj=SimpleNamespace(closed=False,pid=1,suspended=True,selected=2,
+                            get=Mock(return_value=False),window=Mock(),promote_for_windowed=Mock())
+        tick(obj)
+        obj.window.hide.assert_called_once();obj.window.set_visible.assert_not_called()
+        obj.promote_for_windowed.assert_called_once()
+
     def test_directional_navigation_two_three_four(self):
         self.assertEqual(neighbor(2,0,'l'),1)
         self.assertEqual(neighbor(2,1,'h'),0)
