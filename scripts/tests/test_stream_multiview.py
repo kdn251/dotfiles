@@ -239,7 +239,7 @@ assert not player.endpoint.exists()
 
     def test_native_spinner_waits_for_new_stream_playback(self):
         entry={'waiting_native_url':'new'}
-        obj=SimpleNamespace(closed=False,entries=[entry],get=Mock(return_value='old'),loaded=Mock())
+        obj=SimpleNamespace(closed=False,entries=[entry],get=Mock(return_value='old'),loaded=Mock(),restore_windowed_geometry=Mock())
         ready=self.theater_method('native_ready')
         ready(obj);obj.loaded.assert_not_called()
         obj.get.return_value='new';ready(obj)
@@ -294,10 +294,42 @@ assert not player.endpoint.exists()
         process=Mock();process.check_output.return_value=json.dumps([{'id':0,'activeWorkspace':{'id':1},'width':1920,'height':1080}]).encode()
         tick.__globals__.update(clients=lambda:[player],subprocess=process,json=json)
         obj=SimpleNamespace(closed=False,pid=1,suspended=True,selected=2,
-                            get=Mock(return_value=False),window=Mock(),promote_for_windowed=Mock())
+                            get=Mock(return_value=False),window=Mock(),promote_for_windowed=Mock(),restore_windowed_geometry=Mock())
         tick(obj)
         obj.window.hide.assert_called_once();obj.window.set_visible.assert_not_called()
         obj.promote_for_windowed.assert_called_once()
+        obj.restore_windowed_geometry.assert_called_once()
+
+    def test_windowed_geometry_recovers_from_late_grid_restore(self):
+        props={'user-data/media-panel-layout':{'left':.1,'right':.5},
+               'video-margin-ratio-left':0,'video-margin-ratio-right':.5,
+               'video-margin-ratio-top':0,'video-margin-ratio-bottom':.5,
+               'video-align-x':1,'video-align-y':1,'video-zoom':.25}
+        obj=SimpleNamespace(get=lambda k:props.get(k),
+                            set=Mock(side_effect=lambda k,v:props.__setitem__(k,v)),
+                            original_align={'x':0,'y':0})
+        restore=self.theater_method('restore_windowed_geometry')
+        for _ in range(2):
+            props['video-margin-ratio-right']=.5
+            props['video-margin-ratio-bottom']=.5
+            restore(obj)
+            for side in ('left','right','top','bottom'):
+                self.assertEqual(props['video-margin-ratio-'+side],0)
+            self.assertEqual(props['video-zoom'],.25)
+        obj.set.reset_mock();restore(obj)
+        obj.set.assert_not_called()
+
+    def test_native_handoff_rechecks_windowed_geometry_after_playback_starts(self):
+        obj=SimpleNamespace(closed=False,entries=[{'waiting_native_url':'new'}],
+            get=lambda k:'new' if k=='path' else False,
+            loaded=Mock(),restore_windowed_geometry=Mock())
+        self.theater_method('native_ready')(obj)
+        obj.loaded.assert_called_once()
+        obj.restore_windowed_geometry.assert_called_once()
+        obj.get=lambda k:True
+        obj.restore_windowed_geometry.reset_mock()
+        self.theater_method('native_ready')(obj)
+        obj.restore_windowed_geometry.assert_not_called()
 
     def test_directional_navigation_two_three_four(self):
         self.assertEqual(neighbor(2,0,'l'),1)

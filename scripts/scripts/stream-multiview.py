@@ -266,6 +266,7 @@ window { background-color: transparent; }
             for key,value in entry.pop('restore_controls',{}).items():
                 if value not in ('',None):self.set(key,value)
             self.loaded(entry)
+        if not self.get('fullscreen'):self.restore_windowed_geometry()
         return False
 
     def reposition_overlay(self,entry):
@@ -523,6 +524,21 @@ window { background-color: transparent; }
             self.adopt(row);self.entries[0]['waiting_native_url']=row['url'];self.select(self.selected)
         return False
 
+    def restore_windowed_geometry(self):
+        # Fullscreen exit and panel teardown finish asynchronously. A late
+        # restore can put grid margins back after the first windowed frame.
+        # Enforce the windowed bounds without touching the user's zoom/pan.
+        layout=self.get('user-data/media-panel-layout') or {}
+        if layout.get('left') or layout.get('right'):
+            layout.update(left=0,right=0)
+            self.set('user-data/media-panel-layout',layout)
+        for side in ('left','right','top','bottom'):
+            key='video-margin-ratio-'+side
+            if float(self.get(key) or 0)!=0:self.set(key,0)
+        for axis,value in self.original_align.items():
+            key='video-align-'+axis
+            if float(self.get(key) or 0)!=value:self.set(key,value)
+
     def tick(self):
         if self.closed:return False
         try:
@@ -537,15 +553,12 @@ window { background-color: transparent; }
                 if not self.suspended:
                     self.suspended=True
                     self.set('user-data/stream-multiview',False)
-                    layout=self.get('user-data/media-panel-layout') or {}
-                    layout.update(left=0,right=0);self.set('user-data/media-panel-layout',layout)
-                    for side in ('left','right','top','bottom'):self.set('video-margin-ratio-'+side,0)
-                    for axis,value in self.original_align.items():self.set('video-align-'+axis,value)
                     self.arrange();self.select(self.selected)
                     ipc(self.state,'script-message','stream-card-viewport')
                 # Windowed playback belongs exclusively to the native MPV
                 # window. Embedded panes are never mapped over the desktop.
                 self.window.hide()
+                self.restore_windowed_geometry()
                 if self.selected:self.promote_for_windowed()
                 return True
             if self.suspended:
