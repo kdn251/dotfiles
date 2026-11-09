@@ -17,9 +17,16 @@ def active_rows():
     for proc in Path('/proc').glob('[0-9]*'):
         try:
             args = proc.joinpath('cmdline').read_bytes().decode(errors='replace').split('\0')
-            if not any(Path(arg).name == 'streamlink' for arg in args[:3]) or '--output' not in args:
+            preparing = any(Path(arg).name == 'twitch-vod-prepare.py' for arg in args[:3])
+            if preparing:
+                index = next(i for i, arg in enumerate(args) if Path(arg).name == 'twitch-vod-prepare.py')
+                if not args[index+1] or args[index+1].startswith('--'):
+                    continue
+                path = Path(args[index+1])
+            elif any(Path(arg).name == 'streamlink' for arg in args[:3]) and '--output' in args:
+                path = Path(args[args.index('--output')+1])
+            else:
                 continue
-            path = Path(args[args.index('--output')+1])
             if path.parent.resolve() != DIRECTORY.resolve():
                 continue
             key = filename_identity(path)
@@ -28,7 +35,8 @@ def active_rows():
             source, _, title = path.stem.partition(' - ')
             rows.append(dict(id=key[1],url='https://www.twitch.tv/videos/'+key[1],
                 title=title.rsplit(' - ',1)[0],source=source,path=str(path),
-                saved=path.stat().st_mtime if path.exists() else time.time(),active=True))
+                saved=path.stat().st_mtime if path.exists() else time.time(),active=True,
+                preparing=preparing))
         except (OSError,IndexError):
             continue
     return rows
@@ -90,6 +98,8 @@ def get_duration(row):
 
 
 def label(row, duration=None):
+    if row.get('preparing'):
+        return 'Preparing'
     seconds = downloaded_seconds(row['path']) if duration else None
     if seconds is not None:
         return f'↓ {min(99,max(0,int(seconds/duration*100)))}%'

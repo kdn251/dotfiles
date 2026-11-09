@@ -6,6 +6,7 @@ import json
 import os
 from pathlib import Path
 import subprocess
+import sys
 import tempfile
 import time
 import unittest
@@ -17,6 +18,15 @@ spec=importlib.util.spec_from_loader(loader.name,loader)
 merge=importlib.util.module_from_spec(spec);loader.exec_module(merge)
 
 class MergeTests(unittest.TestCase):
+    def test_byte_pacing_limits_writes_without_timestamp_assumptions(self):
+        with tempfile.TemporaryDirectory() as d:
+            target=Path(d)/'output'
+            code="import time,sys; f=open(sys.argv[1],'wb',buffering=0); [(f.write(b'x'*1048576),time.sleep(.002)) for _ in range(64)]"
+            start=time.monotonic()
+            self.assertEqual(merge.byte_paced([sys.executable,'-c',code,str(target)]),0)
+            self.assertGreater(time.monotonic()-start,1.4)
+            self.assertEqual(target.stat().st_size,64*1024*1024)
+
     def test_pacing_uses_combined_input_size_without_changing_codecs(self):
         with tempfile.TemporaryDirectory() as d:
             files=[Path(d)/name for name in ('video','audio')]

@@ -10,6 +10,7 @@ import sqlite3
 import subprocess
 import sys
 import tempfile
+import time
 from urllib.parse import parse_qs, urlparse
 
 ROOT = Path(os.environ.get('NEWSBOAT_VIDEO_DIR', Path.home() / 'Videos/newsboat'))
@@ -263,8 +264,12 @@ def rebuild_unlocked():
         stat = path.stat()
         signature = [stat.st_size, stat.st_mtime_ns]
         entry = old.get(str(path), {})
-        valid = entry.get('valid') if entry.get('signature') == signature else playable(path)
+        unchanged = entry.get('signature') == signature
+        reuse_probe = unchanged and (entry.get('valid') is True or
+                                     time.time() - entry.get('checked_at', 0) < 300)
+        valid = entry.get('valid') if reuse_probe else playable(path)
         index[str(path)] = dict(signature=signature, valid=valid,
+                                checked_at=entry.get('checked_at', 0) if reuse_probe else time.time(),
                                 downloaded_at=entry.get("downloaded_at", stat.st_ctime))
         # The scheduled downloader's top-level Twitch files belong to VODs.
         # Keep them indexed for local playback/badges; explicit ,d requests

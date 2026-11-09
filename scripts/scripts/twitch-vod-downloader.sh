@@ -50,6 +50,34 @@ is_streamer_live() {
   fi
 }
 
+finish_vod() {
+    write_status "  $streamer" "$VOD_TITLE (Preparing VOD)"
+    if ! python3 "$HOME/scripts/twitch-vod-prepare.py" "$OUTPUT_PATH"; then
+      write_status "  $streamer" "$VOD_TITLE (Preparation deferred; retry next run)"
+      notify-send "${icon_arg[@]}" -t 5000 "VOD preparation deferred" "$VOD_TITLE — original retained; will retry next run"
+      return 1
+    fi
+    OLD_VOD_ID=$(grep "^${streamer}:" "$ARCHIVE_FILE" 2>/dev/null | cut -d: -f2)
+    if [ -n "$OLD_VOD_ID" ]; then
+      if [ "$OLD_VOD_ID" != "$VOD_ID" ]; then
+        while IFS= read -r -d '' OLD_FILE; do
+          rm -f -- "$OLD_FILE" "$OLD_FILE.incomplete" "$OLD_FILE.download-complete"
+        done < <(find "$TWITCH_VOD_DIR" -maxdepth 1 -type f -name "* - ${OLD_VOD_ID}.mp4" -print0)
+      fi
+    fi
+
+    grep -v "^${streamer}:" "$ARCHIVE_FILE" >"${ARCHIVE_FILE}.tmp" 2>/dev/null || true
+    echo "${streamer}:${VOD_ID}" >>"${ARCHIVE_FILE}.tmp"
+    mv "${ARCHIVE_FILE}.tmp" "$ARCHIVE_FILE"
+    rm -f -- "$OUTPUT_PATH.incomplete" "$OUTPUT_PATH.download-complete"
+
+    python3 "$HOME/scripts/newsboat-vods.py" rebuild >/dev/null 2>&1 || true
+
+    write_status "  $streamer" "$VOD_TITLE (Download Complete)"
+    sleep 5
+    notify-send "${icon_arg[@]}" -r "$NOTIFY_ID" "✓ Download Complete" "$VOD_TITLE" -t 5000 -u normal
+}
+
 download_vods() {
   local streamer=$1
 
@@ -63,6 +91,16 @@ download_vods() {
   icon=$("$HOME/scripts/twitch-profile-pic.sh" "$streamer") || icon=""
   local -a icon_arg=()
   [ -n "$icon" ] && icon_arg=(-i "$icon")
+
+  local pending
+  while IFS= read -r -d '' pending; do
+    OUTPUT_PATH="${pending%.download-complete}"
+    [ -f "$OUTPUT_PATH" ] || continue
+    VOD_ID="${OUTPUT_PATH##* - }"; VOD_ID="${VOD_ID%.mp4}"
+    VOD_TITLE="$(basename "$OUTPUT_PATH" .mp4)"
+    NOTIFY_ID=$(($(echo "$VOD_ID" | cksum | cut -f1 -d' ') % 2147483647))
+    finish_vod || return
+  done < <(find "$TWITCH_VOD_DIR" -maxdepth 1 -type f -name "${streamer} - *.mp4.download-complete" -print0)
 
   write_status "$streamer" "Checking if $streamer is live or has new VODs."
 
@@ -129,8 +167,8 @@ download_vods() {
   DOWNLOAD_PID=$!
   sleep 3
 
-  # Find the file (using VOD_ID as the anchor)
-  FILENAME=$(find "$TWITCH_VOD_DIR" -type f -name "*${VOD_ID}*" 2>/dev/null | head -n 1)
+  # Use the exact output, never a preparation marker or temporary replacement.
+  FILENAME="$OUTPUT_PATH"
 
   while kill -0 $DOWNLOAD_PID 2>/dev/null; do
     sleep 2
@@ -143,34 +181,14 @@ download_vods() {
       else
         write_status "  $streamer (${SIZE_MB}MB)" "$VOD_TITLE [$DURATION]"
       fi
-    else
-      FILENAME=$(find "$TWITCH_VOD_DIR" -type f -name "*${VOD_ID}*" 2>/dev/null | head -n 1)
     fi
   done
 
   wait $DOWNLOAD_PID
 
   if [ $? -eq 0 ]; then
-    rm -f -- "$OUTPUT_PATH.incomplete"
-    OLD_VOD_ID=$(grep "^${streamer}:" "$ARCHIVE_FILE" 2>/dev/null | cut -d: -f2)
-    if [ -n "$OLD_VOD_ID" ]; then
-      OLD_FILE=$(find "$TWITCH_VOD_DIR" -type f -name "*${OLD_VOD_ID}*" 2>/dev/null)
-      if [ -n "$OLD_FILE" ]; then
-        echo "Deleting old VOD for $streamer: $OLD_FILE"
-        rm -f "$OLD_FILE"
-        notify-send "${icon_arg[@]}" "Twitch VOD Downloader" "Deleted old VOD for $streamer" -t 3000 -u low
-      fi
-    fi
-
-    grep -v "^${streamer}:" "$ARCHIVE_FILE" >"${ARCHIVE_FILE}.tmp" 2>/dev/null || true
-    echo "${streamer}:${VOD_ID}" >>"${ARCHIVE_FILE}.tmp"
-    mv "${ARCHIVE_FILE}.tmp" "$ARCHIVE_FILE"
-
-    python3 "$HOME/scripts/newsboat-vods.py" rebuild >/dev/null 2>&1 || true
-
-    write_status "  $streamer" "$VOD_TITLE (Download Complete)"
-    sleep 5
-    notify-send "${icon_arg[@]}" -r "$NOTIFY_ID" "✓ Download Complete" "$VOD_TITLE" -t 5000 -u normal
+    touch "$OUTPUT_PATH.download-complete"
+    finish_vod
   else
     write_status "  $streamer" "$VOD_TITLE (Download Failed)"
     sleep 5
@@ -183,6 +201,9 @@ download_vods() {
 # ==============================================================================
 
 mkdir -p "$TWITCH_VOD_DIR"
+exec 8>"$TWITCH_VOD_DIR/.downloader.lock"
+flock -n 8 || exit 0
+python3 "$HOME/scripts/twitch-vod-prepare.py" --repair-all
 touch "$ARCHIVE_FILE"
 
 write_status "  Twitch" "Starting VOD check for ${#STREAMERS[@]} streamers."

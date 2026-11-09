@@ -4,8 +4,39 @@ import fcntl
 import os
 from pathlib import Path
 import shutil
+import signal
 import subprocess
 import sys
+import time
+
+
+def byte_paced(command):
+    """Pace local VOD writes; timestamp pacing is unreliable on fragmented VODs."""
+    child=subprocess.Popen(command)
+    started=time.monotonic()
+    limit=32*1024*1024
+    stopped=False
+    def interrupted(signum, frame):
+        raise InterruptedError('Postprocessing interrupted')
+    signal.signal(signal.SIGTERM,interrupted)
+    signal.signal(signal.SIGINT,interrupted)
+    try:
+        while child.poll() is None:
+            try:
+                counters=dict(line.split(':',1) for line in Path(f'/proc/{child.pid}/io').read_text().splitlines())
+                ahead=int(counters['wchar'])/limit-(time.monotonic()-started)
+            except (OSError,KeyError,ValueError):
+                ahead=0
+            if ahead>.1 and not stopped:
+                os.kill(child.pid,signal.SIGSTOP);stopped=True
+            elif ahead<=0 and stopped:
+                os.kill(child.pid,signal.SIGCONT);stopped=False
+            time.sleep(.05)
+        return child.returncode
+    finally:
+        if child.poll() is None:
+            child.kill()
+            child.wait()
 
 
 def paced_arguments(args):
@@ -42,9 +73,11 @@ def main(args):
     os.set_inheritable(lock.fileno(),True)
     try:os.setpriority(os.PRIO_PROCESS,0,max(15,os.getpriority(os.PRIO_PROCESS,0)))
     except OSError:pass
-    args=paced_arguments(args)
+    byte_pacing=os.environ.get('NEWSBOAT_FFMPEG_BYTE_PACING')=='1'
+    if not byte_pacing:args=paced_arguments(args)
     command=['/usr/bin/ffmpeg',*args]
     if ionice:=shutil.which('ionice'):command=[ionice,'-c','2','-n','7',*command]
+    if byte_pacing:sys.exit(byte_paced(command))
     os.execv(command[0],command)
 
 
