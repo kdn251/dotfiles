@@ -1,5 +1,5 @@
 local utils=require 'mp.utils'
-mp.set_property_native('user-data/multiview-bindings',3)
+mp.set_property_native('user-data/multiview-bindings',4)
 local function action(value,direction)
     local code="import sys;sys.path.insert(0,sys.argv[1]);from stream_multiview import send;send(int(sys.argv[2]),sys.argv[3],direction=sys.argv[4],key=sys.argv[4])"
     mp.command_native_async({name='subprocess',playback_only=false,args={'python3','-c',code,
@@ -19,6 +19,8 @@ local function bindings()
         end
     end
     for _,key in ipairs({'h','j','k','l'}) do
+        mp.remove_key_binding('multiview-swap-'..key)
+        if active then mp.add_forced_key_binding('Ctrl+Shift+'..key,'multiview-swap-'..key,function() action('swap',key) end) end
         mp.remove_key_binding('multiview-'..key)
         if active then mp.add_forced_key_binding('Ctrl+'..key,'multiview-'..key,function() action('move',key) end) end
     end

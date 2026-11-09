@@ -246,6 +246,29 @@ assert not player.endpoint.exists()
         obj.loaded.assert_called_once_with(entry)
         self.assertNotIn('waiting_native_url',entry)
 
+    def test_keyboard_swap_respects_current_positions_and_grid_edges(self):
+        entries=[{'slot':3},{'slot':0},{'slot':2},{'slot':1}]
+        obj=SimpleNamespace(entries=entries,selected=0,suspended=False,
+            pane_positions=lambda:[(1,1),(0,0),(0,1),(1,0)],swap_panes=Mock())
+        swap=self.theater_method('swap_focused')
+        swap(obj,'h');obj.swap_panes.assert_called_once_with(entries[0],entries[2])
+        obj.swap_panes.reset_mock();swap(obj,'l');obj.swap_panes.assert_not_called()
+        swap(obj,'k');obj.swap_panes.assert_called_once_with(entries[0],entries[3])
+        self.assertEqual(obj.selected,0)
+
+    def test_double_click_toggles_expansion_but_not_on_stream_controls(self):
+        click=self.theater_method('card_click')
+        click.__globals__['Gdk']=SimpleNamespace(EventType=SimpleNamespace(DOUBLE_BUTTON_PRESS=5))
+        entry={};obj=SimpleNamespace(entries=[entry],suspended=False,zoomed=False,select=Mock(),card_mouse=Mock())
+        obj.set_zoomed=lambda value:setattr(obj,'zoomed',value)
+        event=SimpleNamespace(button=1,type=5)
+        click(obj,entry,event,'down');self.assertTrue(obj.zoomed)
+        obj.suppress_click_until=0
+        click(obj,entry,event,'down');self.assertFalse(obj.zoomed)
+        obj.suppress_click_until=0;entry['card_hover']=True
+        click(obj,entry,event,'down');self.assertFalse(obj.zoomed)
+        obj.card_mouse.assert_called_once_with(entry,event,'down')
+
     def test_directional_navigation_two_three_four(self):
         self.assertEqual(neighbor(2,0,'l'),1)
         self.assertEqual(neighbor(2,1,'h'),0)
@@ -309,7 +332,7 @@ assert not player.endpoint.exists()
         source=ast.parse((Path(__file__).resolve().parents[1]/'scripts/stream-sidebar.py').read_text())
         cls=next(n for n in source.body if isinstance(n,ast.ClassDef) and n.name=='Sidebar')
         method=next(n for n in cls.body if isinstance(n,ast.FunctionDef) and n.name=='key')
-        keys=SimpleNamespace(ModifierType=SimpleNamespace(CONTROL_MASK=4),KEY_h=104,KEY_j=106,KEY_k=107,KEY_l=108)
+        keys=SimpleNamespace(ModifierType=SimpleNamespace(CONTROL_MASK=4,SHIFT_MASK=1),KEY_h=104,KEY_j=106,KEY_k=107,KEY_l=108)
         namespace={'Gdk':keys}
         exec(compile(ast.Module(body=[method],type_ignores=[]),'sidebar-key','exec'),namespace)
         with patch('stream_multiview.send',return_value=True) as send:

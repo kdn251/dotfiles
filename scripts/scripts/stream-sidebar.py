@@ -775,8 +775,9 @@ class Sidebar(Gtk.Application):
                 self.list.grab_focus()
     def key(self,_,key,code,modifiers):
         from stream_multiview import send
-        if modifiers and modifiers&Gdk.ModifierType.CONTROL_MASK and key in (Gdk.KEY_h,Gdk.KEY_j,Gdk.KEY_k,Gdk.KEY_l):
-            if send(self.pid,'move',direction=chr(key)):
+        if modifiers and modifiers&Gdk.ModifierType.CONTROL_MASK and key in map(ord,'hjklHJKL'):
+            action='swap' if modifiers&Gdk.ModifierType.SHIFT_MASK else 'move'
+            if send(self.pid,action,direction=chr(key).lower()):
                 self.multiview_focus=True
                 return True
         if not (self.searching and self.search_editing):

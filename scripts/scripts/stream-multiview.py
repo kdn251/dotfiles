@@ -46,7 +46,7 @@ class Theater:
         self.metadata=metadata.load();self.metadata_updated=time.monotonic()
         player=next(c for c in clients() if c['pid']==pid and c.get('fullscreen'))
         self.player=player;self.state={'player':player,'socket':socket_for(player)}
-        if self.get('user-data/multiview-bindings')!=3:
+        if self.get('user-data/multiview-bindings')!=4:
             ipc(self.state,'load-script',str(Path.home()/'.config/mpv/scripts/stream-multiview.lua'))
         self.original_layout=self.get('user-data/media-panel-layout') or {}
         self.original_volume=self.get('volume') or 100
@@ -149,6 +149,7 @@ window { background-color: transparent; }
         if action=='add':self.add(message['row'])
         elif action=='replace':self.replace(message['row'])
         elif action=='move':self.move_focus(message['direction'])
+        elif action=='swap':self.swap_focused(message['direction'])
         elif action=='close':self.close_selected()
         elif action=='quit':self.close_session()
         elif action=='exit':self.toggle_fullscreen()
@@ -165,6 +166,13 @@ window { background-color: transparent; }
         positions=self.pane_positions();x,y=positions[self.selected]
         dx,dy={'h':(-1,0),'l':(1,0),'k':(0,-1),'j':(0,1)}[direction]
         self.select(next((i for i,p in enumerate(positions) if p==(x+dx,y+dy)),self.selected))
+
+    def swap_focused(self,direction):
+        if self.suspended:return
+        positions=self.pane_positions();x,y=positions[self.selected]
+        dx,dy={'h':(-1,0),'l':(1,0),'k':(0,-1),'j':(0,1)}[direction]
+        target=next((i for i,p in enumerate(positions) if p==(x+dx,y+dy)),None)
+        if target is not None:self.swap_panes(self.entries[self.selected],self.entries[target])
 
     def drag_begin(self,entry,x,y):
         if self.zoomed or self.suspended or entry.get('card_hover'):return
@@ -336,6 +344,12 @@ window { background-color: transparent; }
 
     def card_click(self,entry,event,mode):
         if time.monotonic()<getattr(self,'suppress_click_until',0):return True
+        if (mode=='down' and event.button==1 and event.type==Gdk.EventType.DOUBLE_BUTTON_PRESS
+                and not self.suspended and not entry.get('card_hover')):
+            self.drag_source=None;self.dragging=False
+            self.select(self.entries.index(entry));self.set_zoomed(not self.zoomed)
+            self.suppress_click_until=time.monotonic()+.2
+            return True
         if mode=='up' and not self.dragging:self.select(self.entries.index(entry))
         if entry.get('card_hover'):self.card_mouse(entry,event,mode)
         return True
@@ -590,8 +604,10 @@ window { background-color: transparent; }
 
     def key(self,_,event):
         name=Gdk.keyval_name(event.keyval)
-        if event.state&Gdk.ModifierType.CONTROL_MASK and name in ('h','j','k','l'):
-            self.move_focus(name);return True
+        if event.state&Gdk.ModifierType.CONTROL_MASK and name.lower() in ('h','j','k','l'):
+            if event.state&Gdk.ModifierType.SHIFT_MASK:self.swap_focused(name.lower())
+            else:self.move_focus(name.lower())
+            return True
         if name in ('Tab','slash'):
             ipc(self.state,'keypress','TAB' if name=='Tab' else '/');return True
         code=Gdk.keyval_to_unicode(event.keyval)
