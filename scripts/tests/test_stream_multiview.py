@@ -192,6 +192,15 @@ assert not player.endpoint.exists()
         self.assertEqual(mpv_key('c','c',control=True),'Ctrl+c')
         self.assertEqual(mpv_key('Return'),'ENTER')
 
+    def test_embedded_osc_uses_shared_sizing_settings(self):
+        import tempfile
+        from stream_multiview_video import shared_osc_options
+        with tempfile.TemporaryDirectory() as folder:
+            path=Path(folder)/'osc.conf'
+            path.write_text('# Scale both modes\nscalefullscreen=1.5\nscalewindowed = 1.25 # window\nvidscale=yes\nlayout=bottombar\n')
+            self.assertEqual(shared_osc_options(path),'osc-scalefullscreen=1.5,osc-scalewindowed=1.25,osc-vidscale=yes')
+            self.assertEqual(shared_osc_options(Path(folder)/'missing'),'')
+
     def test_directional_navigation_two_three_four(self):
         self.assertEqual(neighbor(2,0,'l'),1)
         self.assertEqual(neighbor(2,1,'h'),0)

@@ -36,6 +36,20 @@ GL.glGetIntegerv.argtypes=[C.c_uint,C.POINTER(C.c_int)]
 def pointer(value):return C.cast(C.pointer(value),P)
 
 
+def shared_osc_options(path=None):
+    """Use the normal OSC sizing without loading global window/IPC settings."""
+    path=path or Path.home()/'.config/mpv/script-opts/osc.conf'
+    values={}
+    try:lines=path.read_text().splitlines()
+    except OSError:return ''
+    for line in lines:
+        key,separator,value=line.partition('=')
+        key=key.strip();value=value.split('#',1)[0].strip()
+        if separator and key in ('scalewindowed','scalefullscreen','scaleforcedwindow','vidscale'):
+            values['osc-'+key]=value
+    return ','.join(key+'='+value for key,value in values.items())
+
+
 class Video(Gtk.GLArea):
     def __init__(self,ready):
         super().__init__()
@@ -48,7 +62,8 @@ class Video(Gtk.GLArea):
         runtime=Path(os.environ.get('XDG_RUNTIME_DIR',f'/run/user/{os.getuid()}'))/'stream-multiview'
         runtime.mkdir(mode=0o700,parents=True,exist_ok=True)
         self.endpoint=runtime/f'video-{uuid.uuid4().hex}.ipc'
-        options={'input-conf':str(Path.home()/'.config/mpv/input.conf'),
+        options={'script-opts':shared_osc_options(),
+                 'input-conf':str(Path.home()/'.config/mpv/input.conf'),
                  'input-ipc-server':str(self.endpoint),
                  'screenshot-directory':str(Path.home()/'pictures/screenshots/mpv'),
                  'config':'no','load-scripts':'no','vo':'libmpv','hwdec':'auto-safe',
