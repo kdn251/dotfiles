@@ -578,6 +578,8 @@ hl.layer_rule({ ["animation"] = "slide right", ["match"] = { ["namespace"] = "^(
 
 -- Fullscreen media panels enter and leave through their nearest screen edge.
 hl.layer_rule({ animation = "slide left", match = { namespace = "^stream-sidebar$" } })
+-- Multi-view is video: remapping it must not fade or slide individual feeds.
+hl.layer_rule({ no_anim = true, match = { namespace = "^stream-multiview$" } })
 -- Special workspace toggles reverse direction on close: no explicit direction
 -- here means right-to-left on entry and left-to-right on exit.
 hl.workspace_rule({ workspace = "special:chatterino_chat", animation = "slide 20%" })

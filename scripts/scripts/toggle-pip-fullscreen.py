@@ -48,6 +48,10 @@ def write(path, value):
 
 def managed_stream_toggle(client,runtime,force_exit=False):
     if client.get('class')!='mpv':return False
+    from stream_multiview import active,send
+    if os.environ.get('STREAM_MULTIVIEW_TOGGLE')!='1' and active(client.get('pid')):
+        send(client['pid'],'exit')
+        return True
     from media_chat_fullscreen import socket_for,ipc
     try:
         endpoint=socket_for(client)

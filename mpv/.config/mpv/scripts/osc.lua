@@ -816,6 +816,8 @@ mp.observe_property('user-data/stream-name', 'native', refresh_portrait)
 mp.observe_property('user-data/stream-service', 'native', refresh_portrait)
 mp.register_event('shutdown', hide_portrait)
 
+local multiview_card_viewport = nil
+local multiview_card_scale = 1
 local function stream_card_enabled()
     return user_opts.layout == 'bottombar' and mp.get_property_native('user-data/stream-name', '') ~= ''
 end
@@ -1992,7 +1994,7 @@ function bar_layout(direction)
         padwc_r = window_control_box_width
     end
 
-    if ((osc_param.display_aspect > 0) and (osc_param.playresx < minW)) then
+    if not multiview_card_viewport and ((osc_param.display_aspect > 0) and (osc_param.playresx < minW)) then
         osc_param.playresy = minW / osc_param.display_aspect
         osc_param.playresx = osc_param.playresy * osc_param.display_aspect
     end
@@ -2044,6 +2046,12 @@ function bar_layout(direction)
         osc_geo.w=osc_param.playresx*(1-left-right)
         osc_geo.h=72
         osc_geo.y=osc_param.playresy-osc_geo.h-user_opts.barmargin
+        if multiview_card_viewport then
+            local v=multiview_card_viewport
+            osc_geo.x=osc_param.playresx*v[1]
+            osc_geo.w=osc_param.playresx*v[3]
+            osc_geo.y=osc_param.playresy*(v[2]+v[4])-osc_geo.h-user_opts.barmargin
+        end
         osc_param.areas.input={}
         add_area("input", get_hitbox_coords(osc_geo.x, osc_geo.y, osc_geo.an, osc_geo.w, osc_geo.h))
     end
@@ -2310,6 +2318,7 @@ function osc_init()
         scale = user_opts.scalewindowed
     end
 
+    scale=scale*multiview_card_scale
     if user_opts.vidscale then
         osc_param.unscaled_y = baseResY
     else
@@ -3648,3 +3657,14 @@ end)
 
 set_virt_mouse_area(0, 0, 0, 0, "thumbfast-osc-input")
 set_virt_mouse_area(0, 0, 0, 0, "thumbfast-osc-window-controls")
+
+-- Embedded theater panes use this very same card, with their own video bounds.
+mp.register_script_message('stream-card-viewport', function(x,y,w,h,scale)
+    multiview_card_scale=tonumber(scale) or 1
+    local next_view = tonumber(w) and {tonumber(x),tonumber(y),tonumber(w),tonumber(h)} or nil
+    multiview_card_viewport=next_view
+    request_init_resize()
+end)
+mp.register_script_message('stream-card-hover', function(visible)
+    if visible=='yes' then show_osc();request_tick() else hide_osc() end
+end)

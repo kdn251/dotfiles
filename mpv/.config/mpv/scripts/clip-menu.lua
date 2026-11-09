@@ -35,6 +35,7 @@ local keys = {'j', 'k', 'DOWN', 'UP', 'ENTER', 'ESC', 'C'}
 
 local function close()
     visible = false
+    mp.set_property_native('user-data/clip-menu-visible',false)
     overlay:remove()
     for _, key in ipairs(keys) do mp.remove_key_binding('clip-menu-' .. key) end
 end
@@ -90,6 +91,7 @@ local function open()
     buffered = math.floor(available())
     if buffered < 2 then mp.osd_message('Not enough buffered video yet', 2); return end
     selected, visible = 2, true
+    mp.set_property_native('user-data/clip-menu-visible',true)
     local function move(delta)
         selected = (selected - 1 + delta) % #lengths + 1
         render()

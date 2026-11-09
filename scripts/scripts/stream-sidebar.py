@@ -19,7 +19,7 @@ import gi
 gi.require_version('Gtk','4.0')
 gi.require_version('Gdk','4.0')
 gi.require_version('Gtk4LayerShell','1.0')
-from gi.repository import Gtk,Gdk,Gio,GLib,Pango,Gsk,Graphene,Gtk4LayerShell as Layer
+from gi.repository import Gtk,Gdk,Gio,GLib,Pango,Gsk,Graphene,GdkPixbuf,Gtk4LayerShell as Layer
 from stream_sidebar import rows,choice,VideoSpace,restore_windowed,visible_on_workspace,search_rows,load_collapsed,save_collapsed
 from stream_menu_metadata import highlight
 from media_chat_fullscreen import ipc,socket_for,read as chat_layout
@@ -61,6 +61,12 @@ class Sidebar(Gtk.Application):
         self.last_nav_at=0
         self.saved_repeat_delay=None
         self.collapsed=load_collapsed()
+        self.hovered_row=None
+        self.hover_timer=None
+        self.hover_preview=None
+        self.preview_surface=None
+        self.preview_frame=None
+        self.multiview_focus=False
         self.connect('shutdown',self.release_video)
         self.connect('shutdown',self.stop_events)
         self.connect('activate',self.activate_sidebar)
@@ -231,6 +237,7 @@ class Sidebar(Gtk.Application):
         self.events.command('observe_property',701,'user-data/stream-sidebar-action')
         self.events.command('observe_property',702,'fullscreen')
         self.events.command('observe_property',703,'user-data/stream-sidebar-replacement')
+        self.events.command('observe_property',704,'user-data/stream-name')
         self.events.socket.settimeout(None)
         events=self.events
         watched_pid=self.pid
@@ -243,6 +250,8 @@ class Sidebar(Gtk.Application):
                     if event.get('event')=='shutdown':
                         GLib.idle_add(self.exited_for_player,watched_pid);return
                     if event.get('event')!='property-change':continue
+                    if event.get('name')=='user-data/stream-name':
+                        GLib.idle_add(self.identity_changed_for_player,watched_pid)
                     if event.get('name')=='user-data/stream-sidebar-replacement' and isinstance(event.get('data'),dict):
                         GLib.idle_add(self.retarget_for_player,watched_pid,event['data'])
                     if event.get('name')=='fullscreen':
@@ -256,6 +265,11 @@ class Sidebar(Gtk.Application):
         threading.Thread(target=listen,daemon=True).start()
     def exited_for_player(self,pid):
         if pid==self.pid:self.player_exited()
+        return False
+    def identity_changed_for_player(self,pid):
+        if pid==self.pid and not self.closing:
+            self.current=identity(self.player)
+            self.refresh()
         return False
     def retarget_for_player(self,pid,data):
         if pid==self.pid:self.retarget(data)
@@ -319,6 +333,7 @@ class Sidebar(Gtk.Application):
             self.check_player()
         return False
     def suspend_fullscreen(self):
+        self.stop_hover_preview()
         # Keep the menu and its selection alive, but give the windowed video
         # all its space back. Remapping on fullscreen restores the left margin.
         self.window.set_visible(False)
@@ -327,6 +342,7 @@ class Sidebar(Gtk.Application):
         if action=='search':self.open_search()
         elif action=='close':self.dismiss()
         elif action=='choose':self.choose(self.list,self.list.get_selected_row())
+        elif action=='multiview':self.add_stream()
         elif action in ('g','G'):
             self.key(None,Gdk.KEY_g if action=='g' else Gdk.KEY_G,0,0)
         elif action=='nav-stop':self.stop_navigation()
@@ -336,6 +352,7 @@ class Sidebar(Gtk.Application):
             self.key(None,Gdk.KEY_j if action=='down' else Gdk.KEY_k,0,0)
         return False
     def stop_events(self,*_):
+        self.stop_hover_preview()
         self.update_repeat_delay(False)
         self.stop_navigation()
         self.hide_stream_title()
@@ -390,6 +407,8 @@ class Sidebar(Gtk.Application):
         self.search_button.set_visible(not self.collapsed)
         self.hint.set_visible(not self.collapsed)
         if self.collapsed:
+            self.search_editing=False
+            self.multiview_focus=False
             self.searching=False
             self.search.set_text('')
             self.search.set_visible(False)
@@ -456,6 +475,7 @@ class Sidebar(Gtk.Application):
             self.stop_navigation()
             self.show_stream_title(None,self.list.get_selected_row())
     def start_navigation(self,key):
+        self.multiview_focus=False
         now=time.monotonic()
         if self.held_nav==key and now-self.last_nav_at<.04:return
         self.stop_navigation()
@@ -543,6 +563,7 @@ class Sidebar(Gtk.Application):
             popup.present()
             self.title_timer=GLib.timeout_add(2500,self.expire_stream_title)
     def refresh(self):
+        if self.hover_preview:return True
         # Replacing focused rows mid-hold can interrupt GTK key delivery.
         # Apply the next cache refresh once navigation has stopped.
         if self.held_nav is not None:return True
@@ -584,8 +605,8 @@ class Sidebar(Gtk.Application):
             for widget in row.details:widget.set_visible(not self.collapsed)
             row.set_child(body)
             motion=Gtk.EventControllerMotion()
-            motion.connect('enter',lambda controller,x,y,r=row:self.show_stream_title(None,r))
-            motion.connect('leave',self.hide_stream_title)
+            motion.connect('enter',lambda controller,x,y,r=row:self.hover_stream(r))
+            motion.connect('leave',self.leave_hover)
             row.add_controller(motion)
             self.list.append(row)
             if choice(data)==selected_key or (selected_key is None and current):preferred=row
@@ -628,19 +649,123 @@ class Sidebar(Gtk.Application):
                 self.window.present()
                 self.restore_input_focus()
             elif not visible and self.window.get_visible():
+                self.stop_hover_preview()
                 self.window.set_visible(False)
         except (OSError,ValueError,subprocess.SubprocessError):
             # A temporary compositor query failure should not close the list.
             pass
         return True
+    def add_stream(self):
+        from stream_multiview import typed_stream
+        data=typed_stream(self.search.get_text()) if self.searching else None
+        row=self.hovered_row or self.list.get_selected_row()
+        if data is None and row and hasattr(row,'data'):data=row.data
+        if not data:return
+        self.stop_hover_preview()
+        log=Path(os.environ.get('XDG_RUNTIME_DIR','/tmp'))/'stream-multiview.log'
+        with log.open('a') as output:
+            subprocess.Popen([sys.executable,str(SCRIPTS/'stream-multiview.py'),str(self.pid),json.dumps(data)],
+                             stdout=output,stderr=output,stdin=subprocess.DEVNULL,start_new_session=True)
+
+    def stop_hover_preview(self):
+        if self.hover_timer:
+            GLib.source_remove(self.hover_timer);self.hover_timer=None
+        if self.hover_preview:
+            self.hover_preview.stop();self.hover_preview=None
+        if self.preview_surface:
+            self.preview_surface.destroy();self.preview_surface=None
+
+    def leave_hover(self,*_):
+        self.hovered_row=None
+        self.stop_hover_preview()
+        self.hide_stream_title()
+
+    def hover_stream(self,row):
+        self.multiview_focus=False
+        self.stop_hover_preview()
+        self.hovered_row=row
+        self.show_stream_title(None,row)
+        data=row.data
+        if self.current and self.current[0]==data['service'] and self.current[1].casefold()==data['name'].casefold():return
+        self.hover_timer=GLib.timeout_add(650,self.start_hover_preview,row)
+
+    def start_hover_preview(self,row):
+        self.hover_timer=None
+        if self.closing or self.hovered_row is not row or not row.get_mapped():return False
+        from stream_preview import Preview
+        from stream_multiview import channel
+        mon=self.monitor
+        width=mon['width']/mon.get('scale',1);height=mon['height']/mon.get('scale',1)
+        preview_width=min(440,round(width*.3));preview_height=round(preview_width*9/16)
+        ok,bounds=row.compute_bounds(self.window)
+        y=max(8,min(int(bounds.get_y()) if ok else 8,int(height)-preview_height-8))
+        self.hide_stream_title()
+        self.hover_preview=Preview(row.data['name'],row.data['service'],channel(row.data),
+            (mon['x']+self.window.get_width()+8,mon['y']+y,preview_width,preview_height),overlay=True)
+        self.hover_preview.start()
+        self.show_preview_surface(self.hover_preview,y,preview_width,preview_height)
+        GLib.timeout_add(150,self.preview_clicked,self.hover_preview,row)
+        return False
+
+    def show_preview_surface(self,preview,y,width,height):
+        popup=Gtk.Window();Layer.init_for_window(popup)
+        Layer.set_namespace(popup,'stream-sidebar-preview');Layer.set_layer(popup,Layer.Layer.OVERLAY)
+        Layer.set_keyboard_mode(popup,Layer.KeyboardMode.NONE);Layer.set_exclusive_zone(popup,-1)
+        Layer.set_monitor(popup,Layer.get_monitor(self.window))
+        for edge in (Layer.Edge.TOP,Layer.Edge.LEFT):Layer.set_anchor(popup,edge,True)
+        Layer.set_margin(popup,Layer.Edge.LEFT,self.window.get_width()+8);Layer.set_margin(popup,Layer.Edge.TOP,y)
+        popup.set_default_size(width,height)
+        stack=Gtk.Stack();stack.set_size_request(width,height)
+        spinner=Gtk.Spinner();spinner.set_halign(Gtk.Align.CENTER);spinner.set_valign(Gtk.Align.CENTER);spinner.start()
+        picture=Gtk.Picture();picture.set_can_shrink(True)
+        stack.add_named(spinner,'loading');stack.add_named(picture,'video');popup.set_child(stack)
+        self.preview_surface=popup;popup.present()
+        frame=Path(preview.endpoint).with_suffix('.jpg')
+        self.preview_frame=frame
+        def render():
+            while self.hover_preview is preview and not preview.cancelled.is_set():
+                try:
+                    if preview.process is None:time.sleep(.1);continue
+                    player=Player(preview.endpoint,preview.process.pid)
+                    try:
+                        player.socket.settimeout(.4)
+                        player.command('set_property','screenshot-jpeg-quality',65)
+                        player.command('screenshot-to-file',str(frame),'video')
+                    finally:player.close()
+                    texture=Gdk.Texture.new_for_pixbuf(GdkPixbuf.Pixbuf.new_from_file_at_scale(str(frame),width,height,True))
+                    GLib.idle_add(self.preview_texture,preview,picture,stack,texture)
+                except (OSError,ValueError,GLib.Error):pass
+                time.sleep(.15)
+            frame.unlink(missing_ok=True)
+        threading.Thread(target=render,daemon=True).start()
+
+    def preview_texture(self,preview,picture,stack,texture):
+        if self.hover_preview is preview and self.preview_surface:
+            picture.set_paintable(texture);stack.set_visible_child_name('video')
+        return False
+
+    def preview_clicked(self,preview,row):
+        if self.closing or self.hover_preview is not preview:return False
+        if preview.accepted.exists():self.choose(self.list,row);return False
+        return True
+
     def choose(self,_,row):
         self.stop_navigation()
         self.hide_stream_title()
         if self.searching:self.search.grab_focus_without_selecting()
-        if not row or not hasattr(row,'data'):return
-        data=row.data
+        from stream_multiview import typed_stream,send
+        typed=typed_stream(self.search.get_text()) if self.searching else None
+        if not typed and (not row or not hasattr(row,'data')):return
+        data=typed or row.data
+        if send(self.pid,'add',row=data):
+            self.stop_hover_preview()
+            return
         if not (self.current and self.current[0]==data['service'] and self.current[1].casefold()==data['name'].casefold()):
-            subprocess.Popen([str(SCRIPTS/'twitch-launcher.sh'),choice(data)],
+            if self.hover_preview and self.hover_preview.name.casefold()==data['name'].casefold() and self.hover_preview.service==data['service']:
+                self.hover_preview.handoff()
+            self.stop_hover_preview()
+            selection=self.search.get_text().strip() if typed else choice(data)
+            subprocess.Popen([str(SCRIPTS/'twitch-launcher.sh'),selection],
                              env=dict(os.environ,STREAM_SWITCH_SOURCE_PID=str(self.pid)),stdin=subprocess.DEVNULL,
                              stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL,start_new_session=True)
             if self.searching:
@@ -649,6 +774,30 @@ class Sidebar(Gtk.Application):
                 self.search.set_text('')
                 self.list.grab_focus()
     def key(self,_,key,code,modifiers):
+        from stream_multiview import send
+        if modifiers and modifiers&Gdk.ModifierType.CONTROL_MASK and key in (Gdk.KEY_h,Gdk.KEY_j,Gdk.KEY_k,Gdk.KEY_l):
+            if send(self.pid,'move',direction=chr(key)):
+                self.multiview_focus=True
+                return True
+        if not (self.searching and self.search_editing):
+            if key in (Gdk.KEY_Return,Gdk.KEY_KP_Enter) and getattr(self,'multiview_focus',False):
+                if send(self.pid,'zoom'):return True
+            if key==Gdk.KEY_Escape:
+                try:
+                    if ipc({'socket':socket_for(self.player),'player':self.player},'get_property','user-data/stream-multiview-zoomed'):
+                        if send(self.pid,'grid'):return True
+                except (OSError,ValueError):pass
+        if getattr(self,'multiview_focus',False) and not (self.searching and self.search_editing):
+            if key not in (Gdk.KEY_Tab,Gdk.KEY_slash,Gdk.KEY_bar,Gdk.KEY_j,Gdk.KEY_k,Gdk.KEY_Up,Gdk.KEY_Down):
+                from stream_multiview import mpv_key
+                codepoint=Gdk.keyval_to_unicode(key)
+                translated=mpv_key(Gdk.keyval_name(key),chr(codepoint) if codepoint else '',
+                    bool(modifiers&Gdk.ModifierType.CONTROL_MASK),bool(modifiers&Gdk.ModifierType.ALT_MASK))
+                if translated and send(self.pid,'key',key=translated):return True
+        if key==Gdk.KEY_bar:
+            self.add_stream();return True
+        if key==Gdk.KEY_q and not (self.searching and self.search_editing):
+            if send(self.pid,'close'):return True
         if self.searching and self.search_editing:
             self.pending_g=0
             if key==Gdk.KEY_Down:
@@ -658,7 +807,8 @@ class Sidebar(Gtk.Application):
                 (row or self.list).grab_focus()
                 return True
             if key==Gdk.KEY_slash:
-                self.open_search();return True
+                if not self.search.get_text():self.open_search();return True
+                return False
             if key==Gdk.KEY_BackSpace and not self.search.get_text():return True
             if key==Gdk.KEY_Escape:
                 if self.search.get_text():self.search.set_text('')

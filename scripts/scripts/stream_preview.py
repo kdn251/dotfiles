@@ -91,10 +91,11 @@ def resolve(name,service,channel):
 
 
 class Preview:
-    def __init__(self,name,service,channel,bounds):
+    def __init__(self,name,service,channel,bounds,overlay=False):
         ROOT.mkdir(mode=0o700,parents=True,exist_ok=True)
         self.name,self.service,self.channel=name,service,channel
         self.bounds=bounds
+        self.overlay=overlay
         token=uuid.uuid4().hex
         self.endpoint=str(ROOT/(token+'.sock'))
         self.accepted=ROOT/(token+'.accept')
@@ -141,6 +142,11 @@ class Preview:
                 if window:
                     x,y,w,h=self.bounds
                     subprocess.run([*HYPRCTL,'--batch',f'dispatch setfloating address:{window["address"]}; dispatch resizewindowpixel exact {w} {h},address:{window["address"]}; dispatch movewindowpixel exact {x} {y},address:{window["address"]}'],stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL,timeout=2)
+                    if self.overlay:
+                        # Sidebar mirrors this decoded preview in a layer surface.
+                        # Keep its native window out of the fullscreen stack until adoption.
+                        subprocess.run([*HYPRCTL,'dispatch','movetoworkspacesilent','special:sidebar_preview,address:'+window['address']],
+                                       stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL,timeout=2)
                     # Prepare geometry while the stream is loading, not on Enter.
                     try:
                         from pip_geometry import monitor_size, bottom_right, settings

@@ -50,6 +50,12 @@ def rows(cache=None, now=None, current=None):
 
 def search_rows(catalog,query):
     from stream_menu_metadata import search_rank
+    import re
+    from stream_multiview import SERVICES
+    prefix=re.fullmatch(r'([tkry])/(.*)',query.strip(),re.I)
+    if prefix:
+        catalog=[row for row in catalog if row['service']==SERVICES[prefix[1].lower()]]
+        query=prefix[2]
     if not query.strip():return catalog
     ranked=[(search_rank(query,row['name'],row.get('category',''),row.get('title','')),i,row)
             for i,row in enumerate(catalog)]

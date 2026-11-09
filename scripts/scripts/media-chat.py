@@ -106,6 +106,8 @@ def twitch_player(clients):
 
 
 def main():
+    from stream_multiview import active
+    if active():return
     preload='--preload' in sys.argv
     clients=json.loads(hypr('-j','clients'))
     if preload:
