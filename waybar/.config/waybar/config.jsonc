@@ -31,7 +31,7 @@
     // "temperature",
     "custom/dnd",
     "custom/display",
-    // Speaker icon: click opens pavucontrol (was Alt+Shift+V).
+    // One audio icon for volume controls and device selection.
     "pulseaudio",
     "custom/bluetooth",
     "network",
@@ -274,7 +274,10 @@
       "car": "",
       "default": ["", "", ""]
     },
-    "on-click": "python3 ~/.config/waybar/scripts/bluetooth-status.py --click-audio",
-    "on-click-right": "~/scripts/sound-panel.sh"
+    "scroll-step": 3,
+    "tooltip-format": "Volume: {volume}%\nClick: sound controls · Right-click: audio devices\nScroll: volume · Middle-click: mute",
+    "on-click": "~/scripts/sound-panel.sh",
+    "on-click-right": "python3 ~/.config/waybar/scripts/bluetooth-status.py --click-audio",
+    "on-click-middle": "pactl set-sink-mute @DEFAULT_SINK@ toggle"
   }
 }
