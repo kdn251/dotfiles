@@ -14,7 +14,7 @@ class TheaterTests(unittest.TestCase):
         source=ast.parse((Path(__file__).resolve().parents[1]/'scripts/stream-multiview.py').read_text())
         cls=next(n for n in source.body if isinstance(n,ast.ClassDef) and n.name=='Theater')
         method=next(n for n in cls.body if isinstance(n,ast.FunctionDef) and n.name==name)
-        namespace={}
+        namespace={'time':__import__('time')}
         exec(compile(ast.Module(body=[method],type_ignores=[]),'theater-method','exec'),namespace)
         return namespace[name]
 
@@ -30,7 +30,7 @@ class TheaterTests(unittest.TestCase):
 
     def test_indicator_and_audio_selection_survive_windowed_mode(self):
         entries=[dict(widget=Mock(),indicator=Mock(),video=None if i==0 else Mock()) for i in range(4)]
-        obj=SimpleNamespace(entries=entries,suspended=False,zoomed=False,set=Mock(),arrange=Mock())
+        obj=SimpleNamespace(entries=entries,selected=0,suspended=False,zoomed=False,set=Mock(),arrange=Mock())
         select=self.theater_method('select');select(obj,2)
         for i,entry in enumerate(entries):entry['indicator'].set_visible.assert_called_with(i==2)
         entries[1]['video'].set.assert_called_with('mute','yes')
@@ -43,7 +43,7 @@ class TheaterTests(unittest.TestCase):
 
     def test_windowed_layout_shows_only_selected_without_changing_zoom_preference(self):
         entries=[dict(widget=Mock(),video=None if i==0 else Mock()) for i in range(4)]
-        obj=SimpleNamespace(entries=entries,suspended=True,zoomed=False,selected=2,grid=Mock(),blank=None)
+        obj=SimpleNamespace(entries=entries,suspended=True,zoomed=False,selected=2,grid=Mock(),blank=None,pane_positions=lambda:cells(4))
         arrange=self.theater_method('arrange')
         arrange.__globals__['cells']=cells
         arrange(obj)
@@ -153,7 +153,7 @@ assert not player.endpoint.exists()
             if video:video.get.return_value='1.7777778'
             entries.append(dict(widget=widget,video=video,indicator=Mock(),aspect=16/9))
         window=Mock();window.get_allocated_height.return_value=960
-        obj=SimpleNamespace(window=window,entries=entries,zoomed=False,suspended=False,card_command=Mock(),get=Mock(return_value={'left':0}))
+        obj=SimpleNamespace(pane_positions=lambda:cells(4),window=window,entries=entries,zoomed=False,suspended=False,card_command=Mock(),get=Mock(return_value={'left':0}))
         for e in entries:position(obj,e)
         self.assertEqual(entries[0]['card_viewport'][1]+entries[0]['card_viewport'][3],.5)
         for e in entries[1:]:
@@ -200,6 +200,35 @@ assert not player.endpoint.exists()
             path.write_text('# Scale both modes\nscalefullscreen=1.5\nscalewindowed = 1.25 # window\nvidscale=yes\nlayout=bottombar\n')
             self.assertEqual(shared_osc_options(path),'osc-scalefullscreen=1.5,osc-scalewindowed=1.25,osc-vidscale=yes')
             self.assertEqual(shared_osc_options(Path(folder)/'missing'),'')
+
+    def test_drag_swaps_slots_without_changing_audio_or_reloading_players(self):
+        entries=[dict(slot=i,video=Mock()) for i in range(4)]
+        obj=SimpleNamespace(entries=entries,selected=1,arrange=Mock(),tick=Mock())
+        self.theater_method('swap_panes')(obj,entries[0],entries[3])
+        self.assertEqual([e['slot'] for e in entries],[3,1,2,0])
+        self.assertEqual(obj.selected,1)
+        for entry in entries:entry['video'].load.assert_not_called()
+        positions=self.theater_method('pane_positions');positions.__globals__['cells']=cells
+        self.assertEqual(positions(obj),[(1,1),(1,0),(0,1),(0,0)])
+
+    def test_quality_follows_audio_selection_and_ignores_unchanged_rendition(self):
+        video=Mock();entry=dict(video=video,ready=True,url='high',best_url='high',low_url='low',service='Twitch')
+        obj=SimpleNamespace(entries=[{},entry],selected=0)
+        apply=self.theater_method('apply_quality')
+        apply(obj,entry);video.load.assert_called_once_with('low','Twitch')
+        apply(obj,entry);self.assertEqual(video.load.call_count,1)
+        obj.selected=1;apply(obj,entry);video.load.assert_called_with('high','Twitch')
+        entry['quality_after']=__import__('time').monotonic()+10
+        obj.selected=0;apply(obj,entry);self.assertEqual(video.load.call_count,2)
+
+    def test_only_actual_end_of_stream_closes_a_pane(self):
+        first={};second={'name':'Second'}
+        obj=SimpleNamespace(closed=False,entries=[first,second],remove=Mock(),close_session=Mock())
+        ended=self.theater_method('stream_ended')
+        for reason in ('error','stop','redirect'):ended(obj,second,reason)
+        obj.remove.assert_not_called()
+        ended(obj,second,'eof');obj.remove.assert_called_once_with(1)
+        obj.entries=[second];ended(obj,second,'eof');obj.close_session.assert_called_once()
 
     def test_directional_navigation_two_three_four(self):
         self.assertEqual(neighbor(2,0,'l'),1)

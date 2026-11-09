@@ -13,12 +13,15 @@ lib=C.CDLL('libmpv.so.2')
 GL=C.CDLL('libGL.so.1')
 EGL=C.CDLL('libEGL.so.1')
 P=C.c_void_p
+class Event(C.Structure):_fields_=[('event_id',C.c_int),('error',C.c_int),('reply_userdata',C.c_uint64),('data',P)]
+class EndFile(C.Structure):_fields_=[('reason',C.c_int),('error',C.c_int)]
 class Param(C.Structure):_fields_=[('type',C.c_int),('data',P)]
 GET=C.CFUNCTYPE(P,P,C.c_char_p)
 UPDATE=C.CFUNCTYPE(None,P)
 class Init(C.Structure):_fields_=[('get_proc',GET),('ctx',P)]
 class FBO(C.Structure):_fields_=[('fbo',C.c_int),('w',C.c_int),('h',C.c_int),('format',C.c_int)]
 for name,args,result in [
+ ('mpv_wait_event',[P,C.c_double],C.POINTER(Event)),
  ('mpv_create',[],P),('mpv_initialize',[P],C.c_int),
  ('mpv_set_option_string',[P,C.c_char_p,C.c_char_p],C.c_int),
  ('mpv_set_property_string',[P,C.c_char_p,C.c_char_p],C.c_int),
@@ -51,9 +54,9 @@ def shared_osc_options(path=None):
 
 
 class Video(Gtk.GLArea):
-    def __init__(self,ready):
+    def __init__(self,ready,ended=None):
         super().__init__()
-        self.ready=ready;self.loaded=False;self.closed=False;self.context=P();self.pending_url=None
+        self.ready=ready;self.ended=ended;self.loaded=False;self.closed=False;self.context=P();self.pending_url=None
         # GTK initializes the user's locale; libmpv aborts unless numeric
         # parsing uses C. Set this after widget/GTK initialization, not at import.
         locale.setlocale(locale.LC_NUMERIC,'C')
@@ -134,6 +137,12 @@ class Video(Gtk.GLArea):
 
     def check_ready(self):
         if self.closed:return False
+        while True:
+            event=lib.mpv_wait_event(self.handle,0).contents
+            if event.event_id==0:break
+            if event.event_id==7 and event.data and self.ended:
+                end=C.cast(event.data,C.POINTER(EndFile)).contents
+                if end.reason==0:GLib.idle_add(self.ended,'eof')
         if not self.loaded and self.get('video-params/w'):
             self.loaded=True;self.ready()
         return True

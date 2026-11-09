@@ -19,7 +19,7 @@ from stream_multiview import ROOT,send,channel,cells,neighbor,mpv_key
 from stream_multiview_video import Video
 from media_chat_fullscreen import ipc,socket_for
 import media_chat_fullscreen as chat
-from stream_preview import resolve as resolve_twitch
+from stream_multiview_quality import resolve_hls_qualities
 
 SCRIPTS=Path(__file__).resolve().parent
 
@@ -28,11 +28,19 @@ def clients():return json.loads(subprocess.check_output(['/usr/bin/hyprctl','-j'
 
 
 def resolve(name,service,page):
-    if service=='Twitch':return resolve_twitch(name,service,page)
+    if service=='Twitch':
+        result=subprocess.run([sys.executable,str(SCRIPTS/'twitch-stream-url.py'),name,'--playback'],
+                              capture_output=True,text=True,check=True,timeout=60)
+        data=json.loads(result.stdout)
+        return dict(url='av://hls:'+data['best'],best_url='av://hls:'+data['best'],low_url='av://hls:'+data['low'])
     result=subprocess.run([sys.executable,str(SCRIPTS/'stream-playback-url.py'),service,page],
                           capture_output=True,text=True,check=True,timeout=60)
     data=json.loads(result.stdout)
-    return dict(url=data.get('playback_url') or data['url'],
+    best=data.get('playback_url') or data['url'];low=data.get('low_playback_url') or best
+    if service in ('Kick','Rumble'):
+        try:best,low=resolve_hls_qualities(data['url'],service)
+        except (OSError,ValueError):pass
+    return dict(url=best,best_url=best,low_url=low,
                 page=data['url'] if service=='YouTube' else data.get('page_url',page),
                 context=dict(data,name=name,service=service,channel=page,quality='best'))
 
@@ -42,6 +50,7 @@ class Theater:
         ROOT.mkdir(mode=0o700,parents=True,exist_ok=True)
         self.pid=pid;self.closed=False;self.selected=0;self.entries=[];self.last_layout=None
         self.zoomed=False;self.suspended=False;self.blank=None
+        self.drag_source=None;self.drag_audio=None;self.dragging=False
         self.metadata=metadata.load();self.metadata_updated=time.monotonic()
         player=next(c for c in clients() if c['pid']==pid and c.get('fullscreen'))
         self.player=player;self.state={'player':player,'socket':socket_for(player)}
@@ -50,6 +59,8 @@ class Theater:
         self.original_layout=self.get('user-data/media-panel-layout') or {}
         self.original_volume=self.get('volume') or 100
         self.original_brightness=self.get('brightness') or 0
+        self.original_keep_open=self.get('keep-open') or 'no'
+        self.set('keep-open','yes')
         self.owner_masked=False
         self.original_align={axis:self.get('video-align-'+axis) or 0 for axis in ('x','y')}
         previous=chat.read()
@@ -59,7 +70,7 @@ class Theater:
             chat.PREFERENCE.unlink(missing_ok=True)
         self.original=dict(name=self.get('user-data/stream-name'),service=self.get('user-data/stream-service'),
             title=self.get('force-media-title') or '',url=self.get('path'),page=self.get('user-data/stream-page') or '')
-        self.entries=[dict(self.original,video=None,ready=True)]
+        self.entries=[dict(self.original,video=None,ready=True,slot=0)]
         self.window=Gtk.Window(title='Stream theater')
         self.window.connect('delete-event',lambda *_:(self.close_session(),True)[1])
         self.window.set_app_paintable(True)
@@ -90,6 +101,7 @@ window { background-color: transparent; }
         threading.Thread(target=self.listen,daemon=True).start()
         self.set('user-data/stream-multiview',True)
         self.add(row)
+        self.prepare_native_quality()
         self.timer=GLib.timeout_add(80,self.tick)
         threading.Thread(target=self.observe_fullscreen,daemon=True).start()
         GLib.unix_signal_add(GLib.PRIORITY_DEFAULT,signal.SIGTERM,self.finish)
@@ -107,9 +119,15 @@ window { background-color: transparent; }
         try:
             observer=Player(self.state['socket'],self.pid)
             observer.command('observe_property',909,'fullscreen')
+            observer.command('observe_property',910,'eof-reached')
+            observer.socket.settimeout(None)
             for line in observer.stream:
                 if self.closed:break
                 event=json.loads(line)
+                if event.get('event')=='property-change' and event.get('name')=='eof-reached' and event.get('data') is True:
+                    GLib.idle_add(self.stream_ended,self.entries[0],'eof')
+                if event.get('event')=='end-file' and event.get('reason')=='eof':
+                    GLib.idle_add(self.stream_ended,self.entries[0],'eof')
                 if event.get('event')=='shutdown':
                     GLib.idle_add(lambda:self.finish(restore=False));break
                 if event.get('event')=='property-change' and event.get('name')=='fullscreen':
@@ -137,13 +155,88 @@ window { background-color: transparent; }
         action=message.get('action')
         if action=='add':self.add(message['row'])
         elif action=='replace':self.replace(message['row'])
-        elif action=='move':self.select(neighbor(len(self.entries),self.selected,message['direction']))
+        elif action=='move':self.move_focus(message['direction'])
         elif action=='close':self.close_selected()
         elif action=='quit':self.close_session()
         elif action=='exit':self.toggle_fullscreen()
         elif action=='key':self.player_key(message['key'])
         elif action=='zoom':self.player_key('ENTER')
         elif action=='grid':self.player_key('ESC')
+        return False
+
+    def pane_positions(self):
+        places=cells(len(self.entries))
+        return [places[e.get('slot',i)] for i,e in enumerate(self.entries)]
+
+    def move_focus(self,direction):
+        positions=self.pane_positions();x,y=positions[self.selected]
+        dx,dy={'h':(-1,0),'l':(1,0),'k':(0,-1),'j':(0,1)}[direction]
+        self.select(next((i for i,p in enumerate(positions) if p==(x+dx,y+dy)),self.selected))
+
+    def drag_begin(self,entry,x,y):
+        if self.zoomed or self.suspended or entry.get('card_hover'):return
+        self.drag_source=entry;self.drag_origin=(int(x),int(y));self.drag_audio=self.entries[self.selected];self.dragging=False
+
+    def drag_update(self,dx,dy):
+        if self.drag_source and dx*dx+dy*dy>64:self.dragging=True
+
+    def swap_panes(self,first,second):
+        if first is second:return
+        first['slot'],second['slot']=second.get('slot',self.entries.index(second)),first.get('slot',self.entries.index(first))
+        self.arrange();self.last_layout=None;self.tick()
+
+    def drag_end(self,entry,dx,dy):
+        if self.drag_source is entry and self.dragging:
+            origin=entry['widget'].translate_coordinates(self.grid,*self.drag_origin)
+            if origin:
+                px,py=origin[0]+dx,origin[1]+dy
+                for other in self.entries:
+                    widget=other['widget'];point=widget.translate_coordinates(self.grid,0,0)
+                    if point and point[0]<=px<point[0]+widget.get_allocated_width() and point[1]<=py<point[1]+widget.get_allocated_height():
+                        self.swap_panes(entry,other);break
+            self.suppress_click_until=time.monotonic()+.2
+            if self.drag_audio in self.entries:self.select(self.entries.index(self.drag_audio))
+        self.drag_source=None;self.dragging=False
+
+    def prepare_native_quality(self):
+        entry=self.entries[0];generation=entry.get('generation',0)
+        def worker():
+            try:result=resolve(entry['name'],entry['service'],entry['page'] or channel(entry))
+            except Exception:return
+            def done():
+                if not self.closed and entry in self.entries and entry.get('generation',0)==generation:
+                    if isinstance(result,dict):
+                        entry['best_url']=result.get('best_url',entry['url'])
+                        entry['low_url']=result.get('low_url',entry['url'])
+                        # Do not interrupt the original stream just to refresh a token.
+                        if entry is self.entries[self.selected]:entry['best_url']=entry['url']
+                return False
+            GLib.idle_add(done)
+        threading.Thread(target=worker,daemon=True).start()
+
+    def apply_quality(self,entry):
+        if not entry.get('ready') or time.monotonic()<entry.get('quality_after',0):return
+        desired=entry.get('best_url') if entry is self.entries[self.selected] else entry.get('low_url')
+        if not desired or desired==entry.get('url'):return
+        entry['url']=desired;entry['switching_until']=time.monotonic()+2
+        if entry.get('video'):entry['video'].load(desired,entry['service'])
+        else:ipc(self.state,'loadfile',desired,'replace')
+
+    def stream_ended(self,entry,reason):
+        if self.closed or reason!='eof' or entry not in self.entries:return False
+        if time.monotonic()<entry.get('switching_until',0):
+            if not entry.get('end_check_pending'):
+                entry['end_check_pending']=True
+                def check():
+                    entry['end_check_pending']=False
+                    if self.closed or entry not in self.entries:return False
+                    eof=(entry['video'].get('eof-reached')=='yes' or entry['video'].get('idle-active')=='yes') if entry.get('video') else (self.get('eof-reached') or self.get('idle-active'))
+                    if eof:self.stream_ended(entry,'eof')
+                    return False
+                GLib.timeout_add(2100,check)
+            return False
+        if len(self.entries)==1:self.close_session()
+        else:self.remove(self.entries.index(entry))
         return False
 
     def pane(self,entry):
@@ -165,6 +258,11 @@ window { background-color: transparent; }
         box.connect('motion-notify-event',lambda _,event:self.hover_details(entry,event))
         box.connect('leave-notify-event',lambda *_:self.card_command(entry,'script-message','stream-card-hover','no'))
         box.connect('size-allocate',lambda *_:GLib.idle_add(self.reposition_overlay,entry))
+        drag=Gtk.GestureDrag.new(box);drag.set_button(1);drag.set_propagation_phase(Gtk.PropagationPhase.CAPTURE)
+        drag.connect('drag-begin',lambda gesture,x,y:self.drag_begin(entry,x,y))
+        drag.connect('drag-update',lambda gesture,x,y:self.drag_update(x,y))
+        drag.connect('drag-end',lambda gesture,x,y:self.drag_end(entry,x,y))
+        entry['drag']=drag
         box.show_all()
         # Realize the children normally, but never let parent show_all reveal
         # feeds that arrange() deliberately hid in windowed/expanded mode.
@@ -186,8 +284,9 @@ window { background-color: transparent; }
             aspect=float(self.get('video-params/aspect') or aspect)
         entry['aspect']=aspect
         vw=min(w,h*aspect);vh=vw/aspect
-        i=self.entries.index(entry);x,y=cells(len(self.entries))[i]
+        i=self.entries.index(entry);x,y=self.pane_positions()[i]
         single=self.zoomed or self.suspended
+        if single:x=y=0
         vx=(w-vw)/2 if single else (w-vw if x==0 else 0)
         vy=(h-vh)/2 if single or len(self.entries)<3 else (h-vh if y==0 else 0)
         entry['video_rect']=(vx,vy,vw,vh)
@@ -203,7 +302,7 @@ window { background-color: transparent; }
             layout=self.get('user-data/media-panel-layout') or {}
             left=float(layout.get('left',0))
             columns=1 if single else 2;rows=2 if len(self.entries)>2 and not single else 1
-            viewport=(left+vx/max(1,w)*(1-left)/columns,0,
+            viewport=(left+(x+vx/max(1,w))*(1-left)/columns,y/rows,
                       vw/max(1,w)*(1-left)/columns,1/rows)
         card_scale=max(1,self.window.get_allocated_height()/max(1,h)) if video and not self.suspended else 1
         viewport=(*viewport,card_scale)
@@ -237,13 +336,17 @@ window { background-color: transparent; }
         if not entry.get('video'):
             left=float((self.get('user-data/media-panel-layout') or {}).get('left',0))
             total_width=self.window.get_allocated_width()/max(.01,1-left)
-            x+=total_width*left
+            col,row=self.pane_positions()[0]
+            if self.zoomed or self.suspended:col=row=0
+            x+=total_width*left+col*widget.get_allocated_width()
+            y+=row*widget.get_allocated_height()
         args=['mouse',round(x*scale),round(y*scale)]
         if mode:args.extend([0,mode])
         self.card_command(entry,*args)
 
     def card_click(self,entry,event,mode):
-        if mode=='down':self.select(self.entries.index(entry))
+        if time.monotonic()<getattr(self,'suppress_click_until',0):return True
+        if mode=='up' and not self.dragging:self.select(self.entries.index(entry))
         if entry.get('card_hover'):self.card_mouse(entry,event,mode)
         return True
 
@@ -265,7 +368,7 @@ window { background-color: transparent; }
         retained=[e.get('widget') for e in self.entries]
         for widget in self.grid.get_children():
             if widget not in retained:self.grid.remove(widget)
-        for entry,(x,y) in zip(self.entries,cells(len(self.entries))):
+        for entry,(x,y) in zip(self.entries,self.pane_positions()):
             if 'widget' not in entry:self.grid.attach(self.pane(entry),x,y,1,1)
             else:
                 self.grid.child_set_property(entry['widget'],'left-attach',x)
@@ -280,7 +383,7 @@ window { background-color: transparent; }
         # Hide unselected surfaces before moving any cells to the same location.
         for i,entry in enumerate(self.entries):
             if single and i!=self.selected:entry['widget'].hide()
-        for i,(entry,(x,y)) in enumerate(zip(self.entries,cells(len(self.entries)))):
+        for i,(entry,(x,y)) in enumerate(zip(self.entries,self.pane_positions())):
             self.grid.child_set_property(entry['widget'],'left-attach',0 if self.zoomed or self.suspended else x)
             self.grid.child_set_property(entry['widget'],'top-attach',0 if self.zoomed or self.suspended else y)
             entry['widget'].set_visible(not (self.zoomed or self.suspended) or i==self.selected)
@@ -304,8 +407,8 @@ window { background-color: transparent; }
         if len(self.entries)>=4:
             self.replace(row);return
         self.zoomed=False;self.set('user-data/stream-multiview-zoomed',False)
-        entry=dict(row,ready=False,url='',page=channel(row),started=time.monotonic())
-        video=Video(lambda:self.loaded(entry));entry['video']=video
+        entry=dict(row,ready=False,url='',page=channel(row),started=time.monotonic(),slot=len(self.entries))
+        video=Video(lambda:self.loaded(entry),lambda reason:self.stream_ended(entry,reason));entry['video']=video
         video.set('volume',self.original_volume)
         self.entries.append(entry);self.rebuild()
         self.load(entry)
@@ -324,12 +427,15 @@ window { background-color: transparent; }
         if not self.closed and entry in self.entries and entry.get('generation')==generation:
             if isinstance(url,dict):entry.update(url)
             else:entry['url']=url
+            entry['url']=entry.get('best_url',entry['url']) if entry is self.entries[self.selected] else entry.get('low_url',entry['url'])
+            entry['switching_until']=time.monotonic()+2
             entry['video'].load(entry['url'],entry['service'])
         return False
 
     def loaded(self,entry):
         if entry not in self.entries:return
         entry['ready']=True;entry['failed']=False;self.update_card(entry);self.select(self.selected)
+        if self.entries[0].get('ended'):self.remove(0)
 
     def failed(self,entry,generation=None):
         if entry in self.entries and (generation is None or entry.get('generation')==generation):
@@ -339,6 +445,8 @@ window { background-color: transparent; }
 
     def select(self,index):
         if not self.entries:return True
+        if self.selected!=index:
+            for entry in self.entries:entry['quality_after']=time.monotonic()+.5
         self.selected=index
         self.set('user-data/stream-multiview-selected',index)
         for i,entry in enumerate(self.entries):
@@ -361,21 +469,32 @@ window { background-color: transparent; }
         session=Path('/tmp/twitch-session.id').read_text().strip() if Path('/tmp/twitch-session.id').exists() else ''
         ipc(self.state,'script-message','twitch-load',entry['name'],entry.get('title') or entry['name'],
             entry['url'],'','',entry['service'],session,entry['page'])
-        self.entries[0].update({k:entry[k] for k in ('name','service','title','url','page') if k in entry})
+        self.entries[0].update({k:entry[k] for k in ('name','service','title','url','page','best_url','low_url') if k in entry})
+        self.entries[0]['ended']=False
+        self.entries[0]['generation']=self.entries[0].get('generation',0)+1
+        self.entries[0]['switching_until']=time.monotonic()+2
 
     def remove(self,index):
         self.zoomed=False;self.set('user-data/stream-multiview-zoomed',False)
-        if len(self.entries)<=1:self.finish();return
+        if len(self.entries)<=1:self.close_session();return
         if index==0:
             replacement=next((e for e in self.entries[1:] if e.get('ready')),None)
             if not replacement:
+                self.entries[0]['ended']=bool(self.get('eof-reached'))
                 ipc(self.state,'show-text','Wait for another stream to load, or close its loading pane',2500)
                 return
+            was_audible=self.entries[self.selected] is replacement
             self.adopt(replacement);index=self.entries.index(replacement)
+            if was_audible:self.selected=0
+        audible=self.entries[self.selected]
+        if audible is self.entries[index]:audible=None
         entry=self.entries.pop(index)
         if entry.get('video'):entry['video'].close()
-        self.selected=min(self.selected,len(self.entries)-1)
-        if len(self.entries)==1:self.finish()
+        for slot,remaining in enumerate(sorted(self.entries,key=lambda e:e.get('slot',0))):remaining['slot']=slot
+        self.selected=self.entries.index(audible) if audible in self.entries else min(self.selected,len(self.entries)-1)
+        if len(self.entries)==1:
+            self.selected=0;self.entries[0]['quality_after']=0
+            self.apply_quality(self.entries[0]);self.finish()
         else:self.rebuild()
 
     def replace(self,row):
@@ -421,6 +540,7 @@ window { background-color: transparent; }
                     ipc(self.state,'script-message','stream-card-viewport')
                 # Keep the SAME decoder/video and audio. Fit its existing surface
                 # to the native window instead of reloading/adopting another feed.
+                for entry in self.entries:self.apply_quality(entry)
                 self.mask_owner(self.selected!=0)
                 px,py=player['at'];pw,ph=player['size']
                 margins=(px-mon['x'],width-(px-mon['x'])-pw,py-mon['y'],height-(py-mon['y'])-ph)
@@ -435,16 +555,21 @@ window { background-color: transparent; }
             for edge in (Layer.Edge.RIGHT,Layer.Edge.TOP,Layer.Edge.BOTTOM):Layer.set_margin(self.window,edge,0)
             layout=self.get('user-data/media-panel-layout') or {}
             left=layout.get('left',0);width=mon['width']/mon.get('scale',1);height=mon['height']/mon.get('scale',1)
-            right=0 if self.zoomed else (1-left)/2;bottom=.5 if len(self.entries)>2 and not self.zoomed else 0
-            geometry=(left,width,height,bottom)
+            nx,ny=self.pane_positions()[0]
+            columns=1 if self.zoomed else 2;rows=2 if len(self.entries)>2 and not self.zoomed else 1
+            if self.zoomed:nx=ny=0
+            native_left=left+nx*(1-left)/columns
+            right=1-(left+(nx+1)*(1-left)/columns)
+            top=ny/rows;bottom=1-(ny+1)/rows
+            geometry=(left,width,height,bottom,nx,ny,self.zoomed)
             if geometry!=self.last_layout:
                 self.last_layout=geometry
                 Layer.set_margin(self.window,Layer.Edge.LEFT,round(left*width))
                 layout.update(left=left,right=right)
                 self.set('user-data/media-panel-layout',layout)
-            for key,value in [('right',right),('bottom',bottom),('top',0)]:
+            for key,value in [('left',native_left),('right',right),('bottom',bottom),('top',top)]:
                 if abs(float(self.get('video-margin-ratio-'+key) or 0)-value)>.001:self.set('video-margin-ratio-'+key,value)
-            for axis,value in [('x',0 if self.zoomed else 1),('y',1 if len(self.entries)>2 and not self.zoomed else 0)]:
+            for axis,value in [('x',0 if self.zoomed else (1 if nx==0 else -1)),('y',0 if rows==1 else (1 if ny==0 else -1))]:
                 if float(self.get('video-align-'+axis) or 0)!=value:self.set('video-align-'+axis,value)
             self.window.set_visible(visible)
             if time.monotonic()-self.metadata_updated>1:
@@ -452,6 +577,7 @@ window { background-color: transparent; }
                 for entry in self.entries:self.update_card(entry)
             for entry in self.entries:
                 self.position_overlays(entry)
+                self.apply_quality(entry)
             for entry in self.entries[1:]:
                 if not entry['ready'] and not entry.get('failed') and time.monotonic()-entry['started']>65:self.failed(entry)
         except (OSError,ValueError,StopIteration,subprocess.SubprocessError):pass
@@ -477,7 +603,7 @@ window { background-color: transparent; }
     def key(self,_,event):
         name=Gdk.keyval_name(event.keyval)
         if event.state&Gdk.ModifierType.CONTROL_MASK and name in ('h','j','k','l'):
-            self.select(neighbor(len(self.entries),self.selected,name));return True
+            self.move_focus(name);return True
         if name in ('Tab','slash'):
             ipc(self.state,'keypress','TAB' if name=='Tab' else '/');return True
         code=Gdk.keyval_to_unicode(event.keyval)
@@ -515,9 +641,11 @@ window { background-color: transparent; }
         if restore:
             try:
                 self.mask_owner(False)
+                self.set('keep-open',self.original_keep_open)
                 layout=self.get('user-data/media-panel-layout') or {}
                 layout.update(right=0)
                 self.set('user-data/media-panel-layout',layout)
+                self.set('video-margin-ratio-left',float(layout.get('left',0)))
                 for side in ('right','bottom','top'):self.set('video-margin-ratio-'+side,0)
                 for axis,value in self.original_align.items():self.set('video-align-'+axis,value)
                 self.set('user-data/stream-multiview',False);self.set('mute',False)

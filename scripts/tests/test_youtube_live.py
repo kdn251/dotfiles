@@ -44,6 +44,19 @@ class YouTubeLiveTests(unittest.TestCase):
         self.assertIsNone(youtube.playback_manifest({'formats':[]}))
         self.assertIsNone(youtube.playback_manifest({'formats':details['formats'][:2]}))
 
+    def test_background_quality_preserves_audio_and_uses_lowest_when_needed(self):
+        details={'formats':[
+            {'height':360,'protocol':'m3u8_native','url':'https://example.com/360','acodec':'none'},
+            {'height':1080,'protocol':'m3u8_native','url':'https://example.com/1080','acodec':'none'},
+            {'vcodec':'none','protocol':'m3u8_native','url':'https://example.com/audio'}]}
+        selected=youtube.playback_manifest(details,480)
+        self.assertIn('https://example.com/360',selected)
+        self.assertIn('https://example.com/audio',selected)
+        self.assertNotIn('1080',selected)
+        details['formats'][0]['height']=720
+        details['formats'][0]['url']='https://example.com/720'
+        self.assertIn('https://example.com/720',youtube.playback_manifest(details,480))
+
     def test_cached_manifest_must_be_recent_and_match_channel(self):
         import json
         from unittest.mock import patch
