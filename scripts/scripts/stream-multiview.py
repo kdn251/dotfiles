@@ -19,7 +19,7 @@ from stream_multiview import ROOT,send,channel,cells,neighbor,mpv_key
 from stream_multiview_video import Video
 from media_chat_fullscreen import ipc,socket_for
 import media_chat_fullscreen as chat
-from stream_multiview_quality import resolve_hls_qualities
+from stream_preview import resolve as resolve_twitch
 
 SCRIPTS=Path(__file__).resolve().parent
 
@@ -28,19 +28,11 @@ def clients():return json.loads(subprocess.check_output(['/usr/bin/hyprctl','-j'
 
 
 def resolve(name,service,page):
-    if service=='Twitch':
-        result=subprocess.run([sys.executable,str(SCRIPTS/'twitch-stream-url.py'),name,'--playback'],
-                              capture_output=True,text=True,check=True,timeout=60)
-        data=json.loads(result.stdout)
-        return dict(url='av://hls:'+data['best'],best_url='av://hls:'+data['best'],low_url='av://hls:'+data['low'])
+    if service=='Twitch':return resolve_twitch(name,service,page)
     result=subprocess.run([sys.executable,str(SCRIPTS/'stream-playback-url.py'),service,page],
                           capture_output=True,text=True,check=True,timeout=60)
     data=json.loads(result.stdout)
-    best=data.get('playback_url') or data['url'];low=data.get('low_playback_url') or best
-    if service in ('Kick','Rumble'):
-        try:best,low=resolve_hls_qualities(data['url'],service)
-        except (OSError,ValueError):pass
-    return dict(url=best,best_url=best,low_url=low,
+    return dict(url=data.get('playback_url') or data['url'],
                 page=data['url'] if service=='YouTube' else data.get('page_url',page),
                 context=dict(data,name=name,service=service,channel=page,quality='best'))
 
@@ -89,6 +81,7 @@ class Theater:
                 Layer.set_monitor(self.window,monitor);break
         css=Gtk.CssProvider();css.load_from_data(b'''
 window { background-color: transparent; }
+.pane spinner { color: white; }
 .pane { border: none; padding: 0; margin: 0; }
 .audio-indicator { background: rgba(20,20,24,.8); border-radius: 6px; padding: 4px 7px; color: white; font-size: 15px; }
 ''')
@@ -101,7 +94,6 @@ window { background-color: transparent; }
         threading.Thread(target=self.listen,daemon=True).start()
         self.set('user-data/stream-multiview',True)
         self.add(row)
-        self.prepare_native_quality()
         self.timer=GLib.timeout_add(80,self.tick)
         threading.Thread(target=self.observe_fullscreen,daemon=True).start()
         GLib.unix_signal_add(GLib.PRIORITY_DEFAULT,signal.SIGTERM,self.finish)
@@ -128,6 +120,7 @@ window { background-color: transparent; }
                     GLib.idle_add(self.stream_ended,self.entries[0],'eof')
                 if event.get('event')=='end-file' and event.get('reason')=='eof':
                     GLib.idle_add(self.stream_ended,self.entries[0],'eof')
+                if event.get('event')=='playback-restart':GLib.idle_add(self.native_ready)
                 if event.get('event')=='shutdown':
                     GLib.idle_add(lambda:self.finish(restore=False));break
                 if event.get('event')=='property-change' and event.get('name')=='fullscreen':
@@ -198,32 +191,11 @@ window { background-color: transparent; }
             if self.drag_audio in self.entries:self.select(self.entries.index(self.drag_audio))
         self.drag_source=None;self.dragging=False
 
-    def prepare_native_quality(self):
-        entry=self.entries[0];generation=entry.get('generation',0)
-        def worker():
-            try:result=resolve(entry['name'],entry['service'],entry['page'] or channel(entry))
-            except Exception:return
-            def done():
-                if not self.closed and entry in self.entries and entry.get('generation',0)==generation:
-                    if isinstance(result,dict):
-                        entry['best_url']=result.get('best_url',entry['url'])
-                        entry['low_url']=result.get('low_url',entry['url'])
-                        # Do not interrupt the original stream just to refresh a token.
-                        if entry is self.entries[self.selected]:entry['best_url']=entry['url']
-                return False
-            GLib.idle_add(done)
-        threading.Thread(target=worker,daemon=True).start()
-
-    def apply_quality(self,entry):
-        if not entry.get('ready') or time.monotonic()<entry.get('quality_after',0):return
-        desired=entry.get('best_url') if entry is self.entries[self.selected] else entry.get('low_url')
-        if not desired or desired==entry.get('url'):return
-        entry['url']=desired;entry['switching_until']=time.monotonic()+2
-        if entry.get('video'):entry['video'].load(desired,entry['service'])
-        else:ipc(self.state,'loadfile',desired,'replace')
-
     def stream_ended(self,entry,reason):
-        if self.closed or reason!='eof' or entry not in self.entries:return False
+        if self.closed or entry not in self.entries:return False
+        if reason=='error' and not entry.get('ready'):
+            self.failed(entry);return False
+        if reason!='eof':return False
         if time.monotonic()<entry.get('switching_until',0):
             if not entry.get('end_check_pending'):
                 entry['end_check_pending']=True
@@ -254,7 +226,11 @@ window { background-color: transparent; }
         indicator.set_halign(Gtk.Align.END);indicator.set_valign(Gtk.Align.START)
         indicator.set_margin_top(10);indicator.set_margin_end(10);indicator.set_no_show_all(True)
         overlay.add_overlay(indicator);overlay.set_overlay_pass_through(indicator,True)
-        entry.update(widget=box,indicator=indicator)
+        spinner=Gtk.Spinner();spinner.set_size_request(48,48)
+        spinner.set_halign(Gtk.Align.CENTER);spinner.set_valign(Gtk.Align.CENTER);spinner.set_no_show_all(True)
+        overlay.add_overlay(spinner);overlay.set_overlay_pass_through(spinner,True)
+        entry.update(widget=box,indicator=indicator,spinner=spinner)
+        self.update_loading(entry)
         box.connect('motion-notify-event',lambda _,event:self.hover_details(entry,event))
         box.connect('leave-notify-event',lambda *_:self.card_command(entry,'script-message','stream-card-hover','no'))
         box.connect('size-allocate',lambda *_:GLib.idle_add(self.reposition_overlay,entry))
@@ -268,6 +244,20 @@ window { background-color: transparent; }
         # feeds that arrange() deliberately hid in windowed/expanded mode.
         box.set_no_show_all(True);box.hide()
         return box
+
+    def update_loading(self,entry):
+        spinner=entry.get('spinner')
+        if spinner is None:return
+        loading=not entry.get('ready') and not entry.get('failed')
+        if loading:spinner.start();spinner.show()
+        else:spinner.stop();spinner.hide()
+
+    def native_ready(self):
+        if self.closed:return False
+        entry=self.entries[0]
+        if entry.get('waiting_native_url') and self.get('path')==entry['waiting_native_url']:
+            entry.pop('waiting_native_url',None);self.loaded(entry)
+        return False
 
     def reposition_overlay(self,entry):
         if not self.closed and entry in self.entries:self.position_overlays(entry)
@@ -415,6 +405,7 @@ window { background-color: transparent; }
 
     def load(self,entry):
         generation=entry.get('generation',0)+1;entry['generation']=generation
+        entry.update(ready=False,failed=False,started=time.monotonic());self.update_loading(entry)
         name,service,page=entry['name'],entry['service'],entry['page']
         def worker():
             try:
@@ -427,26 +418,23 @@ window { background-color: transparent; }
         if not self.closed and entry in self.entries and entry.get('generation')==generation:
             if isinstance(url,dict):entry.update(url)
             else:entry['url']=url
-            entry['url']=entry.get('best_url',entry['url']) if entry is self.entries[self.selected] else entry.get('low_url',entry['url'])
             entry['switching_until']=time.monotonic()+2
             entry['video'].load(entry['url'],entry['service'])
         return False
 
     def loaded(self,entry):
         if entry not in self.entries:return
-        entry['ready']=True;entry['failed']=False;self.update_card(entry);self.select(self.selected)
+        entry['ready']=True;entry['failed']=False;self.update_loading(entry);self.update_card(entry);self.select(self.selected)
         if self.entries[0].get('ended'):self.remove(0)
 
     def failed(self,entry,generation=None):
         if entry in self.entries and (generation is None or entry.get('generation')==generation):
             if entry.get('video'):entry['video'].command('show-text','Stream unavailable — q to close',5000)
-            entry['failed']=True
+            entry['failed']=True;entry.pop('waiting_native_url',None);self.update_loading(entry)
         return False
 
     def select(self,index):
         if not self.entries:return True
-        if self.selected!=index:
-            for entry in self.entries:entry['quality_after']=time.monotonic()+.5
         self.selected=index
         self.set('user-data/stream-multiview-selected',index)
         for i,entry in enumerate(self.entries):
@@ -469,7 +457,7 @@ window { background-color: transparent; }
         session=Path('/tmp/twitch-session.id').read_text().strip() if Path('/tmp/twitch-session.id').exists() else ''
         ipc(self.state,'script-message','twitch-load',entry['name'],entry.get('title') or entry['name'],
             entry['url'],'','',entry['service'],session,entry['page'])
-        self.entries[0].update({k:entry[k] for k in ('name','service','title','url','page','best_url','low_url') if k in entry})
+        self.entries[0].update({k:entry[k] for k in ('name','service','title','url','page') if k in entry})
         self.entries[0]['ended']=False
         self.entries[0]['generation']=self.entries[0].get('generation',0)+1
         self.entries[0]['switching_until']=time.monotonic()+2
@@ -493,8 +481,7 @@ window { background-color: transparent; }
         for slot,remaining in enumerate(sorted(self.entries,key=lambda e:e.get('slot',0))):remaining['slot']=slot
         self.selected=self.entries.index(audible) if audible in self.entries else min(self.selected,len(self.entries)-1)
         if len(self.entries)==1:
-            self.selected=0;self.entries[0]['quality_after']=0
-            self.apply_quality(self.entries[0]);self.finish()
+            self.selected=0;self.finish()
         else:self.rebuild()
 
     def replace(self,row):
@@ -503,19 +490,22 @@ window { background-color: transparent; }
             self.select(next(i for i,e in enumerate(self.entries) if e['service']==row['service'] and e['name'].casefold()==row['name'].casefold()));return
         entry=self.entries[self.selected]
         if self.selected==0:
+            generation=entry.get('generation',0)+1;entry['generation']=generation
+            entry.update(ready=False,failed=False,started=time.monotonic());self.update_loading(entry)
             # Resolve asynchronously before touching the current native stream.
             def worker():
                 try:
                     data=dict(row,page=channel(row));result=resolve(data['name'],data['service'],data['page'])
                     data.update(result if isinstance(result,dict) else {'url':result})
-                    GLib.idle_add(self.replace_primary,data)
-                except Exception:pass
+                    GLib.idle_add(self.replace_primary,data,generation)
+                except Exception:GLib.idle_add(self.failed,entry,generation)
             threading.Thread(target=worker,daemon=True).start();return
         entry.update(row,page=channel(row),ready=False,failed=False,started=time.monotonic())
         self.load(entry);self.select(self.selected)
 
-    def replace_primary(self,row):
-        if not self.closed:self.adopt(row);self.select(self.selected)
+    def replace_primary(self,row,generation=None):
+        if not self.closed and (generation is None or self.entries[0].get('generation')==generation):
+            self.adopt(row);self.entries[0]['waiting_native_url']=row['url'];self.select(self.selected)
         return False
 
     def tick(self):
@@ -540,7 +530,6 @@ window { background-color: transparent; }
                     ipc(self.state,'script-message','stream-card-viewport')
                 # Keep the SAME decoder/video and audio. Fit its existing surface
                 # to the native window instead of reloading/adopting another feed.
-                for entry in self.entries:self.apply_quality(entry)
                 self.mask_owner(self.selected!=0)
                 px,py=player['at'];pw,ph=player['size']
                 margins=(px-mon['x'],width-(px-mon['x'])-pw,py-mon['y'],height-(py-mon['y'])-ph)
@@ -577,8 +566,7 @@ window { background-color: transparent; }
                 for entry in self.entries:self.update_card(entry)
             for entry in self.entries:
                 self.position_overlays(entry)
-                self.apply_quality(entry)
-            for entry in self.entries[1:]:
+            for entry in self.entries:
                 if not entry['ready'] and not entry.get('failed') and time.monotonic()-entry['started']>65:self.failed(entry)
         except (OSError,ValueError,StopIteration,subprocess.SubprocessError):pass
         return True

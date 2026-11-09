@@ -131,6 +131,8 @@ class Video(Gtk.GLArea):
 
     def load(self,url,service):
         self.loaded=False
+        # Ignore queued restart events from the stream being replaced.
+        while lib.mpv_wait_event(self.handle,0).contents.event_id!=0:pass
         self.set('referrer','https://'+service.lower()+'.com/' if service in ('Kick','Rumble') else '')
         if self.context:self.command('loadfile',url,'replace')
         else:self.pending_url=url
@@ -140,11 +142,12 @@ class Video(Gtk.GLArea):
         while True:
             event=lib.mpv_wait_event(self.handle,0).contents
             if event.event_id==0:break
+            if event.event_id==21 and not self.loaded and self.get('video-params/w'):
+                self.loaded=True;self.ready()
             if event.event_id==7 and event.data and self.ended:
                 end=C.cast(event.data,C.POINTER(EndFile)).contents
                 if end.reason==0:GLib.idle_add(self.ended,'eof')
-        if not self.loaded and self.get('video-params/w'):
-            self.loaded=True;self.ready()
+                elif end.reason==4:GLib.idle_add(self.ended,'error')
         return True
 
     def close(self):

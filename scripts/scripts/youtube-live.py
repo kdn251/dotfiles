@@ -25,17 +25,12 @@ def resolve(data):
     raise OfflineError('This channel is offline on YouTube. Try again when the stream is live.')
 
 
-def playback_manifest(details, max_height=1080):
+def playback_manifest(details):
     # Keep one video and one audio rendition. Opening the master makes FFmpeg
     # probe every quality, while choosing only video would silently lose audio.
     formats=[f for f in details.get('formats',[]) if f.get('protocol') in ('m3u8','m3u8_native')
              and str(f.get('url','')).startswith('https://')]
-    videos=[f for f in formats if f.get('height') and f['height']<=max_height]
-    if not videos and max_height<1080:
-        available=[f for f in formats if f.get('height') and f['height']<=1080]
-        if available:
-            lowest=min(f['height'] for f in available)
-            videos=[f for f in available if f['height']==lowest]
+    videos=[f for f in formats if f.get('height') and f['height']<=1080]
     if not videos:return None
     video=max(videos,key=lambda f:(f['height'],f.get('fps') or 0))
     if video.get('acodec') not in ('none',None):return video['url']
@@ -86,7 +81,6 @@ def fetch(channel, enrich=True):
             manifest=playback_manifest(details)
             if manifest:
                 stream['playback_url']=manifest
-                stream['low_playback_url']=playback_manifest(details,480) or manifest
                 stream['playback_resolved_at']=time.time()
             stream['started_at'] = details.get('release_timestamp')
             viewers=details.get('concurrent_view_count')

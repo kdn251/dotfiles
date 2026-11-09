@@ -37,6 +37,7 @@ class TheaterTests(unittest.TestCase):
         entries[2]['video'].set.assert_called_with('mute','no')
         entries[3]['video'].set.assert_called_with('mute','yes')
         obj.set.assert_called_with('mute',True)
+        for entry in entries[1:]:entry['video'].load.assert_not_called()
         obj.suspended=True;select(obj,2)
         for i,entry in enumerate(entries[1:],1):entry['video'].set.assert_called_with('mute','no' if i==2 else 'yes')
         obj.set.assert_called_with('mute',True)
@@ -211,24 +212,39 @@ assert not player.endpoint.exists()
         positions=self.theater_method('pane_positions');positions.__globals__['cells']=cells
         self.assertEqual(positions(obj),[(1,1),(1,0),(0,1),(0,0)])
 
-    def test_quality_follows_audio_selection_and_ignores_unchanged_rendition(self):
-        video=Mock();entry=dict(video=video,ready=True,url='high',best_url='high',low_url='low',service='Twitch')
-        obj=SimpleNamespace(entries=[{},entry],selected=0)
-        apply=self.theater_method('apply_quality')
-        apply(obj,entry);video.load.assert_called_once_with('low','Twitch')
-        apply(obj,entry);self.assertEqual(video.load.call_count,1)
-        obj.selected=1;apply(obj,entry);video.load.assert_called_with('high','Twitch')
-        entry['quality_after']=__import__('time').monotonic()+10
-        obj.selected=0;apply(obj,entry);self.assertEqual(video.load.call_count,2)
+    def test_background_stream_starts_at_resolved_quality(self):
+        entry=dict(video=Mock(),generation=1,service='Twitch')
+        obj=SimpleNamespace(closed=False,entries=[{},entry],selected=0)
+        self.theater_method('resolved')(obj,entry,{'url':'original-quality'},1)
+        entry['video'].load.assert_called_once_with('original-quality','Twitch')
 
     def test_only_actual_end_of_stream_closes_a_pane(self):
-        first={};second={'name':'Second'}
+        first={};second={'name':'Second','ready':True}
         obj=SimpleNamespace(closed=False,entries=[first,second],remove=Mock(),close_session=Mock())
         ended=self.theater_method('stream_ended')
         for reason in ('error','stop','redirect'):ended(obj,second,reason)
         obj.remove.assert_not_called()
         ended(obj,second,'eof');obj.remove.assert_called_once_with(1)
         obj.entries=[second];ended(obj,second,'eof');obj.close_session.assert_called_once()
+
+    def test_spinner_shows_during_loading_and_stops_on_success_or_failure(self):
+        update=self.theater_method('update_loading')
+        spinner=Mock();entry={'spinner':spinner,'ready':False}
+        update(None,entry);spinner.start.assert_called_once();spinner.show.assert_called_once()
+        entry['ready']=True;update(None,entry)
+        spinner.stop.assert_called_once();spinner.hide.assert_called_once()
+        entry.update(ready=False,failed=True);update(None,entry)
+        self.assertEqual(spinner.stop.call_count,2)
+        self.assertEqual(spinner.hide.call_count,2)
+
+    def test_native_spinner_waits_for_new_stream_playback(self):
+        entry={'waiting_native_url':'new'}
+        obj=SimpleNamespace(closed=False,entries=[entry],get=Mock(return_value='old'),loaded=Mock())
+        ready=self.theater_method('native_ready')
+        ready(obj);obj.loaded.assert_not_called()
+        obj.get.return_value='new';ready(obj)
+        obj.loaded.assert_called_once_with(entry)
+        self.assertNotIn('waiting_native_url',entry)
 
     def test_directional_navigation_two_three_four(self):
         self.assertEqual(neighbor(2,0,'l'),1)
