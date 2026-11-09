@@ -115,6 +115,7 @@ class Preview:
             if self.cancelled.is_set():return
             from stream_menu_metadata import playback_title
             args=['mpv','--no-terminal','--mute=yes','--idle=yes','--force-window=immediate',
+                  '--script-opts-append=osc-idlescreen=no',
                   '--wayland-app-id=stream-preview','--title=Stream preview',
                   '--input-ipc-server='+self.endpoint,'--cache=yes','--cache-secs=30',
                   '--demuxer-max-bytes=384MiB','--demuxer-max-back-bytes=256MiB',
@@ -128,6 +129,7 @@ class Preview:
                 '--ytdl-raw-options=ignore-config=,no-warnings=,no-playlist=',
                 '--demuxer-lavf-o=live_start_index=-1']
             env=dict(os.environ,STREAM_TITLE_SERVICE=self.service,STREAM_TITLE_NAME=self.name,
+                     STREAM_PREVIEW_GTK_SPINNER='0' if self.overlay else '1',
                      STREAM_PAGE_URL=self.channel,STREAM_PREVIEW_ACCEPT=str(self.accepted),STREAM_PREVIEW_OWNER=str(os.getpid()))
             if self.service=='Twitch':env['TWITCH_STREAMER_USERNAME']=self.name
             with self.lock:
@@ -152,6 +154,11 @@ class Preview:
                         from pip_geometry import monitor_size, bottom_right, settings
                         monitors=json.loads(subprocess.check_output(['/usr/bin/hyprctl','-j','monitors'],timeout=2))
                         mon=next(m for m in monitors if m['id']==window['monitor'])
+                        if not self.overlay:
+                            subprocess.Popen([sys.executable,str(SCRIPTS/'stream-preview-loading.py'),
+                                str(self.process.pid),self.endpoint,json.dumps(self.bounds),json.dumps(mon)],
+                                stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)
+
                         mw,mh=monitor_size(mon)
                         width,height=round(mw*.38),round(mw*.21375)
                         left,top=bottom_right(mon,(width,height),*settings())

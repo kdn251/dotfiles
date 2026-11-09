@@ -17,6 +17,7 @@ from gi.repository import Gtk,Gdk,GLib,GtkLayerShell as Layer
 import stream_menu_metadata as metadata
 from stream_multiview import ROOT,send,channel,cells,neighbor,mpv_key
 from stream_multiview_video import Video
+from stream_loading_spinner import create_spinner
 from media_chat_fullscreen import ipc,socket_for
 import media_chat_fullscreen as chat
 from stream_preview import resolve as resolve_twitch
@@ -232,8 +233,7 @@ window { background-color: transparent; }
         indicator.set_halign(Gtk.Align.END);indicator.set_valign(Gtk.Align.START)
         indicator.set_margin_top(10);indicator.set_margin_end(10);indicator.set_no_show_all(True)
         overlay.add_overlay(indicator);overlay.set_overlay_pass_through(indicator,True)
-        spinner=Gtk.Spinner();spinner.set_size_request(48,48)
-        spinner.set_halign(Gtk.Align.CENTER);spinner.set_valign(Gtk.Align.CENTER);spinner.set_no_show_all(True)
+        spinner=create_spinner()
         overlay.add_overlay(spinner);overlay.set_overlay_pass_through(spinner,True)
         entry.update(widget=box,indicator=indicator,spinner=spinner)
         self.update_loading(entry)

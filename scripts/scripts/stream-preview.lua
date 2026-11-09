@@ -5,7 +5,7 @@ spinner.z = 2000
 local loading = true
 local spin_timer
 local function draw_spinner()
-    if not loading then return end
+    if not loading or os.getenv('STREAM_PREVIEW_GTK_SPINNER')=='1' then return end
     local w,h=mp.get_osd_size()
     if w<=0 or h<=0 then return end
     spinner.res_y=360
