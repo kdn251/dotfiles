@@ -3,6 +3,7 @@
 import hashlib
 import json
 import os
+import re
 from pathlib import Path
 import subprocess
 import sys
@@ -18,15 +19,23 @@ def emoji(c):
 
 def runs(text):
     result=[]
-    for c in text:
-        kind=emoji(c)
+    # Selectors/joiners are modifiers, not independent glyphs. In titles they
+    # sometimes follow a space; sending that isolated run to libraqm fails.
+    tokens=re.findall(r'[0-9#*]\ufe0f?\u20e3|.',text,flags=re.S)
+    for i,c in enumerate(tokens):
+        if c in ('\ufe0f','\ufe0e','\u20e3','\u200d'):
+            if not result or not result[-1][0]:continue
+            if c=='\u200d' and (i+1==len(tokens) or not emoji(tokens[i+1][0])):continue
+            result[-1]=(True,result[-1][1]+c)
+            continue
+        kind=len(c)>1 or emoji(c)
         if result and result[-1][0]==kind:result[-1]=(kind,result[-1][1]+c)
         else:result.append((kind,c))
     return result
 
 def render(text,family):
     fontpath=subprocess.check_output(['fc-match','-f','%{file}',family],text=True).strip()
-    key=hashlib.sha256((text+fontpath+str(APPLE.stat().st_mtime_ns)+'-v1').encode()).hexdigest()
+    key=hashlib.sha256((text+fontpath+str(APPLE.stat().st_mtime_ns)+'-v2').encode()).hexdigest()
     root=Path.home()/'.cache/mpv-stream-title-color';root.mkdir(parents=True,exist_ok=True)
     meta=root/(key+'.json');target=root/(key+'.bgra')
     if meta.exists() and target.exists():return json.loads(meta.read_text())

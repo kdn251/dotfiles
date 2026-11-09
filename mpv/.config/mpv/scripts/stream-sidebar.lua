@@ -8,14 +8,14 @@ local function send(action)
 end
 local function navigation(_,layout)
     active=mp.get_property_native('user-data/stream-sidebar-open',false)==true
-        and type(layout)=='table' and (layout.left or 0)>0
+        and mp.get_property_bool('fullscreen',false)
     for key,action in pairs(keys) do
         local binding='sidebar-capture-'..key
         mp.remove_key_binding(binding)
         if active then
             if action=='up' or action=='down' then
                 mp.add_forced_key_binding(key,binding,function(event)
-                    if event.event=='down' or event.event=='repeat' then send(action..'-start')
+                    if event.event=='down' or event.event=='repeat' or event.event=='press' then send(action..'-start')
                     elseif event.event=='up' then send('nav-stop') end
                 end,{complex=true,repeatable=true})
             else
@@ -24,6 +24,16 @@ local function navigation(_,layout)
         end
     end
 end
+-- Embedded video surfaces forward navigation explicitly, independent of
+-- which forced playback binding most recently acquired a key.
+mp.register_script_message('stream-sidebar-navigate',function(direction)
+    if not mp.get_property_native('user-data/stream-sidebar-open',false)
+        or not mp.get_property_bool('fullscreen',false) then return end
+    if direction=='down' or direction=='up' then send(direction..'-start') end
+end)
+mp.observe_property('fullscreen','bool',function()
+    navigation(nil,mp.get_property_native('user-data/media-panel-layout',{}))
+end)
 mp.observe_property('user-data/media-panel-layout','native',navigation)
 mp.observe_property('user-data/stream-sidebar-open','native',function()
     navigation(nil,mp.get_property_native('user-data/media-panel-layout',{}))

@@ -128,6 +128,7 @@ local launches=0
 mp={get_property_native=function(k,d)if props[k]==nil then return d end return props[k]end,
 get_property_bool=function(k,d)if props[k]==nil then return d end return props[k]end,
 set_property_native=function(k,v)props[k]=v end,
+register_script_message=function()end,
 remove_key_binding=function(k)bindings[k]=nil end,
 add_forced_key_binding=function(k,n,f)bindings[n]={key=k,fn=f}end,
 observe_property=function(k,t,f)observers[k]=f;f(k,props[k])end,

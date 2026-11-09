@@ -181,7 +181,7 @@ assert not player.endpoint.exists()
         video=Mock();video.get.return_value='false'
         obj=SimpleNamespace(entries=[{'video':video}],selected=0,get=Mock(return_value=True),state={},card_command=Mock())
         for value in ('j','k','UP','DOWN'):
-            key(obj,value);command.assert_called_with({},'keypress',value)
+            key(obj,value);command.assert_called_with({},'script-message','stream-sidebar-navigate','down' if value in ('j','DOWN') else 'up')
         obj.card_command.assert_not_called()
 
     def test_shifted_playback_keys_keep_their_identity(self):

@@ -464,7 +464,7 @@ window { background-color: transparent; }
         # Clip-menu Enter/Escape must win over expanding/restoring a pane.
         if not menu:
             if key in ('j','k','UP','DOWN') and self.get('user-data/stream-sidebar-open'):
-                ipc(self.state,'keypress',key);return True
+                ipc(self.state,'script-message','stream-sidebar-navigate','down' if key in ('j','DOWN') else 'up');return True
             if key=='ENTER':self.set_zoomed(not self.zoomed);return True
             if key=='ESC':self.set_zoomed(False);return True
             if key=='q':self.close_selected();return True
