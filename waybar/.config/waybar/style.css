@@ -171,6 +171,8 @@ window#waybar {
 #workspaces button:first-child {
   padding-left: 9px;
   margin-left: 0;
+  /* Follow the bar's 10px outer curve inside its 1px border. */
+  border-radius: 9px 0 0 9px;
 }
 
 #workspaces button:hover {
