@@ -1,0 +1,14 @@
+agent-attention.service
+computer-notification.service
+hex.service
+hypridle.service
+kanshi.service
+obs-display-follow.service
+opendeck-watchdog.service
+wireplumber.service
+xdg-user-dirs.service
+gnome-keyring-daemon.socket
+p11-kit-server.socket
+pipewire-pulse.socket
+pipewire.socket
+newsboat-maintenance.timer

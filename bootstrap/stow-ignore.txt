@@ -1,0 +1,6 @@
+(^|/)(tests|windows|patches|browser-extension|README\.md|__pycache__)$
+\.before-.*
+\.uuid$
+\.pyc$
+\.(wants|requires)$
+\.so$

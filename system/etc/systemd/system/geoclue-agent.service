@@ -1,0 +1,14 @@
+[Unit]
+Description=GeoClue authorization agent (system, UID 0)
+After=geoclue.service
+Wants=geoclue.service
+PartOf=geoclue.service
+
+[Service]
+Type=simple
+ExecStart=/usr/lib/geoclue-2.0/demos/agent
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

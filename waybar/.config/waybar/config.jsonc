@@ -21,7 +21,7 @@
     // "custom/twitch_vod_download",
     "custom/yt-download",
     "custom/recording",
-    "custom/handy",
+    "custom/hex",
     // "custom/blanket",
     "custom/localsend",
     "custom/protonvpn",
@@ -172,8 +172,8 @@
     "on-scroll-down": "brightnessctl set 5%-",
     "tooltip": true
   },
-  "custom/handy": {
-    "exec": "/home/knaught/scripts/handy-waybar.sh",
+  "custom/hex": {
+    "exec": "/home/knaught/scripts/hex-waybar.py",
     "return-type": "json",
     "restart-interval": 1,
     "format": "{icon}",
@@ -183,7 +183,7 @@
       "transcribing": "\uf110",
       "stopped": "\uf131"
     },
-    "on-click": "handy --toggle-transcription",
+    "on-click": "hex dictation toggle",
     "tooltip": true
   },
   "custom/recording": {

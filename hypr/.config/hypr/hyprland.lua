@@ -384,7 +384,7 @@ hl.window_rule({ ["opaque"] = true, ["match"] = { ["title"] = "(.*)(Firefox)" } 
 
 
 -- https://wiki.hyprland.org/Configuring/Variables/#animations
-hl.config({ ["animations"] = { ["enabled"] = true } })
+hl.config({ ["animations"] = { ["enabled"] = false } })
 
 -- Default animations, see https://wiki.hyprland.org/Configuring/Animations/ for more
 hl.curve("easeOutQuint", { type = "bezier", points = { {0.23, 1}, {0.32, 1} } })
@@ -492,7 +492,7 @@ hl.bind("Alt + D", hl.dsp.exec_cmd("fuzzel --width 35 --lines 10 --line-height 2
 -- Dictation toggle (left Super alone): tap to start, tap again to stop + transcribe.
 -- Handy's CLI only exposes a toggle (no discrete start/stop), so hold-to-talk via bind+bindr
 -- races the ~370ms recording start-up and desyncs — a single toggle is deterministic.
-hl.bind("SUPER + Super_L", hl.dsp.exec_cmd("handy --toggle-transcription"), { ["release"] = true })
+-- Temporarily disabled for Hex trial: hl.bind("SUPER + Super_L", hl.dsp.exec_cmd("handy --toggle-transcription"), { ["release"] = true })
 hl.bind("Alt + R", hl.dsp.exec_cmd("zenity --question --text=\"Start/Stop recording?\" && $HOME/scripts/toggle-recording.sh"))
 hl.bind("Alt + V", hl.dsp.exec_cmd("$HOME/scripts/camera.sh"))
 -- PiP mute / hide: works for mpv AND Brave picture-in-picture (YouTube, Jellyfin@turing, ...).
@@ -879,3 +879,9 @@ end)
 hl.on("hyprland.shutdown", function()
     hl.exec_cmd("systemctl --user stop hyprland-session.target")
 end)
+
+-- Keep Hex settings fully opaque.
+hl.window_rule({ ["opaque"] = true, ["opacity"] = "1.0 override 1.0 override", ["match"] = { ["class"] = "^anomaly[.]hex$", ["title"] = "^Hex$" } })
+
+-- Route press and release to Hex for hold-to-talk dictation.
+hl.bind("ALT + space", hl.dsp.global("anomaly.hex:dictation-ALT-space"))

@@ -1,0 +1,17 @@
+acpid.service
+automatic-timezoned.service
+bluetooth.service
+cronie.service
+firewalld.service
+geoclue-agent.service
+keyd.service
+libvirtd.service
+NetworkManager.service
+NetworkManager-dispatcher.service
+NetworkManager-wait-online.service
+power-profiles-daemon.service
+proton.VPN.service
+sshd.service
+systemd-resolved.service
+systemd-timesyncd.service
+tailscaled.service

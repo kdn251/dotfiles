@@ -2,6 +2,7 @@
 """Dismiss Waybar popups on a non-consuming Hyprland mouse binding."""
 import json
 import os
+import signal
 from pathlib import Path
 import subprocess
 
@@ -53,6 +54,11 @@ def main():
            contains(point, layer["x"], layer["y"], layer["w"], layer["h"])
            for layer in layers):
         return
+
+    sound = next((layer for layer in layers if layer['namespace']=='waybar-sound-panel'),None)
+    if sound and not contains(point,sound['x'],sound['y'],sound['w'],sound['h']):
+        try:os.kill(int((RUNTIME/'waybar-panel-sound.pid').read_text()),signal.SIGTERM)
+        except (OSError,ValueError):pass
 
     panels = list(RUNTIME.glob("waybar-panel-*.notification"))
     if panels:

@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=Hex
+Comment=Local voice dictation
+Exec="/usr/bin/hex" start
+Icon=anomaly.hex
+Terminal=false
+X-GNOME-Autostart-enabled=true
+X-Hex-Managed=true

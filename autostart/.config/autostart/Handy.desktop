@@ -6,3 +6,4 @@ Comment=Handystartup script
 Exec=/usr/bin/handy
 StartupNotify=false
 Terminal=false
+Hidden=true

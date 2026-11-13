@@ -26,7 +26,7 @@ panel_guard() {
     # lives in swaync and would sit there until its timeout. So dismiss it
     # through swaync as well.
     [ -r "$PANEL_PIDFILE" ] && kill "$(cat "$PANEL_PIDFILE")" 2>/dev/null
-    timeout 2 swaync-client --close-latest >/dev/null 2>&1
+    [ -e "$PANEL_NOTIFICATION_FILE" ] && timeout 2 swaync-client --close-latest >/dev/null 2>&1
     exit 0
   fi
   trap 'rm -f "$PANEL_PIDFILE" "$PANEL_NOTIFICATION_FILE"' EXIT
@@ -47,7 +47,7 @@ _panel_close_others() {
     pid=$(cat "$f" 2>/dev/null)
     [ -n "$pid" ] || continue
     if kill "$pid" 2>/dev/null; then
-      closed=$((closed + 1))
+      [ -e "$PANEL_RUNTIME/waybar-panel-$other.notification" ] && closed=$((closed + 1))
     fi
     rm -f "$f"
   done

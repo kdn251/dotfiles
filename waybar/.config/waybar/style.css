@@ -69,24 +69,24 @@
   color: #fab387;
 }
 
-#custom-handy {
+#custom-hex {
   padding: 0 8px;
 }
 
-#custom-handy.recording {
+#custom-hex.recording {
   color: #ff5555;
   animation: pulse 1s ease-in-out infinite;
 }
 
-#custom-handy.transcribing {
+#custom-hex.transcribing {
   color: #f1fa8c;
 }
 
-#custom-handy.idle {
+#custom-hex.idle {
   color: #ffffff;
 }
 
-#custom-handy.stopped {
+#custom-hex.stopped {
   color: #6272a4;
 }
 

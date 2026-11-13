@@ -1,0 +1,13 @@
+[Unit]
+Description=Automatic timezone updater
+After=geoclue.service network-online.target
+Wants=geoclue.service network-online.target
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/automatic-timezoned
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

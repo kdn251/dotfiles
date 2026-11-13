@@ -65,3 +65,11 @@ agents/.pi/agent/extensions/herdr-agent-state.ts
 
 # Rebuild the OBS display bridge locally against the installed libobs.
 scripts/scripts/obs-display-create.so
+
+# Machine-local rollback files / font cache IDs.
+*.before-*
+.uuid
+# Never publish private restore archives or shell credentials.
+*.tar.age
+*.tar.gz.age
+**/secrets.zsh

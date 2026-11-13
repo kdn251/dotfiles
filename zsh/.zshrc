@@ -36,8 +36,11 @@ nvm() {
     [ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"
     nvm "$@"
 }
-node() { nvm >/dev/null; node "$@" }
-npm() { nvm >/dev/null; npm "$@" }
+# Fresh machines use Arch's Node/npm until NVM is separately installed.
+if [[ -s "$NVM_DIR/nvm.sh" ]]; then
+    node() { nvm >/dev/null; node "$@" }
+    npm() { nvm >/dev/null; npm "$@" }
+fi
 
 # --- 4. ALIASES & FUNCTIONS ---
 alias vim="nvim"
