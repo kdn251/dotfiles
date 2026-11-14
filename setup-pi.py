@@ -56,7 +56,9 @@ def configure(home, install_packages=True):
             raise ValueError(f"Broken or external resource symlink: {source}")
         target = home / source.relative_to(resources)
         desired = home / source.resolve().relative_to(resources.resolve()) if source.is_symlink() else source
-        if target.resolve() == desired.resolve():
+        # Stow may link directly to the repository symlink while --no-folding
+        # leaves the canonical home directory as a directory of individual links.
+        if target.resolve() in (desired.resolve(), source.resolve()):
             continue
         exists = target.exists() or target.is_symlink()
         identical = exists and source.is_file() and target.is_file() and source.read_bytes() == target.read_bytes()

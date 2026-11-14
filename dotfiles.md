@@ -222,3 +222,19 @@ A disposable-home Stow install/rerun and conflict-preservation tests cover the
 linking workflow. Full Arch/AUR installation, source builds against future package
 versions, and a clean-machine graphical boot still need the planned new-machine
 test. Do not treat those as already verified.
+
+### Newsboat patch failure on a rerun
+
+If an older installer reports that `include/recentlibrary.h` already exists or
+asks whether to reverse a patch, update the checkout before retrying. The build
+now extracts the pinned archive into a fresh temporary source directory for each
+run, applies patches without interactive reversal, and cleans up that directory.
+It leaves the previously installed binary intact until the new build succeeds.
+The OBS bridge also requires `simde`, now included in the bootstrap dependencies.
+
+To exercise the full patch chain twice without compiling or downloading:
+
+```sh
+NEWSBOAT_TEST_ARCHIVE="$HOME/.cache/newsboat-paged/source.tar.gz" \
+  python3 -m unittest discover -s tests -p test_newsboat_build.py -v
+```

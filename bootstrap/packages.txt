@@ -44,3 +44,4 @@ mpv
 libnotify
 wtype
 xfconf
+simde

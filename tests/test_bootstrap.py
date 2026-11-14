@@ -42,6 +42,11 @@ class BootstrapTests(unittest.TestCase):
             for rel in ['etc', 'tests', 'windows', 'patches', 'browser-extension']:
                 self.assertFalse((home/rel).exists(), rel)
             self.assertFalse(list(home.rglob('*.before-*')))
+            pi_spec = importlib.util.spec_from_file_location('pi_setup', ROOT/'setup-pi.py')
+            pi_setup = importlib.util.module_from_spec(pi_spec)
+            pi_spec.loader.exec_module(pi_setup)
+            pi_setup.configure(home, install_packages=False)
+            pi_setup.configure(home, install_packages=False)
 
     def test_stow_conflict_does_not_overwrite(self):
         with tempfile.TemporaryDirectory() as directory:
