@@ -2,6 +2,8 @@
 set -euo pipefail
 [[ $EUID == 0 && $# == 1 ]] || exit 2
 repo=$1
+# Minimal Arch installations do not create this directory.
+install -d -m 755 /var/backups
 backup=$(mktemp -d /var/backups/dotfiles.XXXXXXXX)
 chmod 700 "$backup"
 copy() {
