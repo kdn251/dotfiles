@@ -10,6 +10,7 @@ import newsboat_queue_time as queue_time
 
 def snapshot(rows=None):
     if rows is None:rows = queue_time.read('viewing-queue.json', [])
+    rows=[row for row in rows if queue_time.media.identity(row.get('url',''))]
     if not rows:
         return None
     row = rows[0]
@@ -64,7 +65,7 @@ class Header:
         if time.monotonic() < self.due:
             return
         self.due = time.monotonic()+.5
-        rows = queue_time.read('viewing-queue.json', [])
+        rows = [row for row in queue_time.read('viewing-queue.json', []) if queue_time.media.identity(row.get('url',''))]
         value = snapshot(rows)
         path = Path(os.environ.get('NEWSBOAT_QUEUE_STATUS',str(queue_time.state()/'viewing-queue.tsv'))+'.snooze')
         try:deadline = int(path.read_text().strip())

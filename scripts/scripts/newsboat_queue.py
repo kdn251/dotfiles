@@ -13,6 +13,7 @@ import sys
 import tempfile
 import uuid
 import xml.etree.ElementTree as ET
+from urllib.parse import urlparse
 import newsboat_media as media
 
 TITLE = '📺 Queue'
@@ -32,6 +33,10 @@ def entries():
 def identity(url):
     ident=media.identity(url)
     return ':'.join(ident) if ident else url
+
+
+def video_entries():
+    return [row for row in entries() if media.identity(row.get("url", ""))]
 
 
 def metadata(url):
@@ -153,8 +158,9 @@ def change(action,url='',token='',*extra):
         if action=='add' and not rows:
             (root/'queue-navigation.json').unlink(missing_ok=True)
         if action=='add':
-            if not media.identity(url) or any(c in url for c in '\r\n\t'):
-                raise ValueError('Queue supports YouTube videos and Twitch VODs')
+            parsed=urlparse(url)
+            if parsed.scheme not in ('http','https') or not parsed.hostname or any(c.isspace() for c in url):
+                raise ValueError('Queue requires a valid web link')
             if not any(identity(row['url'])==ident for row in rows):
                 rows.insert(0,dict(metadata(url),queue_token=uuid.uuid4().hex))
         elif action in ('stop-after', 'clear-stop'):
@@ -273,10 +279,11 @@ def navigation(current):
     root=state();root.mkdir(parents=True,exist_ok=True)
     with (root/'viewing-queue.lock').open('a') as lock:
         fcntl.flock(lock,fcntl.LOCK_EX)
-        rows=entries()
+        rows=video_entries()
         path=root/'queue-navigation.json'
         try:history=json.loads(path.read_text())
         except (OSError,ValueError):history=[]
+        history=[row for row in history if media.identity(row.get('url',''))]
         seen={row['queue_token'] for row in history}
         history += [row for row in rows if row['queue_token'] not in seen]
         text=json.dumps(history,ensure_ascii=False)
@@ -330,7 +337,7 @@ def menu_rows():
     from newsboat_resume import progress
     watched = progress()
     return [dict(row, percent=min(100,max(0,int(watched.get(identity(row['url']),(0,0))[0]*100))))
-            for row in entries()]
+            for row in video_entries()]
 
 
 def resume():
@@ -338,6 +345,8 @@ def resume():
     os.environ['NEWSBOAT_QUEUE_PLAYBACK']='1'
     # Homepage playback follows the current queue order; mpv restores position.
     rows=entries()
+    if rows and not media.identity(rows[0]['url']):
+        return subprocess.call([sys.executable,str(SCRIPTS/'newsboat-open.py'),rows[0]['url']])
     return launch(rows[0] if rows else None)
 
 

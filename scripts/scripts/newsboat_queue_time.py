@@ -38,6 +38,9 @@ def remaining_items(rows):
     except sqlite3.Error:pass
     result=[]
     for row in rows:
+        if not media.identity(row['url']):
+            result.append(0)
+            continue
         key=':'.join(media.identity(row['url']) or ())
         fraction,duration=progress.get(key,(0,0))
         duration=max(positive(duration),positive(durations.get(key,{}).get('duration')),positive(row.get('duration')))
@@ -67,7 +70,11 @@ def label(seconds,unknown,count):
 
 def publish(rows):
     seconds,unknown=remaining(rows)
-    text=label(seconds,len(unknown),len(rows))+'\n'
+    videos=sum(bool(media.identity(row['url'])) for row in rows)
+    articles=len(rows)-videos
+    parts=[label(seconds,len(unknown),videos)] if videos else []
+    if articles:parts.append(f'{articles} '+('link' if articles==1 else 'links'))
+    text=' · '.join(parts)+'\n'
     path=state()/'viewing-queue.tsv.time'
     if not path.exists() or path.read_text()!=text:media.atomic_write(path,text)
     return unknown
