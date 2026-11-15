@@ -126,7 +126,7 @@ def prepare_view(directory):
     lines=[line for line in config.read_text().splitlines() if not line.startswith(('bind C ', 'macro C ', 'article-sort-order '))]
     lines=[line.replace('toggle-article-read "read"','toggle-article-read "read" "stay"') if line.startswith(('bind o ','bind O ','macro v ','macro a ')) else line for line in lines]
     # Keep the original source visible in this list and its search results.
-    lines += ['articlelist-format " %f  %D  %-9p %-20a │ %t"',
+    lines += ['articlelist-format " %f %D  %-16a  │  %v %-1p %t"',
               'article-sort-order date-desc',
               'bind C articlelist undo-checkpoint commentary ; set browser "python3 ~/scripts/newsboat-commentary.py remove %u" ; open-in-browser-noninteractively ; set browser "~/scripts/newsboat-brave-app.sh %u" ; delete-article ; purge-deleted -- "Remove from Commentary"',
               'bind C article,searchresultslist undo-checkpoint commentary ; set browser "python3 ~/scripts/newsboat-commentary.py remove %u" ; open-in-browser-noninteractively ; set browser "~/scripts/newsboat-brave-app.sh %u" -- "Remove from Commentary"']

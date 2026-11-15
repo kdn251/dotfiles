@@ -163,7 +163,7 @@ def prepare_view(directory):
     lines=[line for line in config.read_text().splitlines() if not line.startswith(
         ('macro D ','macro C ','bind o ','bind O ','macro v ','article-sort-order ','articlelist-format ','datetime-format '))]
     action='set browser "python3 ~/scripts/newsboat-vods.py play %u" ; open-in-browser-noninteractively ; set browser "~/scripts/newsboat-brave-app.sh %u" ; toggle-article-read "read" "stay"'
-    lines += ['articlelist-format " %f %D %-6p %-14a │ %t"',
+    lines += ['articlelist-format " %f %D  %-16a  │  %v %-1p %t"',
               'datetime-format "%b %d"',
               'article-sort-order date-asc', 'prepopulate-query-feeds yes',
               'bind o articlelist,article,searchresultslist '+action,

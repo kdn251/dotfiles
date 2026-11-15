@@ -136,6 +136,7 @@ patch --batch --forward -p1 < "$repo/newsboat/patches/recent-saved-libraries.pat
 patch --batch --forward -p1 < "$repo/newsboat/patches/declare-bankruptcy.patch"
 patch --batch --forward -p1 < "$repo/newsboat/patches/home-visible-row-numbers.patch"
 patch --batch --forward -p1 < "$repo/newsboat/patches/stable-new-refresh-position.patch"
+patch --batch --forward -p1 < "$repo/newsboat/patches/explicit-duration-column-format.patch"
 make -j"${NEWSBOAT_BUILD_JOBS:-4}" WARNFLAGS="-Werror -Wall -Wextra -Wunreachable-code -Wno-error=unused-function" newsboat
 install -m 755 newsboat "$install_dir/newsboat.new"
 mv "$install_dir/newsboat.new" "$install_dir/newsboat"

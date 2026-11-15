@@ -1,0 +1,12 @@
+--- a/src/itemlistformaction.cpp
++++ b/src/itemlistformaction.cpp
+@@ -1653,7 +1653,8 @@
+         }
+     if (std::getenv("NEWSBOAT_VIDEO_DURATIONS")) {
+         const auto title = format.find("%t");
+-        if (title != std::string::npos && format.find("%8v") == std::string::npos) {
++        static const std::regex duration_field(R"(%[-=]?[0-9]*v)");
++        if (title != std::string::npos && !std::regex_search(format, duration_field)) {
+             format.insert(title, "%8v ");
+         }
+     }

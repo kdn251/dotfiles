@@ -242,7 +242,7 @@ def prepare_view(directory, rows):
              line.replace('toggle-article-read ;', 'toggle-article-read "toggle" "stay" ;')
              if line.startswith('macro r ') else line for line in lines]
     # Use the original source in both this list and its search results.
-    lines += ['articlelist-format " %f  %D  %-9p %-20a │ %t"',
+    lines += ['articlelist-format " %f %D  %-16a  │  %v %-1p %t"',
               'show-read-articles yes','article-sort-order date-asc',
               'bind S articlelist undo-checkpoint unstar ; set browser "python3 ~/scripts/newsboat-starred.py remove %u" ; open-in-browser-noninteractively ; set browser "~/scripts/newsboat-brave-app.sh %u" ; delete-article ; purge-deleted -- "Unstar item"',
               'bind S article,searchresultslist undo-checkpoint unstar ; set browser "python3 ~/scripts/newsboat-starred.py remove %u" ; open-in-browser-noninteractively ; set browser "~/scripts/newsboat-brave-app.sh %u" -- "Unstar item"',

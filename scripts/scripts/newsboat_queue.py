@@ -249,7 +249,7 @@ def prepare_view(directory):
             ET.SubElement(item,name).text=value
     ET.ElementTree(rss).write(Path(directory)/'history.xml',encoding='utf-8',xml_declaration=True)
     lines=[line for line in config.read_text().splitlines() if not line.startswith(('macro C ','article-sort-order ','articlelist-format '))]
-    lines += ['article-sort-order date-asc','articlelist-format "%4i  %4w  %-9p %-20a │ %t"',
+    lines += ['article-sort-order date-asc','articlelist-format "%4i %4w  %-16a  │  %v %-1p %t"',
               'articlelist-title-format " '+TITLE+'"',
               'bind yy articlelist,searchresultslist undo-checkpoint queue-yank -- "Pick up Queue row (V then y for selected rows); p moves below, P above"',
               'bind p articlelist,searchresultslist undo-checkpoint queue-after -- "Move picked-up Queue row below this row"',
