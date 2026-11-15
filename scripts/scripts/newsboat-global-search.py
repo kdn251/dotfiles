@@ -150,7 +150,7 @@ def prepare(directory, query, rows, source):
     lines += ['urls-source local','auto-reload no','show-read-feeds yes','show-read-articles yes',
               'confirm-exit no','article-sort-order date-asc','articlelist-title-format '+json.dumps(title,ensure_ascii=False),
               'searchresult-title-format " 🔎 Filter search results: %s"',
-              'articlelist-format "%4i %D  %-16a  │ %-26b │  %v %-1p %t"',
+              'articlelist-format "%4i %-1p %D  %-16a  │ %-26b │  %1v %t"',
               'bind q articlelist hard-quit -- "Back to homepage"']
     config=directory/'config';config.write_text('\n'.join(lines)+'\n')
     binary=Path.home()/'.local/lib/newsboat-paged/newsboat'

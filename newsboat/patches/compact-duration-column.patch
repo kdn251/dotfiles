@@ -1,0 +1,48 @@
+--- a/include/itemlistformaction.h
++++ b/include/itemlistformaction.h
+@@ -152,6 +152,7 @@
+ 	std::string gen_flags(std::shared_ptr<RssItem> item) const;
+ 
+     unsigned int badge_column_width = 0;
++    unsigned int duration_column_width = 0;
+     std::string item_badges(const ItemPtrPosPair& item) const;
+ 
+ 	StflRichText item2formatted_line(const ItemPtrPosPair& item,
+--- a/src/itemlistformaction.cpp
++++ b/src/itemlistformaction.cpp
+@@ -1665,9 +1665,15 @@
+ {
+     // Use one width across the list, including avatar and hover positioning.
+     badge_column_width = 0;
++    duration_column_width = 0;
+     for (const auto& item : visible_items) {
+         badge_column_width = std::max(badge_column_width,
+             static_cast<unsigned int>(utils::strwidth(item_badges(item))));
++        const auto duration = video_durations.find(item.first->link());
++        const auto text = duration != video_durations.end() ? duration->second :
++            duration_video(item.first->link()) ? "…" : "";
++        duration_column_width = std::max(duration_column_width,
++            static_cast<unsigned int>(utils::strwidth(text)));
+     }
+ 	auto datetime_format = cfg->get_configvalue("datetime-format");
+ 	auto render_line = [this, datetime_format](std::uint32_t line,
+@@ -2076,6 +2082,19 @@
+         remaining_format = badge_match.suffix().str();
+     }
+     row_format = badge_format + remaining_format;
++    // Compact duration fields share the widest value, including empty rows.
++    static const std::regex duration_field(R"(%(-?)([0-9]+)v)");
++    std::smatch duration_match;
++    std::string duration_format;
++    remaining_format = row_format;
++    while (std::regex_search(remaining_format, duration_match, duration_field)) {
++        duration_format += duration_match.prefix().str();
++        const auto duration_width = std::max(utils::to_u(duration_match[2].str()),
++            duration_column_width);
++        duration_format += "%" + duration_match[1].str() + std::to_string(duration_width) + "v";
++        remaining_format = duration_match.suffix().str();
++    }
++    row_format = duration_format + remaining_format;
+     const auto title_field = row_format.find("%t");
+     if (title_field != std::string::npos) {
+         const auto prefix = fmt.do_format(row_format.substr(0, title_field), width);
