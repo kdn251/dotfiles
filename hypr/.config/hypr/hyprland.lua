@@ -604,14 +604,25 @@ hl.bind("Alt + j", hl.dsp.focus({ direction = "down" }))
 -- Swap windows in all four directions
 hl.bind("Alt + SHIFT + h", hl.dsp.window.move({ direction = "left" }))
 hl.bind("Alt + SHIFT + l", hl.dsp.window.move({ direction = "right" }))
-hl.bind("Alt + SHIFT + k", hl.dsp.exec_cmd("~/scripts/hypr-flip-horizontal.sh u"))
+-- Floating players move in the compositor, just like left/right. Only tiled
+-- windows need the helper that rearranges their parent split.
+local function move_vertical(direction, split_side)
+    local window = hl.get_active_window()
+    if not window then return end
+    if window.floating then
+        hl.dispatch(hl.dsp.window.move({ direction = direction }))
+    else
+        hl.dispatch(hl.dsp.exec_cmd("~/scripts/hypr-flip-horizontal.sh " .. split_side))
+    end
+end
+hl.bind("Alt + SHIFT + k", function() move_vertical("up", "u") end)
 
 -- Panic button for a docked resume gone wrong: brings the laptop panel back if
 -- the dock vanished, drops the phantom DP head, and replaces a dead hyprlock
 -- (Hyprland's "oopsie daisy" lockdead screen). bindl so it still fires while
 -- the session is locked, which is exactly when it is needed.
 hl.bind("Alt + CTRL + K", hl.dsp.exec_cmd("~/scripts/display-lock-recover.sh --force"), { ["locked"] = true })
-hl.bind("Alt + SHIFT + j", hl.dsp.exec_cmd("~/scripts/hypr-flip-horizontal.sh d"))
+hl.bind("Alt + SHIFT + j", function() move_vertical("down", "d") end)
 
 -- Switch workspaces with mainMod + [0-9]
 hl.bind("Alt + 1", hl.dsp.focus({ workspace = "1" }))
