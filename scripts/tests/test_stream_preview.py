@@ -7,6 +7,25 @@ from unittest.mock import Mock,patch
 import stream_preview as preview
 
 class PreviewTests(unittest.TestCase):
+    def test_explicit_fullscreen_changes_while_loading_win_over_snapshot(self):
+        old={'pid':10,'fullscreen':0,'at':[700,400],'size':[500,280]}
+        saved={'pid':10,'fullscreen':True,'window':dict(old,fullscreen=2,size=[1920,1080]),
+               'layout_intent':{'fullscreen':True,'changed':1}}
+        intent={'fullscreen':False,'changed':2}
+        player=Mock();player.get.side_effect=lambda k:intent if k.endswith('layout-intent') else False
+        mode,geometry=preview.handoff_layout(player,old,saved)
+        self.assertFalse(mode);self.assertEqual(geometry['size'],[500,280])
+        intent={'fullscreen':True,'changed':3}
+        mode,_=preview.handoff_layout(player,old,saved)
+        self.assertTrue(mode)
+
+    def test_compositor_transient_does_not_override_unchanged_fullscreen_intent(self):
+        old={'pid':10,'fullscreen':0}
+        intent={'fullscreen':True,'changed':1}
+        saved={'pid':10,'fullscreen':True,'window':old,'layout_intent':intent}
+        player=Mock();player.get.side_effect=lambda k:intent if k.endswith('layout-intent') else False
+        self.assertTrue(preview.handoff_layout(player,old,saved)[0])
+
     def test_current_stream_is_not_previewed(self):
         with tempfile.TemporaryDirectory() as directory,patch.object(preview,'ROOT',Path(directory)), \
                 patch.object(preview,'clients',return_value=[{'class':'mpv','pid':123}]), \
@@ -176,6 +195,24 @@ class PreviewTests(unittest.TestCase):
                 self.assertIn('exact 800 450',batch)
                 self.assertIn('exact 45 67',batch)
                 place.assert_called_once_with(123,align=False)
+
+    def test_pending_fullscreen_stream_commits_in_current_windowed_geometry(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root=Path(directory);handoff=root/'handoff';session=root/'session';session.write_text('chosen')
+            handoff.write_text(json.dumps(dict(name='Example',service='Twitch',created=preview.time.time(),pid=123,endpoint=str(root/'preview.sock'),staged=True,source_pid=456)))
+            intent={'fullscreen':False,'changed':2}
+            player=Mock()
+            player.get.side_effect=lambda key,*args: intent if key=='user-data/stream-layout-intent' else False if key in ('user-data/stream-sidebar-open','fullscreen') else True
+            window=dict(pid=123,address='p',monitor=0,at=[0,0],size=[500,280],fullscreen=0,**{'class':'mpv'})
+            old=dict(pid=456,address='old',fullscreen=0,at=[45,67],size=[800,450],workspace={'name':'1'},**{'class':'mpv'})
+            saved=dict(pid=456,fullscreen=True,window=dict(old,at=[0,0],size=[1920,1080]),layout_intent={'fullscreen':True,'changed':1})
+            with patch.object(preview,'HANDOFF',handoff),patch.object(preview,'SESSION',session),patch.object(preview,'switch_snapshot',return_value=saved),patch.object(preview,'CANONICAL',root/'canonical'),patch.object(preview,'Player',return_value=player),patch.object(preview,'clients',return_value=[old,window]),patch.object(preview,'retire_player') as retire,patch('media_chat_fullscreen.socket_for',return_value='old.sock'),patch.object(preview.subprocess,'run') as move,patch('media_chat_fullscreen.place_player'):
+                self.assertEqual(preview.adopt('Example','title','','Twitch','chosen','page'),123)
+                batch=move.call_args.args[0][-1]
+                self.assertIn('exact 800 450',batch);self.assertIn('exact 45 67',batch)
+                self.assertNotIn('special:stream_retired',batch)
+                self.assertFalse(any(call.args==('set_property','fullscreen',True) for call in player.command.call_args_list))
+                retire.assert_called_once_with(old)
 
     def test_staged_switch_waits_for_decoded_frame_before_adopting(self):
         import os

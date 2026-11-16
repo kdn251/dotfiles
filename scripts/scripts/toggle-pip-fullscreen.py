@@ -63,6 +63,8 @@ def managed_stream_toggle(client,runtime,force_exit=False):
     geometry=Path(str(prefix)+'.geometry');snapshot=Path(str(geometry)+'.return')
     target='address:'+client['address']
     fullscreen=force_exit or bool(client.get('fullscreen') or ipc(state,'get_property','fullscreen'))
+    ipc(state,'set_property','user-data/stream-layout-intent',
+        {'fullscreen':not fullscreen,'changed':time.monotonic()})
     if not fullscreen:
         write(geometry,client);write(snapshot,client)
         if client.get('pinned'):

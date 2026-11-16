@@ -42,8 +42,10 @@ def capture_switch(session):
             try:
                 if player.get('user-data/stream-service') not in ('Twitch','YouTube','Kick','Rumble'):continue
                 fullscreen=bool(old.get('fullscreen') or player.get('fullscreen'))
+                layout_intent=player.get('user-data/stream-layout-intent')
             finally:player.close()
-            snapshot=dict(session=session,pid=old['pid'],fullscreen=fullscreen,window=old)
+            snapshot=dict(session=session,pid=old['pid'],fullscreen=fullscreen,window=old,
+                          layout_intent=layout_intent if isinstance(layout_intent,dict) else None)
             # Enter on an already decoded preview captured the state even
             # earlier, before the picker relinquished keyboard focus.
             try:
@@ -311,6 +313,19 @@ def retire_player(player):
     finally:os.close(fd)
 
 
+def handoff_layout(previous, old, selected):
+    """Explicit user toggles supersede the launch snapshot, not compositor noise."""
+    requested=previous.get('fullscreen')
+    fullscreen=requested if isinstance(requested,bool) else bool(old.get('fullscreen'))
+    intent=previous.get('user-data/stream-layout-intent')
+    saved=selected if selected and selected.get('pid')==old['pid'] else None
+    changed=(isinstance(intent,dict) and isinstance(intent.get('fullscreen'),bool)
+             and (not saved or intent!=saved.get('layout_intent')))
+    if changed:return intent['fullscreen'],old
+    if saved:return saved['fullscreen'],saved['window']
+    return fullscreen,old
+
+
 def adopt(name,title,marker,service,session,page):
     """Commit a decoded replacement only after its window and panels are ready."""
     try:data=json.loads(HANDOFF.read_text())
@@ -332,11 +347,7 @@ def adopt(name,title,marker,service,session,page):
         was_fullscreen=bool(old and old.get('fullscreen'))
         if old:
             previous=Player(socket_for(old),old['pid'])
-            # MPV owns the requested mode; compositor geometry may lag a transition.
-            requested_fullscreen=previous.get('fullscreen')
-            if isinstance(requested_fullscreen,bool):was_fullscreen=requested_fullscreen
-            if selected and selected.get('pid')==old['pid']:
-                was_fullscreen=selected['fullscreen']
+            was_fullscreen,geometry=handoff_layout(previous,old,selected)
             volume=previous.get('volume')
             if volume is not None and volume<=0:volume=previous.get('user-data/stream-audible-volume',100)
             if volume is not None:p.command('set_property','volume',volume)
@@ -356,8 +367,10 @@ def adopt(name,title,marker,service,session,page):
                 if not attached:raise StageFailed('Stream list could not transfer; current stream kept playing. Reopen the list and try again.')
         window=next((c for c in windows if c['pid']==data['pid']),None)
         if not window:raise StageFailed('Replacement window unavailable; current stream kept playing')
+        if old:
+            old=next((c for c in clients() if c.get('pid')==old['pid']),old)
+            was_fullscreen,geometry=handoff_layout(previous,old,selected)
         if old and not was_fullscreen:
-            geometry=selected['window'] if selected and selected.get('pid')==old['pid'] else old
             (x,y),(w,h)=geometry['at'],geometry['size']
         elif data.get('landed') and not was_fullscreen:
             (x,y),(w,h)=window['at'],window['size']
