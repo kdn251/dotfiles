@@ -5,12 +5,48 @@ import json
 import os
 from pathlib import Path
 import re
+import socket
 import subprocess
 import sys
 
 
+def request(command):
+    # hyprctl's response polling adds ~50 ms to every call. Read the same
+    # compositor IPC socket directly so a focus toggle needs no polling sleeps
+    # or child processes.
+    runtime = Path(os.environ.get('XDG_RUNTIME_DIR', '/tmp'))
+    endpoint = runtime / 'hypr' / os.environ['HYPRLAND_INSTANCE_SIGNATURE'] / '.socket.sock'
+    with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as connection:
+        connection.settimeout(2)
+        connection.connect(str(endpoint))
+        connection.sendall(command.encode())
+        chunks = []
+        while chunk := connection.recv(65536):
+            chunks.append(chunk)
+    return b''.join(chunks).decode()
+
+
 def query(command):
-    return json.loads(subprocess.check_output(['hyprctl', '-j', command], text=True, timeout=2))
+    return json.loads(request('j/' + command))
+
+
+def dispatch(command):
+    # Hyprland 0.57 uses Lua dispatchers; hyprctl translates legacy names.
+    name, _, arguments = command.partition(' ')
+    if name == 'focuswindow':
+        expression = 'hl.dsp.focus({window=' + json.dumps(arguments) + '})'
+    elif name == 'setprop':
+        window, prop, value = arguments.split()
+        expression = 'hl.dsp.window.set_prop({' + ','.join(
+            key + '=' + json.dumps(value) for key, value in
+            [('window', window), ('prop', prop), ('value', value)]) + '})'
+    else:
+        # Retain hyprctl's compatibility translation for ordinary cycling.
+        subprocess.run(['hyprctl', 'dispatch', name, arguments], check=True, timeout=2)
+        return
+    response = request('/eval hl.dispatch(' + expression + ')').strip()
+    if response != 'ok':
+        raise RuntimeError(f'Hyprland {command}: {response}')
 
 
 def media(window):
@@ -57,22 +93,19 @@ def main():
         if target:
             address = 'address:' + target['address']
             if media(target):
-                # Pinned MPV and browser PiP have no_focus rules. Override
+                # Some browser PiP windows have no_focus rules. Override
                 # only for this deliberate keyboard focus, then restore rules.
                 try:
-                    subprocess.run(['hyprctl', '--batch',
-                                    f'dispatch setprop {address} no_focus 0; '
-                                    f'dispatch focuswindow {address}'], check=True, timeout=2)
+                    dispatch(f'setprop {address} no_focus 0')
+                    dispatch(f'focuswindow {address}')
                 finally:
-                    subprocess.run(['hyprctl', 'dispatch', 'setprop',
-                                    address + ' no_focus unset'], check=True, timeout=2)
+                    dispatch(f'setprop {address} no_focus unset')
             else:
-                subprocess.run(['hyprctl', 'dispatch', 'focuswindow', address], check=True, timeout=2)
+                dispatch(f'focuswindow {address}')
             states[key] = saved
             statefile.write_text(json.dumps(states))
         elif not media(active):
-            subprocess.run(['hyprctl', 'dispatch', 'cyclenext',
-                            'prev' if sys.argv[1:] == ['prev'] else ''], check=True, timeout=2)
+            dispatch('cyclenext ' + ('prev' if sys.argv[1:] == ['prev'] else ''))
 
 
 if __name__ == '__main__':
