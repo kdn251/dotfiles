@@ -238,6 +238,7 @@ class Sidebar(Gtk.Application):
         self.events.command('observe_property',702,'fullscreen')
         self.events.command('observe_property',703,'user-data/stream-sidebar-replacement')
         self.events.command('observe_property',704,'user-data/stream-name')
+        self.events.command('observe_property',705,'user-data/stream-handoff-complete')
         self.events.socket.settimeout(None)
         events=self.events
         watched_pid=self.pid
@@ -250,6 +251,8 @@ class Sidebar(Gtk.Application):
                     if event.get('event')=='shutdown':
                         GLib.idle_add(self.exited_for_player,watched_pid);return
                     if event.get('event')!='property-change':continue
+                    if event.get('name')=='user-data/stream-handoff-complete' and event.get('data'):
+                        GLib.idle_add(self.handoff_completed_for_player,watched_pid)
                     if event.get('name')=='user-data/stream-name':
                         GLib.idle_add(self.identity_changed_for_player,watched_pid)
                     if event.get('name')=='user-data/stream-sidebar-replacement' and isinstance(event.get('data'),dict):
@@ -279,6 +282,18 @@ class Sidebar(Gtk.Application):
         return False
     def fullscreen_for_player(self,pid,fullscreen):
         if pid==self.pid:self.fullscreen_changed(fullscreen)
+        return False
+    def handoff_completed_for_player(self,pid):
+        if pid!=self.pid or self.closing or self.leaving_fullscreen:return False
+        # Moving/retiring the old fullscreen surface can invalidate the seat's
+        # keyboard target while this exclusive layer remains mapped. GTK row
+        # focus alone cannot reacquire that compositor grab. Renew the surface
+        # only after promotion and fullscreen reconciliation have finished.
+        # Keep selection/search and let check_player enforce workspace visibility.
+        self.handoff_until=0
+        self.stop_hover_preview()
+        self.window.set_visible(False)
+        self.check_player()
         return False
     def retarget(self,data):
         self.stop_navigation()

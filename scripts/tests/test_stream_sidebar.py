@@ -2,6 +2,33 @@ import unittest
 from stream_sidebar import rows,choice
 
 class SidebarTests(unittest.TestCase):
+    def test_completed_handoff_renews_layer_grab_only_for_current_player(self):
+        import ast
+        from pathlib import Path
+        from types import SimpleNamespace
+        from unittest.mock import Mock
+        source=ast.parse((Path(__file__).resolve().parents[1]/'scripts/stream-sidebar.py').read_text())
+        cls=next(n for n in source.body if isinstance(n,ast.ClassDef) and n.name=='Sidebar')
+        method=next(n for n in cls.body if isinstance(n,ast.FunctionDef) and n.name=='handoff_completed_for_player')
+        namespace={}
+        exec(compile(ast.Module(body=[method],type_ignores=[]),'handoff-focus','exec'),namespace)
+        calls=[]
+        sidebar=SimpleNamespace(pid=22,closing=False,leaving_fullscreen=False,handoff_until=123,
+            stop_hover_preview=Mock(),window=Mock(),check_player=lambda:calls.append('visibility-check'))
+        sidebar.window.set_visible.side_effect=lambda visible:calls.append(('visible',visible))
+        complete=namespace['handoff_completed_for_player']
+        complete(sidebar,11)
+        self.assertEqual(calls,[])
+        complete(sidebar,22)
+        self.assertEqual(calls,[('visible',False),'visibility-check'])
+        self.assertEqual(sidebar.handoff_until,0)
+        # Late completion must not reopen a dismissed menu or cancel F's exit.
+        for flag in ('closing','leaving_fullscreen'):
+            calls.clear();setattr(sidebar,flag,True)
+            complete(sidebar,22)
+            self.assertEqual(calls,[])
+            setattr(sidebar,flag,False)
+
     def test_idle_focus_restoration_keeps_browsing_separate_from_search(self):
         import ast
         from pathlib import Path
