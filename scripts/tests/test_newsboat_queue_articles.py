@@ -25,8 +25,8 @@ class ArticleQueueTests(unittest.TestCase):
             queue.change('restore',ARTICLE,'remove-article')
             self.assertEqual(queue.entries()[0]['title'],'An essay')
             self.assertEqual(queue.entries()[0]['source'],'Example')
-            self.assertEqual((queue.state()/'viewing-queue.tsv.time').read_text(),'1 link\n')
-            self.assertEqual(timing.remaining(queue.entries()),(0,[]))
+            self.assertEqual((queue.state()/'viewing-queue.tsv.time').read_text(),'~…\n')
+            self.assertEqual(timing.remaining(queue.entries()),(0,[ARTICLE]))
             self.assertIsNone(panel.snapshot(queue.entries()))
 
     def test_video_autoplay_navigation_and_menu_skip_articles(self):

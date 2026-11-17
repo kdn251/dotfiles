@@ -28,8 +28,16 @@ def positive(value):
     except (ValueError,TypeError):return 0
 
 
+def duration_key(url):
+    ident=media.identity(url)
+    return ":".join(ident) if ident else "article:"+url
+
+
 def remaining_items(rows):
+    from newsboat_reading_time import progress as reading_progress
+    fractions=reading_progress()
     durations=read('queue-durations.json',{})
+    visible_durations=read('video-durations.json',{})
     progress={}
     try:
         with closing(sqlite3.connect((state()/'watch-progress.db').as_uri()+'?mode=ro',uri=True,timeout=.1)) as db:
@@ -38,11 +46,13 @@ def remaining_items(rows):
     except sqlite3.Error:pass
     result=[]
     for row in rows:
-        if not media.identity(row['url']):
-            result.append(0)
-            continue
-        key=':'.join(media.identity(row['url']) or ())
+        key=duration_key(row['url'])
         fraction,duration=progress.get(key,(0,0))
+        cached=visible_durations.get(key,{})
+        if key.startswith('article:'):
+            fraction=fractions.get(row['url'],0)
+            duration=positive(cached.get('duration')) if cached.get('reading_version')==2 else 0
+        else:duration=max(positive(duration),positive(cached.get('duration')))
         duration=max(positive(duration),positive(durations.get(key,{}).get('duration')),positive(row.get('duration')))
         if duration:
             result.append(duration*(1-min(1,max(0,float(fraction or 0)))))
@@ -57,7 +67,7 @@ def remaining(rows):
 
 def label(seconds,unknown,count):
     if not count:return ''
-    if unknown==count:return 'time unavailable'
+    if unknown==count:return '~…'
     if seconds<=0:text='0 min'
     elif seconds<60:text='<1 min'
     else:
@@ -65,16 +75,12 @@ def label(seconds,unknown,count):
         hours,minutes=divmod(minutes,60)
         text=(f'{hours}h ' if hours else '')+(f'{minutes} min'+('s' if minutes!=1 else '') if minutes else '')
         text=text.strip()
-    return '~'+text+(f' · {unknown} unknown' if unknown else '')
+    return '~'+text
 
 
 def publish(rows):
     seconds,unknown=remaining(rows)
-    videos=sum(bool(media.identity(row['url'])) for row in rows)
-    articles=len(rows)-videos
-    parts=[label(seconds,len(unknown),videos)] if videos else []
-    if articles:parts.append(f'{articles} '+('link' if articles==1 else 'links'))
-    text=' · '.join(parts)+'\n'
+    text=label(seconds,len(unknown),len(rows))+'\n'
     path=state()/'viewing-queue.tsv.time'
     if not path.exists() or path.read_text()!=text:media.atomic_write(path,text)
     return unknown
@@ -93,6 +99,9 @@ def start_worker():
 
 
 def resolve_duration(url):
+    if not media.identity(url):
+        from newsboat_reading_time import estimate
+        return positive(estimate(url,allow_fetch=True))
     local=media.playback_file(url)
     if local:
         cmd=['ffprobe','-v','error','-show_entries','format=duration','-of','default=noprint_wrappers=1:nokey=1',str(local)]
@@ -113,10 +122,10 @@ def resolve():
         except BlockingIOError:return
         while True:
             unknown=refresh();cache=read('queue-durations.json',{})
-            pending=[u for u in unknown if time.time()-cache.get(':'.join(media.identity(u) or ()),{}).get('checked',0)>300]
+            pending=[u for u in unknown if time.time()-cache.get(duration_key(u),{}).get('checked',0)>300]
             if not pending:return
             url=pending[0];duration=resolve_duration(url)
-            cache[':'.join(media.identity(url) or ())]=dict(duration=duration,checked=time.time())
+            cache[duration_key(url)]=dict(duration=duration,checked=time.time())
             media.atomic_write(state()/'queue-durations.json',json.dumps(cache))
 
 

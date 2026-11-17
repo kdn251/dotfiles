@@ -14,7 +14,7 @@ class QueueTimeTests(unittest.TestCase):
             for url in URLS[:2]:queue.change('add',url)
             with patch.object(progress,'STATE',queue.state()):
                 progress.record(URLS[0],600,1800)
-                self.assertEqual((queue.state()/'viewing-queue.tsv.time').read_text().strip(),'~20 mins · 1 unknown')
+                self.assertEqual((queue.state()/'viewing-queue.tsv.time').read_text().strip(),'~20 mins')
                 progress.record(URLS[1],180,900)
                 self.assertAlmostEqual(timing.remaining(queue.entries())[0],1920)
                 self.assertEqual(timing.remaining(queue.entries())[1],[])

@@ -68,6 +68,9 @@ def record(ident, data, save_position=True):
         rows=db.execute('SELECT url,fraction FROM articles').fetchall()
         atomic_write(STATE/'download-status.tsv.read', ''.join(f'{url}\t{min(100,int(value*100))}%\n' for url,value in rows))
 
+    from newsboat_queue_time import refresh
+    refresh()
+
 
 READING_JS = r'''(() => {
   if (!/^http:\/\/127\.0\.0\.1:/.test(location.href)) return;
