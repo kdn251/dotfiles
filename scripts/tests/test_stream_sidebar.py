@@ -14,17 +14,29 @@ class SidebarTests(unittest.TestCase):
         exec(compile(ast.Module(body=[method],type_ignores=[]),'handoff-focus','exec'),namespace)
         calls=[]
         sidebar=SimpleNamespace(pid=22,closing=False,leaving_fullscreen=False,handoff_until=123,
+            handoff_focus_pending=False,
             stop_hover_preview=Mock(),window=Mock(),check_player=lambda:calls.append('visibility-check'))
         sidebar.window.set_visible.side_effect=lambda visible:calls.append(('visible',visible))
         complete=namespace['handoff_completed_for_player']
+        # A newly opened menu receives MPV's stored completion value. It must
+        # remain mapped with its search focus and video margin undisturbed.
+        complete(sidebar,22)
+        self.assertEqual(calls,[])
+        sidebar.handoff_focus_pending=True
         complete(sidebar,11)
         self.assertEqual(calls,[])
+        self.assertTrue(sidebar.handoff_focus_pending)
         complete(sidebar,22)
         self.assertEqual(calls,[('visible',False),'visibility-check'])
         self.assertEqual(sidebar.handoff_until,0)
+        self.assertFalse(sidebar.handoff_focus_pending)
+        calls.clear()
+        complete(sidebar,22)
+        self.assertEqual(calls,[])
         # Late completion must not reopen a dismissed menu or cancel F's exit.
         for flag in ('closing','leaving_fullscreen'):
             calls.clear();setattr(sidebar,flag,True)
+            sidebar.handoff_focus_pending=True
             complete(sidebar,22)
             self.assertEqual(calls,[])
             setattr(sidebar,flag,False)

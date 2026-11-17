@@ -53,6 +53,7 @@ class Sidebar(Gtk.Application):
         self.pidfd=None
         self.pid_watch=None
         self.handoff_until=0
+        self.handoff_focus_pending=False
         self.searching=False
         self.search_editing=False
         self.pending_g=0
@@ -186,10 +187,13 @@ class Sidebar(Gtk.Application):
         self.apply_collapsed()
         GLib.timeout_add(200,self.check_player)
         GLib.timeout_add_seconds(5,self.refresh)
-        self.window.present()
-        self.list.grab_focus()
-        self.start_workspace_events()
+        # Build the expanded search layout before mapping a fresh surface;
+        # otherwise slash briefly shows the icon-only width and resizes MPV.
         if '--search' in sys.argv:self.start_search()
+        else:
+            self.window.present()
+            self.list.grab_focus()
+        self.start_workspace_events()
     def visibility_changed(self,*_):
         visible=self.window.get_visible()
         if not visible:
@@ -285,6 +289,11 @@ class Sidebar(Gtk.Application):
         return False
     def handoff_completed_for_player(self,pid):
         if pid!=self.pid or self.closing or self.leaving_fullscreen:return False
+        # observe_property also replays the current value when a fresh menu
+        # opens. That historical completion must not unmap/remap the sidebar
+        # (and resize the video) while opening search.
+        if not self.handoff_focus_pending:return False
+        self.handoff_focus_pending=False
         # Moving/retiring the old fullscreen surface can invalidate the seat's
         # keyboard target while this exclusive layer remains mapped. GTK row
         # focus alone cannot reacquire that compositor grab. Renew the surface
@@ -314,6 +323,7 @@ class Sidebar(Gtk.Application):
         old_events=self.events
         print(f'sidebar retarget {self.pid} -> {new_pid}',file=sys.stderr,flush=True)
         self.pid=new_pid;self.player=player;self.connection=connection
+        self.handoff_focus_pending=True
         self.handoff_until=time.monotonic()+3
         if self.pid_watch:GLib.source_remove(self.pid_watch)
         if self.pidfd is not None:os.close(self.pidfd)
