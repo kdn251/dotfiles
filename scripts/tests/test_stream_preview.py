@@ -7,6 +7,37 @@ from unittest.mock import Mock,patch
 import stream_preview as preview
 
 class PreviewTests(unittest.TestCase):
+    def test_software_thumbnail_filter_uses_copyback_hardware_decoding(self):
+        for overlay in (False,True):
+            with self.subTest(overlay=overlay),tempfile.TemporaryDirectory() as directory, \
+                    patch.object(preview,'ROOT',Path(directory)), \
+                    patch.object(preview,'already_watching',return_value=False), \
+                    patch.object(preview.subprocess,'Popen') as spawn:
+                spawn.return_value.poll.return_value=1
+                item=preview.Preview('example','Twitch','https://twitch.tv/example',(0,0,432,243),overlay=overlay)
+                item._run()
+                args=spawn.call_args.args[0]
+                self.assertIn('--hwdec='+('vaapi-copy' if overlay else 'vaapi'),args)
+                self.assertEqual(any(arg.startswith('--vf-append=@sidebar-preview:') for arg in args),overlay)
+
+    def test_hover_handoff_restores_full_resolution_before_publishing(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root=Path(directory)
+            with patch.object(preview,'ROOT',root),patch.object(preview,'HANDOFF',root/'handoff'), \
+                    patch.object(preview,'Player') as ipc,patch.object(preview,'clients',return_value=[]):
+                item=preview.Preview('example','Twitch','https://twitch.tv/example',(0,0,432,243),overlay=True)
+                item.process=Mock(pid=123);item.process.poll.return_value=None
+                ipc.return_value.get.return_value=True
+                def command(*args):
+                    self.assertFalse((root/'handoff').exists())
+                ipc.return_value.command.side_effect=command
+                self.assertTrue(item.handoff())
+                self.assertEqual([call.args for call in ipc.return_value.command.call_args_list],
+                    [('vf','remove','@sidebar-preview'),('set_property','screenshot-sw',False),
+                     ('set_property','hwdec','vaapi')])
+                ipc.return_value.close.assert_called_once()
+                self.assertTrue((root/'handoff').exists())
+
     def test_explicit_fullscreen_changes_while_loading_win_over_snapshot(self):
         old={'pid':10,'fullscreen':0,'at':[700,400],'size':[500,280]}
         saved={'pid':10,'fullscreen':True,'window':dict(old,fullscreen=2,size=[1920,1080]),

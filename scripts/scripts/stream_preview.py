@@ -121,11 +121,19 @@ class Preview:
                   '--wayland-app-id=stream-preview','--title=Stream preview',
                   '--input-ipc-server='+self.endpoint,'--cache=yes','--cache-secs=30',
                   '--demuxer-max-bytes=384MiB','--demuxer-max-back-bytes=256MiB',
-                  '--hwdec=vaapi','--vo=gpu','--gpu-api=opengl',
+                  '--hwdec='+('vaapi-copy' if self.overlay else 'vaapi'),'--vo=gpu','--gpu-api=opengl',
                   '--script='+str(SCRIPTS/'twitch-first-frame.lua'),
                   '--script='+str(SCRIPTS/'stream-preview.lua'),
                   '--script='+str(SCRIPTS/'stream-title-refresh.lua'),
                   '--force-media-title='+playback_title(self.name,self.service)]
+            if self.overlay:
+                # vaapi-copy transfers decoded frames to system memory for the
+                # software scale/screenshot path. Direct vaapi surfaces cannot
+                # pass through this filter. Restore direct decoding on adoption.
+                width=max(2,round(self.bounds[2]/2)*2)
+                height=max(2,round(self.bounds[3]/2)*2)
+                args += [f'--vf-append=@sidebar-preview:scale=w={width}:h={height}:force_original_aspect_ratio=decrease:force_divisible_by=2',
+                         '--screenshot-sw=yes']
             if self.service in ('Kick','Rumble'):args+=['--user-agent=Mozilla/5.0','--referrer=https://'+self.service.lower()+'.com/']
             if self.service=='YouTube':args+=['--script-opts=ytdl_hook-ytdl_path='+str(Path.home()/'.local/bin/yt-dlp'),
                 '--ytdl-raw-options=ignore-config=,no-warnings=,no-playlist=',
@@ -194,8 +202,14 @@ class Preview:
             if not self.process or self.process.poll() is not None:return False
             try:
                 p=Player(self.endpoint,self.process.pid)
-                ready=p.get('user-data/preview-ready');p.close()
-                if not ready:return False
+                try:
+                    ready=p.get('user-data/preview-ready')
+                    if not ready:return False
+                    if self.overlay:
+                        p.command('vf','remove','@sidebar-preview')
+                        p.command('set_property','screenshot-sw',False)
+                        p.command('set_property','hwdec','vaapi')
+                finally:p.close()
             except (OSError,ValueError):return False
             data=dict(pid=self.process.pid,endpoint=self.endpoint,name=self.name,service=self.service,created=time.time())
             temp=HANDOFF.with_suffix('.tmp');temp.write_text(json.dumps(data));temp.chmod(0o600);temp.replace(HANDOFF)

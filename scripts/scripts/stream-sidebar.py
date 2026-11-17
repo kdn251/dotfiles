@@ -66,7 +66,6 @@ class Sidebar(Gtk.Application):
         self.hover_timer=None
         self.hover_preview=None
         self.preview_surface=None
-        self.preview_frame=None
         self.multiview_focus=False
         self.connect('shutdown',self.release_video)
         self.connect('shutdown',self.stop_events)
@@ -741,27 +740,19 @@ class Sidebar(Gtk.Application):
         stack.add_named(spinner,'loading');stack.add_named(picture,'video');popup.set_child(stack)
         self.preview_surface=popup;popup.present()
         frame=Path(preview.endpoint).with_suffix('.jpg')
-        self.preview_frame=frame
-        def render():
-            while self.hover_preview is preview and not preview.cancelled.is_set():
-                try:
-                    if preview.process is None:time.sleep(.1);continue
-                    player=Player(preview.endpoint,preview.process.pid)
-                    try:
-                        player.socket.settimeout(.4)
-                        player.command('set_property','screenshot-jpeg-quality',65)
-                        player.command('screenshot-to-file',str(frame),'video')
-                    finally:player.close()
-                    texture=Gdk.Texture.new_for_pixbuf(GdkPixbuf.Pixbuf.new_from_file_at_scale(str(frame),width,height,True))
-                    GLib.idle_add(self.preview_texture,preview,picture,stack,texture)
-                except (OSError,ValueError,GLib.Error):pass
-                time.sleep(.15)
-            frame.unlink(missing_ok=True)
-        threading.Thread(target=render,daemon=True).start()
+        from stream_preview_frames import pump_frames
+        def decode(path):
+            return Gdk.Texture.new_for_pixbuf(GdkPixbuf.Pixbuf.new_from_file_at_scale(str(path),width,height,True))
+        def submit(texture,done):
+            GLib.idle_add(self.preview_texture,preview,picture,stack,texture,done)
+        threading.Thread(target=pump_frames,args=(preview,frame,decode,submit,
+            lambda:self.hover_preview is preview,(OSError,ValueError,GLib.Error)),daemon=True).start()
 
-    def preview_texture(self,preview,picture,stack,texture):
-        if self.hover_preview is preview and self.preview_surface:
-            picture.set_paintable(texture);stack.set_visible_child_name('video')
+    def preview_texture(self,preview,picture,stack,texture,done):
+        try:
+            if self.hover_preview is preview and self.preview_surface:
+                picture.set_paintable(texture);stack.set_visible_child_name('video')
+        finally:done()
         return False
 
     def preview_clicked(self,preview,row):
