@@ -115,7 +115,6 @@ class Sidebar(Gtk.Application):
         .heading {font-size:16px;font-weight:700;padding:18px 10px;}
         .collapse {background:transparent;color:#efeff1;border:none;box-shadow:none;padding:6px;min-width:20px;min-height:20px;}
         .collapse:hover {background:#3a3a40;}
-        .hint {color:#adadb8;font-size:12px;padding:10px;}
         entry.sidebar-search {background:#303038;color:#efeff1;border:1px solid #484850;
             border-radius:6px;box-shadow:none;outline:none;min-height:30px;
             padding:4px 8px;font-size:14px;}
@@ -172,9 +171,6 @@ class Sidebar(Gtk.Application):
         scroll.set_policy(Gtk.PolicyType.NEVER,Gtk.PolicyType.EXTERNAL)
         scroll.set_child(self.list);box.append(scroll)
         self.scroll=scroll
-        hint=Gtk.Label(label='/ Search · j/k · Enter to watch · Tab to close')
-        hint.add_css_class('hint');hint.set_wrap(True);hint.set_max_width_chars(28);box.append(hint)
-        self.hint=hint
         self.window.set_child(box)
         keys=Gtk.EventControllerKey()
         keys.set_propagation_phase(Gtk.PropagationPhase.CAPTURE)
@@ -430,7 +426,6 @@ class Sidebar(Gtk.Application):
         self.hide_stream_title()
         self.heading.set_visible(not self.collapsed)
         self.search_button.set_visible(not self.collapsed)
-        self.hint.set_visible(not self.collapsed)
         if self.collapsed:
             self.search_editing=False
             self.multiview_focus=False
