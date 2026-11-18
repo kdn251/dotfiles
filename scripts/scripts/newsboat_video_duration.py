@@ -51,6 +51,7 @@ class Durations:
         self.wanted=set()
         self.requested=set()
         self.jobs=queue.Queue()
+        self.article_jobs=queue.Queue()
         self.results=queue.Queue()
         self.started=False
         self.dirty=False
@@ -58,9 +59,10 @@ class Durations:
         self.reading_due=0
         self.reading_fractions={}
 
-    def worker(self):
+    def worker(self,jobs=None):
+        jobs=self.jobs if jobs is None else jobs
         while True:
-            url=self.jobs.get()
+            url=jobs.get()
             if url not in self.wanted:
                 self.results.put((url,None));continue
             try:
@@ -79,10 +81,13 @@ class Durations:
             row=self.cache.get(ident,{})
             if (row.get('duration') and not ident.startswith('article:')) or time.time()-row.get('checked',0)<600:continue
             if url not in self.requested:
-                self.requested.add(url);self.jobs.put(url)
+                self.requested.add(url)
+                (self.article_jobs if ident.startswith('article:') else self.jobs).put(url)
         if self.wanted and not self.started:
             self.started=True
-            for _ in range(2):threading.Thread(target=self.worker,daemon=True).start()
+            # Article extraction can take 15 seconds; it must not occupy video workers.
+            for _ in range(6):threading.Thread(target=self.worker,daemon=True).start()
+            threading.Thread(target=self.worker,args=(self.article_jobs,),daemon=True).start()
 
     def poll(self):
         while not self.results.empty():

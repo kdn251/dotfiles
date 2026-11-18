@@ -106,6 +106,11 @@ def resolve_duration(url):
     if local:
         cmd=['ffprobe','-v','error','-show_entries','format=duration','-of','default=noprint_wrappers=1:nokey=1',str(local)]
     else:
+        ident=media.identity(url)
+        if ident and ident[0]=='youtube':
+            from newsboat_youtube_duration import fetch
+            duration=fetch(ident[1])
+            if duration:return duration
         executable=Path.home()/'.local/bin/yt-dlp'
         cmd=[str(executable) if executable.exists() else 'yt-dlp','--ignore-config','--no-playlist',
              '--skip-download','--print','duration','--socket-timeout','8','--retries','0','--extractor-retries','0','--',url]

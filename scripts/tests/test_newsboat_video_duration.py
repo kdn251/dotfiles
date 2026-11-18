@@ -24,8 +24,8 @@ class DurationTests(unittest.TestCase):
                 worker.poll();self.assertEqual(worker.path.read_text(),'')
                 release.set()
                 limit=time.monotonic()+2
-                while worker.results.empty() and time.monotonic()<limit:time.sleep(.01)
-                worker.poll()
+                while URL not in worker.path.read_text() and time.monotonic()<limit:
+                    worker.poll();time.sleep(.01)
                 self.assertEqual(worker.path.read_text(),URL+'\t12:34\n')
                 cached=duration.Durations();cached.update(marker);cached.poll()
                 self.assertEqual(cached.path.read_text(),URL+'\t12:34\n')
@@ -42,6 +42,26 @@ class DurationTests(unittest.TestCase):
             worker.poll()
             self.assertEqual(worker.path.read_text(),URL+'\t—\n')
             self.assertTrue(worker.jobs.empty())
+
+    def test_slow_article_does_not_block_six_visible_video_lookups(self):
+        with tempfile.TemporaryDirectory() as directory,patch.object(duration.timing,'state',return_value=Path(directory)),patch.object(duration,'cached_duration',return_value=0):
+            release=threading.Event();article_started=threading.Event();six_started=threading.Event()
+            calls=[];lock=threading.Lock()
+            def article(*args,**kwargs):
+                article_started.set();release.wait(3);return 0
+            def video(url):
+                with lock:
+                    calls.append(url)
+                    if len(calls)==6:six_started.set()
+                release.wait(3);return 60
+            with patch.object(duration.reading,'estimate',side_effect=article),patch.object(duration.timing,'resolve_duration',side_effect=video):
+                worker=duration.Durations()
+                urls=['https://www.youtube.com/watch?v='+str(i)*11 for i in range(6)]
+                try:
+                    worker.update('10;1;https://example.org/article\n'+''.join(f'10;{i+2};{url}\n' for i,url in enumerate(urls)))
+                    self.assertTrue(article_started.wait(1))
+                    self.assertTrue(six_started.wait(1),'Video metadata should not wait for article extraction')
+                finally:release.set()
 
     def test_native_duration_updates_without_moving_selected_row(self):
         with tempfile.TemporaryDirectory() as directory:
