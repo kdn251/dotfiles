@@ -133,6 +133,9 @@ static void start() {
             sendMargin(ratio*std::clamp(1-std::abs(ws->m_renderOffset->value().x)/width,0.,1.));
         else sendMargin(0);
         if (!ws->m_renderOffset->isBeingAnimated()) {
+            // Commit an exact endpoint before dropping the IPC connection;
+            // interrupted/disabled animations need not render every offset.
+            sendMargin(showing && video && Fullscreen::controller()->isFullscreen(video) ? ratio : 0);
             if (!showing) ws->m_alpha->setValueAndWarp(0.f);
             cleanup();
         }

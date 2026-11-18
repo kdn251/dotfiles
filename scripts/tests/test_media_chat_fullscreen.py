@@ -7,6 +7,39 @@ import media_chat_fullscreen as layout
 
 
 class FullscreenChatTests(unittest.TestCase):
+    def test_animated_close_finishes_margin_even_when_slide_does_not(self):
+        state={'player':self.player,'chat':self.chat,'socket':'/tmp/test-mpv'}
+        calls=[]
+        with tempfile.TemporaryDirectory() as tmp,patch.object(layout,'STATE',Path(tmp)/'state'), \
+                patch.object(layout,'panel_space',side_effect=lambda *a,**kw:calls.append(('margin',kw.get('animate',False)))), \
+                patch.object(layout,'hide_workspace',side_effect=lambda *a:calls.append(('hide',))), \
+                patch.object(layout.time,'sleep'),patch.object(layout,'style'),patch.object(layout,'move'), \
+                patch.object(layout,'hypr',return_value=json.dumps([self.monitor])):
+            layout.restore(state,[self.player,self.chat],animate=True)
+        self.assertEqual(calls,[('margin',True),('hide',),('margin',False)])
+
+    def test_correctly_positioned_chat_repairs_missing_video_reservation(self):
+        bounds=layout.layout(self.monitor)
+        chat=dict(self.chat,at=bounds['at'],size=bounds['size'])
+        state={'player':self.player,'chat':chat,'socket':'/tmp/test-mpv','created':10}
+        with tempfile.TemporaryDirectory() as tmp, patch.object(layout,'STATE',Path(tmp)/'state'), \
+                patch.object(layout,'read',return_value=state), \
+                patch.object(layout,'hypr',return_value=json.dumps([self.monitor])), \
+                patch.object(layout.time,'monotonic',return_value=11), \
+                patch.object(layout,'move') as move,patch.object(layout,'ipc',return_value=0) as ipc, \
+                patch.object(layout,'panel_space') as reserve:
+            self.assertTrue(layout.maintain([self.player,chat]))
+            move.assert_not_called()
+            reserve.assert_called_once_with(state,bounds['ratio'])
+            # Steady-state polling must not keep resetting video properties.
+            reserve.reset_mock();ipc.return_value=bounds['ratio']
+            self.assertTrue(layout.maintain([self.player,chat]))
+            reserve.assert_not_called()
+            # Do not jump to the final margin during the opening animation.
+            state['margin_settle_until']=12;ipc.return_value=0;ipc.reset_mock()
+            self.assertTrue(layout.maintain([self.player,chat]))
+            ipc.assert_not_called();reserve.assert_not_called()
+
     def setUp(self):
         capture=patch('stream_preview.capture_switch')
         capture.start();self.addCleanup(capture.stop)
@@ -277,7 +310,10 @@ class FullscreenChatTests(unittest.TestCase):
             self.assertEqual(props['panscan'], 0)
             self.assertAlmostEqual(props['video-margin-ratio-right'], 288/1440)
             self.assertTrue(layout.close(clients))
-            self.assertEqual({key:props[key] for key in original}, original)
+            # The right margin is owned by chat; an outgoing slide's residual
+            # must not become the next close's restored baseline.
+            self.assertEqual({key:props[key] for key in original},
+                             dict(original,**{'video-margin-ratio-right':0}))
             control.assert_any_call('keyword', 'input:special_fallthrough', '1')
             control.assert_any_call('keyword', 'input:special_fallthrough', '0')
             self.assertFalse(layout.STATE.exists())

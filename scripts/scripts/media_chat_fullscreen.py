@@ -140,7 +140,7 @@ def panel_space(state, ratio, animate=False):
         if native_slide and animate and args[:2]==('set_property','video-margin-ratio-right'):return
         return ipc(state,*args)
     update(command,state['player']['pid'],'right',ratio,
-           fallback=state.get('properties'))
+           fallback=state.get('properties'),clear_original_side=True)
 
 
 def style(chat, inline):
@@ -342,6 +342,12 @@ def restore(state, clients, hide=True, animate=False):
     if chat:
         style(chat, False)
         move(chat, old)
+    # Closing owns the final layout, even if the native slide missed its last
+    # frame. The caller holds STATE's lock, so a newer open cannot be cleared.
+    try:
+        panel_space(state,0)
+    except (OSError,ValueError):
+        pass
     STATE.unlink(missing_ok=True)
 
 
@@ -567,6 +573,7 @@ def maintain(clients):
             if monitor.get('specialWorkspace', {}).get('name') != 'special:' + WORKSPACE:
                 toggle_on_monitor(monitor, monitors)
                 monitor['specialWorkspace'] = {'name': 'special:' + WORKSPACE}
+                state['margin_settle_until'] = time.monotonic() + .35
             state['suspended'] = False
             STATE.write_text(json.dumps(state))
             # Returning to a workspace restores chat, not keyboard focus.
@@ -579,6 +586,14 @@ def maintain(clients):
         if chat['at'] != bounds['at'] or chat['size'] != bounds['size']:
             move(chat, bounds)
             panel_space(state,bounds['ratio'])
+        elif time.monotonic() >= state.get('margin_settle_until', state.get('created', 0) + .35):
+            # Geometry alone is not proof that MPV received the reservation.
+            # A missed native animation update or a player reconfiguration can
+            # reset the margin while chat remains correctly placed. Let the
+            # opening animation finish, then repair only an actual mismatch.
+            actual = ipc(state, 'get_property', 'video-margin-ratio-right')
+            if actual is None or abs(float(actual) - bounds['ratio']) > .001:
+                panel_space(state,bounds['ratio'])
         return True
 
 

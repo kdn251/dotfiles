@@ -9,11 +9,14 @@ FIT={'keepaspect':True,'panscan':0,'video-zoom':0,'video-pan-x':0,'video-pan-y':
      'video-margin-ratio-left':0,'video-margin-ratio-right':0,
      'video-margin-ratio-top':0,'video-margin-ratio-bottom':0}
 
-def update(command, pid, side, ratio, fallback=None, defer_left=False):
+def update(command, pid, side, ratio, fallback=None, defer_left=False, clear_original_side=False):
     if fallback:
         # Theater snapshots can be taken while the sidebar is already open.
         # Its reserved margin is not part of the underlying video layout.
         fallback=dict(fallback,**{'video-margin-ratio-left':0})
+    margin='video-margin-ratio-'+side
+    if clear_original_side:
+        fallback=dict(fallback or {},**{margin:0})
     lock_path=Path(os.environ.get('XDG_RUNTIME_DIR','/tmp'))/f'media-panel-layout-{pid}.lock'
     with lock_path.open('a') as lock:
         fcntl.flock(lock,fcntl.LOCK_EX)
@@ -30,6 +33,10 @@ def update(command, pid, side, ratio, fallback=None, defer_left=False):
             state={'original':original,'left':0,'right':0}
             other='right' if side=='left' else 'left'
             state[other]=float(command('get_property','video-margin-ratio-'+other) or 0)
+        if clear_original_side:
+            # A rapid reopen can snapshot the outgoing animation's margin.
+            # That space belongs to the panel, never to its restore baseline.
+            state['original'][margin]=0
         state[side]=max(0,min(.4,ratio))
         if state['left'] or state['right']:
             command('set_property',PROPERTY,state)
