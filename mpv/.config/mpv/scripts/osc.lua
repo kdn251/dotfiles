@@ -2108,6 +2108,18 @@ function bar_layout(direction)
         lo = add_layout("streamidentity")
         lo.geometry = {x=x+12,y=osc_geo.y+13,an=4,w=osc_geo.w-180,h=16}
         lo.style = "{\\q2\\fs16\\b1\\bord0\\shad0\\1c&HF7F7F8&}"
+        -- The 30px portrait starts at y+5. Put the live badge immediately
+        -- below it, outside the bitmap overlay, so MPV cannot cover the text.
+        new_element("livebadge_bg", "box")
+        lo = add_layout("livebadge_bg")
+        lo.geometry = {x=x+12,y=osc_geo.y+35,an=7,w=30,h=12}
+        lo.box.radius = 2
+        lo.style = "{\\bord0\\shad0\\1c&H0004EB&}"
+        new_element("livebadge", "button").content = "LIVE"
+        lo = add_layout("livebadge")
+        lo.geometry = {x=x+27,y=osc_geo.y+41,an=5,w=30,h=12}
+        lo.layer = 51
+        lo.style = "{\\q2\\fs8\\b1\\bord0\\shad0\\1c&HFFFFFF&}"
         lo = add_layout("title")
         lo.geometry = {x=text_x,y=osc_geo.y+32,an=4,w=right-text_x,h=18}
         lo.style = string.format("{\\q2\\fs12\\bord0\\shad0\\clip(%f,%f,%f,%f)}",text_x,0,right,osc_param.playresy)
@@ -2627,8 +2639,8 @@ function osc_init()
         local ahead = math.max(0,last-pos)
         local dvr=mp.get_property_native('user-data/stream-dvr',{}) or {}
         local at_live=dvr.available and dvr.mode=='live' or (not dvr.available and ahead<=5)
-        local status = at_live and '{\\1c&HFF70A9&}● LIVE' or ('−' .. mp.format_time(ahead))
-        return status .. (at_live and '' or '  {\\1c&HCCC4C4&}Go Live')
+        if at_live then return '' end
+        return '−' .. mp.format_time(ahead) .. '  {\\1c&HCCC4C4&}Go Live'
     end
     ne.eventresponder['mbtn_left_up'] = function()
         stream_aware_seek(100,'absolute-percent')
