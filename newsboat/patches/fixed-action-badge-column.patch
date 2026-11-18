@@ -1,0 +1,31 @@
+--- a/src/itemlistformaction.cpp
++++ b/src/itemlistformaction.cpp
+@@ -1664,11 +1664,9 @@
+ void ItemListFormAction::draw_items()
+ {
+     // Use one width across the list, including avatar and hover positioning.
+-    badge_column_width = 0;
++    badge_column_width = 9;
+     duration_column_width = 0;
+     for (const auto& item : visible_items) {
+-        badge_column_width = std::max(badge_column_width,
+-            static_cast<unsigned int>(utils::strwidth(item_badges(item))));
+         const auto duration = video_durations.find(item.first->link());
+         const auto text = duration != video_durations.end() ? duration->second :
+             duration_video(item.first->link()) ? "…" : "";
+@@ -2016,7 +2014,14 @@
+     fmt.register_fmt('v', video_duration != video_durations.end() ? video_duration->second :
+         duration_video(item.first->link()) ? "…" : "");
+     const auto status = download_status.find(item.first->link());
+-    const auto badges = item_badges(item);
++    auto badges = item_badges(item);
++    // Status changes must never move the date, creator, avatar, or title.
++    // Keep unusually busy rows inside their slot instead of widening the list.
++    if (utils::strwidth(badges) > badge_column_width) {
++        badges = utils::substr_with_width(badges, badge_column_width - 1);
++        while (!badges.empty() && badges.back() == ' ') { badges.pop_back(); }
++        badges += "…";
++    }
+     fmt.register_fmt('p', badges);
+     const auto progress = watched_progress.find(item.first->link());
+     fmt.register_fmt('w', progress == watched_progress.end() ? "0%" : progress->second);
