@@ -27,12 +27,14 @@ class FixedBadgeTests(unittest.TestCase):
            if expected in text:return
           raise AssertionError(repr(text[-1800:]))
          try:
-          wait('|         |Creator|Stable title')
-          (p/'queue').write_text(url+'\ttoken\n');wait('|📺       |Creator|Stable title')
-          (p/'downloads').write_text(url+'\t📥\n');wait('|📺 📥    |Creator|Stable title')
-          (p/'queue').write_text('');wait('|📥       |Creator|Stable title')
-          (p/'downloads').write_text('');wait('|         |Creator|Stable title')
-          (p/'downloads').write_text(url+'\tabcdefghijklmnopqrst\n');wait('|abcdefgh…|Creator|Stable title')
+          wait('|      |Creator|Stable title')
+          (p/'queue').write_text(url+'\ttoken\n');wait('|📺    |Creator|Stable title')
+          (p/'downloads').write_text(url+'\t📥\n');wait('|📺 📥 |Creator|Stable title')
+          (p/'downloads').write_text(url+'\t📥📣\n');wait('|📺📥📣|Creator|Stable title')
+          (p/'downloads').write_text(url+'\t📥\n');wait('|📺 📥 |Creator|Stable title')
+          (p/'queue').write_text('');wait('|📥    |Creator|Stable title')
+          (p/'downloads').write_text('');wait('|      |Creator|Stable title')
+          (p/'downloads').write_text(url+'\tabcdefghijklmnopqrst\n');wait('|abcde…|Creator|Stable title')
          finally:os.kill(pid,signal.SIGTERM);os.waitpid(pid,0);os.close(fd)
 
 if __name__ == "__main__":unittest.main()
