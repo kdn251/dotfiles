@@ -168,7 +168,19 @@ class Sidebar(Gtk.Application):
         self.list.connect('row-selected',self.show_stream_title)
         scroll=Gtk.ScrolledWindow(vexpand=True)
         scroll.set_policy(Gtk.PolicyType.NEVER,Gtk.PolicyType.EXTERNAL)
-        scroll.set_child(self.list);box.append(scroll)
+        scroll.set_child(self.list)
+        viewport=Gtk.Overlay(vexpand=True)
+        viewport.set_child(scroll)
+        self.pinned=Gtk.ListBox(selection_mode=Gtk.SelectionMode.NONE)
+        self.pinned.set_valign(Gtk.Align.START)
+        self.pinned.set_activate_on_single_click(True)
+        self.pinned.connect('row-activated',self.choose)
+        self.pinned.set_visible(False)
+        viewport.add_overlay(self.pinned)
+        box.append(viewport)
+        self.current_row=None
+        scroll.get_vadjustment().connect('value-changed',self.update_pinned)
+        scroll.connect('map',lambda *_:GLib.idle_add(self.update_pinned))
         self.scroll=scroll
         self.window.set_child(box)
         keys=Gtk.EventControllerKey()
@@ -435,11 +447,12 @@ class Sidebar(Gtk.Application):
         self.collapse.set_tooltip_text('Expand live channels' if self.collapsed else 'Collapse to profile icons')
         self.collapse.set_margin_end(0 if self.collapsed else 8)
         self.collapse.set_halign(Gtk.Align.CENTER if self.collapsed else Gtk.Align.END)
-        row=self.list.get_first_child()
-        while row:
-            if hasattr(row,'details'):
-                for widget in row.details:widget.set_visible(not self.collapsed)
-            row=row.get_next_sibling()
+        for listing in (self.list,self.pinned):
+            row=listing.get_first_child()
+            while row:
+                if hasattr(row,'details'):
+                    for widget in row.details:widget.set_visible(not self.collapsed)
+                row=row.get_next_sibling()
         self.window.set_default_size(56 if self.collapsed else 230,-1)
         self.reserve_video()
         self.list.grab_focus()
@@ -581,6 +594,48 @@ class Sidebar(Gtk.Application):
         if row.get_mapped():
             popup.present()
             self.title_timer=GLib.timeout_add(2500,self.expire_stream_title)
+    def make_stream_row(self,data,query):
+        row=Gtk.ListBoxRow();row.data=data
+        body=Gtk.Box(spacing=8)
+        image=Avatar();image.set_size_request(32,32);image.set_pixel_size(32)
+        if Path(data['icon']).is_file():image.set_from_file(data['icon'])
+        else:image.set_from_icon_name('avatar-default-symbolic')
+        body.append(image)
+        labels=Gtk.Box(orientation=Gtk.Orientation.VERTICAL,spacing=3,hexpand=True)
+        current=self.current and self.current[0]==data['service'] and self.current[1].casefold()==data['name'].casefold()
+        name=Gtk.Label(xalign=0);name.set_markup(highlight(data['name'],query,fuzzy=True));name.add_css_class('name')
+        if current:
+            name.add_css_class('playing');row.add_css_class('current')
+        name.set_ellipsize(Pango.EllipsizeMode.END);name.set_max_width_chars(17);name.set_width_chars(1)
+        labels.append(name)
+        subtitle=data['category'] or data['service']
+        if query and query.casefold() in data['title'].casefold() and query.casefold() not in subtitle.casefold():subtitle=data['title']
+        category=Gtk.Label(xalign=0);category.set_markup(highlight(subtitle,query))
+        category.add_css_class('category');category.set_ellipsize(Pango.EllipsizeMode.END);category.set_max_width_chars(21);category.set_width_chars(1)
+        labels.append(category);body.append(labels)
+        count=data['viewers']
+        count='—' if count is None else (f'{count/1000:.1f}k' if count>=1000 else str(int(count)))
+        live=Gtk.Label(label='● '+count);live.add_css_class('viewers');body.append(live)
+        row.details=(labels,live)
+        for widget in row.details:widget.set_visible(not self.collapsed)
+        row.set_child(body)
+        motion=Gtk.EventControllerMotion()
+        motion.connect('enter',lambda controller,x,y,r=row:self.hover_stream(r))
+        motion.connect('leave',self.leave_hover)
+        row.add_controller(motion)
+        return row
+
+    def update_pinned(self,*_):
+        row=self.current_row
+        visible=False
+        if row and row.get_mapped():
+            # value-changed fires before GTK updates the scrolled transform.
+            # Compare stable list coordinates to the new scroll offset.
+            ok,bounds=row.compute_bounds(self.list)
+            visible=bool(ok and bounds.get_y()<self.scroll.get_vadjustment().get_value())
+        self.pinned.set_visible(visible)
+        return False
+
     def refresh(self):
         if self.hover_preview:return True
         # Replacing focused rows mid-hold can interrupt GTK key delivery.
@@ -596,37 +651,17 @@ class Sidebar(Gtk.Application):
         self.catalog=catalog
         self.rebuilding_rows=True
         self.hide_stream_title()
+        self.current_row=None
+        self.pinned.set_visible(False)
+        while child:=self.pinned.get_first_child():self.pinned.remove(child)
         while child:=self.list.get_first_child():self.list.remove(child)
         preferred=None
         for data in catalog:
-            row=Gtk.ListBoxRow();row.data=data
-            body=Gtk.Box(spacing=8)
-            image=Avatar();image.set_size_request(32,32);image.set_pixel_size(32)
-            if Path(data['icon']).is_file():image.set_from_file(data['icon'])
-            else:image.set_from_icon_name('avatar-default-symbolic')
-            body.append(image)
-            labels=Gtk.Box(orientation=Gtk.Orientation.VERTICAL,spacing=3,hexpand=True)
-            current=self.current and self.current[0]==data['service'] and self.current[1].casefold()==data['name'].casefold()
-            name=Gtk.Label(xalign=0);name.set_markup(highlight(data['name'],query,fuzzy=True));name.add_css_class('name')
+            row=self.make_stream_row(data,query)
+            current='current' in row.get_css_classes()
             if current:
-                name.add_css_class('playing');row.add_css_class('current')
-            name.set_ellipsize(Pango.EllipsizeMode.END);name.set_max_width_chars(17);name.set_width_chars(1)
-            labels.append(name)
-            subtitle=data['category'] or data['service']
-            if query and query.casefold() in data['title'].casefold() and query.casefold() not in subtitle.casefold():subtitle=data['title']
-            category=Gtk.Label(xalign=0);category.set_markup(highlight(subtitle,query))
-            category.add_css_class('category');category.set_ellipsize(Pango.EllipsizeMode.END);category.set_max_width_chars(21);category.set_width_chars(1)
-            labels.append(category);body.append(labels)
-            count=data['viewers']
-            count='—' if count is None else (f'{count/1000:.1f}k' if count>=1000 else str(int(count)))
-            live=Gtk.Label(label='● '+count);live.add_css_class('viewers');body.append(live)
-            row.details=(labels,live)
-            for widget in row.details:widget.set_visible(not self.collapsed)
-            row.set_child(body)
-            motion=Gtk.EventControllerMotion()
-            motion.connect('enter',lambda controller,x,y,r=row:self.hover_stream(r))
-            motion.connect('leave',self.leave_hover)
-            row.add_controller(motion)
+                self.current_row=row
+                self.pinned.append(self.make_stream_row(data,query))
             self.list.append(row)
             if choice(data)==selected_key or (selected_key is None and current):preferred=row
         if not catalog:
@@ -640,6 +675,7 @@ class Sidebar(Gtk.Application):
         # A popup can already have cleared focus before the five-second cache
         # refresh. Restore the intended target, not the stale GTK focus state.
         self.restore_input_focus()
+        GLib.idle_add(self.update_pinned)
         return True
     def check_player(self):
         if self.closing:return False
