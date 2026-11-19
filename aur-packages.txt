@@ -9,6 +9,7 @@ cryptomator
 faugus-launcher
 google-chrome
 handy-bin
+handy-bin-debug
 herdr-bin
 hex-bin
 localsend-bin
@@ -22,8 +23,5 @@ vesktop
 voxtype-bin
 wallust
 wayland-boomer-git
-yay
-zoom
-er-git
 yay
 zoom
