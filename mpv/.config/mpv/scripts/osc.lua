@@ -1649,6 +1649,9 @@ function window_controls(topbar)
     ne = new_element("wctitle", "button")
     ne.content = function ()
         local title = mp.command_native({"expand-text", user_opts.title})
+        if not stream_card_enabled() and (mp.get_property_native('user-data/newsboat/url', '') ~= '' or os.getenv('NEWSBOAT_MEDIA_URL')) then
+            title = title:gsub('^Queue video %d+ of %d+ · ', ''):gsub('^Episode %d+ of %d+ · ', '')
+        end
         -- escape ASS, and strip newlines and trailing slashes
         title = title:gsub("\\n", " "):gsub("\\$", ""):gsub("{","\\{")
         return not (title == "") and title_emoji(title) or "mpv"
@@ -2251,6 +2254,19 @@ end
 
 layouts["bottombar"] = function()
     bar_layout(-1)
+    if (mp.get_property_native('user-data/newsboat/url', '') ~= '' or os.getenv('NEWSBOAT_MEDIA_URL')) and not stream_card_enabled() then
+        -- Keep episode context below, and give the real title its own space.
+        local bottom = elements.title.layout
+        local lo = add_layout('newsboatcontext')
+        lo.geometry = bottom.geometry
+        lo.style = bottom.style
+        lo = add_layout('title')
+        lo.geometry = {x=14,y=18,an=7,w=osc_param.playresx-28,h=24}
+        lo.style = "{\\q2\\fs20\\bord1\\shad1}"
+        lo = add_layout('newsboatcreator')
+        lo.geometry = {x=51,y=46,an=7,w=osc_param.playresx-65,h=18}
+        lo.style = "{\\q2\\fs14\\bord1\\shad1\\1c&HDDDDDD&}"
+    end
 end
 
 layouts["topbar"] = function()
@@ -2368,6 +2384,9 @@ function osc_init()
             local _, stream_title = stream_card_parts()
             title = stream_title ~= '' and stream_title or title
         end
+        if not stream_card_enabled() and (mp.get_property_native('user-data/newsboat/url', '') ~= '' or os.getenv('NEWSBOAT_MEDIA_URL')) then
+            title = title:gsub('^Queue video %d+ of %d+ · ', ''):gsub('^Episode %d+ of %d+ · ', '')
+        end
         -- escape ASS, and strip newlines and trailing slashes
         title = title:gsub("\\n", " "):gsub("\\$", ""):gsub("{","\\{")
         return not (title == "") and title or "mpv"
@@ -2396,6 +2415,13 @@ function osc_init()
     ne.eventresponder["mbtn_right_up"] =
         function () show_message(mp.get_property_osd("filename")) end
 
+    new_element('newsboatcontext', 'button').content = function()
+        return mp.get_property('media-title', ''):match('^(Queue video %d+ of %d+) · ') or
+            mp.get_property('media-title', ''):match('^(Episode %d+ of %d+) · ') or ''
+    end
+    new_element('newsboatcreator', 'button').content = function()
+        return title_emoji(card_escape(mp.get_property_native('user-data/newsboat/creator', '')))
+    end
     local open_stream = ne.eventresponder["mbtn_left_up"]
     ne = new_element("streamidentity", "button")
     ne.content = function()
@@ -3513,6 +3539,7 @@ mp.observe_property("user-data/stream-uptime", "native", function()
 end)
 mp.observe_property('user-data/stream-dvr', 'native', request_tick)
 mp.observe_property('user-data/newsboat/playback-status', 'native', request_tick)
+mp.observe_property('user-data/newsboat/creator', 'native', request_init)
 mp.observe_property('chapter', 'number', request_tick)
 mp.observe_property("playback-time", "number", function(name, val)
     request_tick()

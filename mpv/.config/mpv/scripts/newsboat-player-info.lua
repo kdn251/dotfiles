@@ -68,4 +68,15 @@ end)
 mp.observe_property('user-data/newsboat/url','native',function()
     chapter_generation=chapter_generation+1
     mp.set_property_native('user-data/newsboat/playback-status','')
+    mp.set_property_native('user-data/newsboat/creator','')
+    local current=url()
+    if current=='' then return end
+    mp.command_native_async({name='subprocess',playback_only=false,capture_stdout=true,capture_stderr=true,
+        args={'python3',helper,'metadata',current}},function(ok,result)
+        if current~=url() or not ok or not result or result.status~=0 then return end
+        local data=utils.parse_json(result.stdout)
+        if type(data)=='table' then
+            mp.set_property_native('user-data/newsboat/creator',data.source or '')
+        end
+    end)
 end)

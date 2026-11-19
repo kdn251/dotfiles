@@ -70,6 +70,9 @@ def chapters(url):
 
 if __name__=='__main__':
     try:
-        if sys.argv[1]=='status':print(status(*sys.argv[2:4]))
+        if sys.argv[1]=='metadata':
+            from newsboat_queue import metadata
+            print(json.dumps(metadata(sys.argv[2])))
+        elif sys.argv[1]=='status':print(status(*sys.argv[2:4]))
         else:print(json.dumps(chapters(sys.argv[2])))
     except (OSError,ValueError,subprocess.SubprocessError):raise SystemExit(1)
