@@ -43,6 +43,20 @@ def status(url,path):
     return 'Streaming'
 
 
+def metadata(url):
+    from newsboat_queue import metadata as lookup, entries
+    data = lookup(url)
+    key = identity(url)
+    for row in entries():
+        if row.get('url') == url or (key and identity(row.get('url', '')) == key):
+            data['title'] = row.get('title') or data.get('title', '')
+            data['source'] = row.get('source') or data.get('source', '')
+            break
+    if data.get('title') == url:
+        data['title'] = ''
+    return data
+
+
 def chapters(url):
     url=canonical(url)
     key=identity(url)
@@ -71,7 +85,6 @@ def chapters(url):
 if __name__=='__main__':
     try:
         if sys.argv[1]=='metadata':
-            from newsboat_queue import metadata
             print(json.dumps(metadata(sys.argv[2])))
         elif sys.argv[1]=='status':print(status(*sys.argv[2:4]))
         else:print(json.dumps(chapters(sys.argv[2])))

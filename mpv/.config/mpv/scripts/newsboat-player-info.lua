@@ -69,6 +69,7 @@ mp.observe_property('user-data/newsboat/url','native',function()
     chapter_generation=chapter_generation+1
     mp.set_property_native('user-data/newsboat/playback-status','')
     mp.set_property_native('user-data/newsboat/creator','')
+    mp.set_property_native('user-data/newsboat/title','')
     local current=url()
     if current=='' then return end
     mp.command_native_async({name='subprocess',playback_only=false,capture_stdout=true,capture_stderr=true,
@@ -77,6 +78,7 @@ mp.observe_property('user-data/newsboat/url','native',function()
         local data=utils.parse_json(result.stdout)
         if type(data)=='table' then
             mp.set_property_native('user-data/newsboat/creator',data.source or '')
+            mp.set_property_native('user-data/newsboat/title',data.title or '')
         end
     end)
 end)

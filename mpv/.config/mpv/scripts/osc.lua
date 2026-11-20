@@ -1650,6 +1650,8 @@ function window_controls(topbar)
     ne.content = function ()
         local title = mp.command_native({"expand-text", user_opts.title})
         if not stream_card_enabled() and (mp.get_property_native('user-data/newsboat/url', '') ~= '' or os.getenv('NEWSBOAT_MEDIA_URL')) then
+            local resolved = mp.get_property_native('user-data/newsboat/title', '')
+            if resolved ~= '' then title = resolved end
             title = title:gsub('^Queue video %d+ of %d+ · ', ''):gsub('^Episode %d+ of %d+ · ', '')
         end
         -- escape ASS, and strip newlines and trailing slashes
@@ -2385,6 +2387,8 @@ function osc_init()
             title = stream_title ~= '' and stream_title or title
         end
         if not stream_card_enabled() and (mp.get_property_native('user-data/newsboat/url', '') ~= '' or os.getenv('NEWSBOAT_MEDIA_URL')) then
+            local resolved = mp.get_property_native('user-data/newsboat/title', '')
+            if resolved ~= '' then title = resolved end
             title = title:gsub('^Queue video %d+ of %d+ · ', ''):gsub('^Episode %d+ of %d+ · ', '')
         end
         -- escape ASS, and strip newlines and trailing slashes
@@ -3540,6 +3544,7 @@ end)
 mp.observe_property('user-data/stream-dvr', 'native', request_tick)
 mp.observe_property('user-data/newsboat/playback-status', 'native', request_tick)
 mp.observe_property('user-data/newsboat/creator', 'native', request_init)
+mp.observe_property('user-data/newsboat/title', 'native', request_tick)
 mp.observe_property('chapter', 'number', request_tick)
 mp.observe_property("playback-time", "number", function(name, val)
     request_tick()
