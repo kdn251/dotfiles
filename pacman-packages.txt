@@ -163,7 +163,6 @@ signal-desktop
 socat
 sof-firmware
 sshfs
-steam
 stow
 strace
 strawberry
